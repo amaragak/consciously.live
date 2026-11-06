@@ -211,19 +211,29 @@
     color: var(--foreground);
     -webkit-text-fill-color: var(--foreground);
   }
-  /* ~40px circle; sun nearly fills it; flat navy fill (hero / paisley cards). */
+  /* ~40px circle; sun nearly fills it; same navy + paisley as dashboard hero. */
   .app-header-home-btn {
+    position: relative;
     display: inline-flex;
     height: 2.5rem;
     width: 2.5rem;
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
     /* ~14px from button edge to first breadcrumb. */
     margin-right: 14px;
     border-radius: 9999px;
-    background-color: #1e232e;
+    background-color: #0f1b2d;
     background-image: none;
+  }
+  .app-header-home-btn .navy-paisley-plate {
+    /* Tighter tile so the pattern reads in a 40px circle. */
+    background-size: 160px 160px;
+  }
+  .app-header-home-btn .app-header-brand-sun {
+    position: relative;
+    z-index: 1;
   }
   /* Avatar matches the sun button (2.5rem). */
   .app-top-bar .app-mobile-account-trigger {
@@ -1590,6 +1600,26 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
   background: var(--accent, #c8a46a);
   box-shadow: 0 1px 3px rgb(15 27 45 / 0.22);
   box-sizing: border-box;
+}
+
+/* Journal voice notes v2 — slim clip + grouped transcript */
+.journal-voice-transcript {
+  margin-left: 2.35rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid color-mix(in srgb, var(--accent, #c8a46a) 55%, transparent);
+}
+.journal-voice-draft,
+.journal-voice-live {
+  color: var(--muted, #8a857c);
+  font-style: italic;
+}
+html[data-hide-voice-clips="1"] .journal-voice-clip {
+  display: none !important;
+}
+html[data-hide-voice-clips="1"] .journal-voice-transcript {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

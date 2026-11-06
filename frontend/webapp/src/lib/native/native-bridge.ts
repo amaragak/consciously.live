@@ -186,6 +186,26 @@ export function setNativeOpenExternalImpl(
   openExternalImpl = fn;
 }
 
+let hideKeyboardImpl: (() => void) | null = null;
+
+export function setNativeHideKeyboardImpl(fn: (() => void) | null): void {
+  hideKeyboardImpl = fn;
+}
+
+/**
+ * Blur the focused field and hide the software keyboard. TipTap / inputs keep
+ * their caret/selection so focusing again resumes in place.
+ */
+export function hideSoftwareKeyboard(): void {
+  if (typeof document !== "undefined") {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && typeof active.blur === "function") {
+      active.blur();
+    }
+  }
+  if (isNativeApp()) hideKeyboardImpl?.();
+}
+
 /**
  * Leave the app for another site. Native: in-app browser sheet. Web: normal
  * navigation (`replace` keeps the current history entry out of the way).

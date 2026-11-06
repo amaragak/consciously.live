@@ -578,7 +578,7 @@ export function AppMobileTabBar() {
    */
   const bar = (
     <>
-      {/* Short fade so scrolling content softens under the pill. */}
+      {/* Soft veil only — keep page content visible under the floating pill. */}
       <div
         aria-hidden
         className={`pointer-events-none fixed inset-x-0 bottom-0 z-[119] md:hidden ${
@@ -587,7 +587,7 @@ export function AppMobileTabBar() {
         style={{
           height: mobileTabContentClearancePx() + 12,
           background:
-            "linear-gradient(to top, var(--background) 28%, transparent)",
+            "linear-gradient(to top, color-mix(in srgb, var(--background) 42%, transparent), transparent 70%)",
           transition: "opacity 180ms ease",
         }}
       />

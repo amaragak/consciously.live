@@ -6,7 +6,13 @@ import {
   parseScriptIntoSegments,
   type ScriptPauseBand,
 } from "./script-pause-bands";
-import { MEDITATION_SPEECHIFY_EMOTION, speechifyTtsPcm24k, type SpeechifyEmotionTag } from "./speechify-tts";
+import {
+  MEDITATION_SPEECHIFY_EMOTION,
+  SPEECHIFY_COMMA_BREAK_MS,
+  SPEECHIFY_PERIOD_BREAK_MS,
+  speechifyTtsPcm24k,
+  type SpeechifyEmotionTag,
+} from "./speechify-tts";
 import { loadCommittedVoiceFxContext } from "./voice-fx-apply";
 import { voiceFxDialGains } from "./voice-fx-dial";
 import {
@@ -182,7 +188,8 @@ export async function synthesizeSpeechifyPcmFxOla(params: {
         rate: params.speechifyRate,
         emotion: params.emotion ?? MEDITATION_SPEECHIFY_EMOTION,
         loudnessNormalization: params.speechifyLoudnessNormalization,
-        sentenceBreakMs: 777,
+        sentenceBreakMs: SPEECHIFY_PERIOD_BREAK_MS,
+        commaBreakMs: SPEECHIFY_COMMA_BREAK_MS,
       });
       if (pcm.byteLength % 2 !== 0) {
         throw new Error("Speechify PCM length is not s16le-aligned");

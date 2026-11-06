@@ -60,6 +60,9 @@ export function SettingsPage() {
         setSettings(next);
         syncMeditateDefaultsFromSettings(next);
         syncFocusDefaultsFromSettings(next);
+        void import("@/lib/journal-voice-clips-pref").then((m) =>
+          m.syncShowVoiceClipsFromSettings(next),
+        );
       })
       .catch((e) => {
         if (cancelled) return;
@@ -130,6 +133,9 @@ export function SettingsPage() {
       }
       syncMeditateDefaultsFromSettings(next);
       syncFocusDefaultsFromSettings(next);
+      void import("@/lib/journal-voice-clips-pref").then((m) =>
+        m.syncShowVoiceClipsFromSettings(next),
+      );
       if (patch.account) {
         // Persist pronouns on-device — API may strip `account` until settings lambda is deployed.
         syncAccountPronounsFromSettings(next);
@@ -144,6 +150,9 @@ export function SettingsPage() {
           setSettings(kept);
           syncMeditateDefaultsFromSettings(kept);
           syncFocusDefaultsFromSettings(kept);
+          void import("@/lib/journal-voice-clips-pref").then((m) =>
+            m.syncShowVoiceClipsFromSettings(kept),
+          );
           if (patch.account) syncAccountPronounsFromSettings(kept);
           flashSaved();
         })
@@ -152,6 +161,9 @@ export function SettingsPage() {
           setColorScheme(prev.general.theme);
           syncMeditateDefaultsFromSettings(prev);
           syncFocusDefaultsFromSettings(prev);
+          void import("@/lib/journal-voice-clips-pref").then((m) =>
+            m.syncShowVoiceClipsFromSettings(prev),
+          );
           if (patch.account) syncAccountPronounsFromSettings(prev);
           setSaveError(
             e instanceof Error ? e.message : "Could not save settings",

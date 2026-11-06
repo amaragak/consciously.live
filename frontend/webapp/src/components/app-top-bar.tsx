@@ -668,6 +668,7 @@ export function AppTopBar({
             aria-label="Home"
             className="app-header-home-btn md:hidden"
           >
+            <span className="navy-paisley-plate" aria-hidden />
             <LogoMark size={30} className="app-header-brand-sun block" />
           </Link>
           {onNotifications ? (

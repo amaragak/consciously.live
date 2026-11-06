@@ -21,6 +21,7 @@ import {
   type JournalCloudSaveStatus,
 } from "@/lib/journal-sync";
 import { JournalRichEditor } from "@/components/journal-rich-editor";
+import { JournalVoiceAllowanceBar } from "@/components/journal-voice-allowance-bar";
 import { JournalEntryListTitle } from "@/components/journal-prompt-question";
 import { journalPromptBlockHtml } from "@/lib/journal-prompts";
 import type { JournalPromptSources } from "@/components/journal-prompts-panel";
@@ -286,7 +287,33 @@ function JournalChromeMoreMenu({
   buttonClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [showVoiceClips, setShowVoiceClips] = useState(true);
   const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void import("@/lib/journal-voice-clips-pref").then(async (m) => {
+      setShowVoiceClips(m.readShowVoiceClips());
+      try {
+        const { fetchUserSettings } = await import("@/lib/settings-api");
+        const { settings } = await fetchUserSettings();
+        if (cancelled) return;
+        m.syncShowVoiceClipsFromSettings(settings);
+        setShowVoiceClips(m.readShowVoiceClips());
+      } catch {
+        /* local default */
+      }
+    });
+    function onChanged(e: Event) {
+      const detail = (e as CustomEvent<{ show?: boolean }>).detail;
+      if (typeof detail?.show === "boolean") setShowVoiceClips(detail.show);
+    }
+    window.addEventListener("mm-journal-voice-clips-changed", onChanged);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("mm-journal-voice-clips-changed", onChanged);
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -320,7 +347,7 @@ function JournalChromeMoreMenu({
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 z-50 mt-1 min-w-[9rem] rounded-xl border border-border bg-card py-1 shadow-lg"
+          className="absolute right-0 z-50 mt-1 min-w-[11rem] rounded-xl border border-border bg-card py-1 shadow-lg"
         >
           {onRefresh ? (
             <button
@@ -345,6 +372,21 @@ function JournalChromeMoreMenu({
             className="block w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-accent-soft/30"
           >
             Import
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            aria-checked={showVoiceClips}
+            onClick={() => {
+              const next = !showVoiceClips;
+              setShowVoiceClips(next);
+              void import("@/lib/journal-voice-clips-pref").then((m) =>
+                m.setShowVoiceClips(next),
+              );
+            }}
+            className="block w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-accent-soft/30"
+          >
+            {showVoiceClips ? "Hide voice clips" : "Show voice clips"}
           </button>
           <button
             type="button"
@@ -2425,6 +2467,9 @@ export function JournalView() {
           >
             New
           </PrimaryCreateButton>
+              </div>
+              <div className="max-sm:px-1 max-sm:pt-2">
+                <JournalVoiceAllowanceBar compact />
               </div>
               <div className="flex items-center gap-1.5">
                 {lastImportChipEl}

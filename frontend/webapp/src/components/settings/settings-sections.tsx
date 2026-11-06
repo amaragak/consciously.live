@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { JournalVoiceAllowanceBar } from "@/components/journal-voice-allowance-bar";
 import {
   SettingsCard,
   SettingsRow,
@@ -69,6 +70,7 @@ export type SettingsSectionId =
   | "today"
   | "ai"
   | "privacy"
+  | "journal"
   | "notifications"
   | "email"
   | "meditate"
@@ -1063,6 +1065,41 @@ function AiSection({ settings, onPatch }: SectionProps) {
             });
         }}
       />
+    </>
+  );
+}
+
+function JournalSection({ settings, onPatch }: SectionProps) {
+  const rows: ReactNode[] = [];
+  if (shouldShowSettingsRow("journal.showVoiceClips")) {
+    rows.push(
+      <SettingsRow
+        key="showVoiceClips"
+        settingsKey="journal.showVoiceClips"
+        title="Show voice clips"
+        helper="When off, voice notes hide and their transcripts read as ordinary text. Nothing is deleted."
+        control={
+          <SettingsSwitch
+            aria-label="Show voice clips"
+            checked={settings.journal?.showVoiceClips !== false}
+            disabled={settingsRowDisabled("journal.showVoiceClips")}
+            onCheckedChange={
+              settingsRowDisabled("journal.showVoiceClips")
+                ? undefined
+                : (v) => onPatch({ journal: { showVoiceClips: v } })
+            }
+          />
+        }
+      />,
+    );
+  }
+  if (!rows.length) return null;
+  return (
+    <>
+      <SettingsCard>{rows}</SettingsCard>
+      <div className="mt-3 px-1">
+        <JournalVoiceAllowanceBar />
+      </div>
     </>
   );
 }
@@ -2289,6 +2326,8 @@ export function SettingsSectionContent({
       return <AiSection {...props} />;
     case "privacy":
       return <PrivacySection {...props} />;
+    case "journal":
+      return <JournalSection {...props} />;
     case "notifications":
       return <NotificationsSection {...props} />;
     case "email":
@@ -2313,6 +2352,7 @@ export const SETTINGS_NAV: ReadonlyArray<{
   { id: "account", label: "Account" },
   { id: "ai", label: "AI & data" },
   { id: "privacy", label: "Privacy" },
+  { id: "journal", label: "Journal" },
   { id: "notifications", label: "Notifications" },
   { id: "email", label: "Email" },
   { id: "today", label: "Daily to-dos" },

@@ -99,6 +99,10 @@ export type UserSettingsV1 = {
     breakMinutes: number;
     distractionBlocking: boolean;
   };
+  journal: {
+    /** When false, clip rows + bronze rules hide; transcripts read as plain text. */
+    showVoiceClips: boolean;
+  };
   /** Which daily to-dos the dashboard's Today list shows. */
   today: {
     gratitude: boolean;
@@ -176,6 +180,9 @@ export function defaultUserSettings(): UserSettingsV1 {
       defaultSessionMinutes: 25,
       breakMinutes: 5,
       distractionBlocking: false,
+    },
+    journal: {
+      showVoiceClips: true,
     },
     today: {
       gratitude: true,
@@ -286,6 +293,7 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
   const email = isObject(raw.email) ? raw.email : {};
   const meditate = isObject(raw.meditate) ? raw.meditate : {};
   const focus = isObject(raw.focus) ? raw.focus : {};
+  const journal = isObject(raw.journal) ? raw.journal : {};
   const today = isObject(raw.today) ? raw.today : {};
   const general = isObject(raw.general) ? raw.general : {};
   const daily = isObject(notifications.dailyReminder)
@@ -441,6 +449,12 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
       distractionBlocking: asBool(
         focus.distractionBlocking,
         d.focus.distractionBlocking,
+      ),
+    },
+    journal: {
+      showVoiceClips: asBool(
+        journal.showVoiceClips,
+        d.journal.showVoiceClips,
       ),
     },
     today: {

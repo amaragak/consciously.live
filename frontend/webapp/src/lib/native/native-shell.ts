@@ -12,6 +12,7 @@ import {
   nativeDarkSurfaceActive,
   nativePlatform,
   setNativeHapticImpl,
+  setNativeHideKeyboardImpl,
   setNativeKeyboardOverlayImpl,
   setNativeKeyboardState,
   setNativeOpenExternalImpl,
@@ -147,13 +148,20 @@ function installKeyboardHandling(): void {
   // Default matches capacitor.config Keyboard.resize: "none". Auth used to flip
   // back to Native on unmount, which shoved the tab bar / create footer up.
   void Keyboard.setResizeMode({ mode: KeyboardResize.None }).catch(() => {});
+  // Hide iOS form accessory (← → Done) so only our writing bar sits above the keyboard.
+  void Keyboard.setAccessoryBarVisible({ isVisible: false }).catch(() => {});
   setNativeKeyboardOverlayImpl((overlay) => {
     void Keyboard.setResizeMode({
       mode: overlay ? KeyboardResize.None : KeyboardResize.Native,
     }).catch(() => {});
   });
+  setNativeHideKeyboardImpl(() => {
+    void Keyboard.hide().catch(() => {});
+  });
   void Keyboard.addListener("keyboardWillShow", (info) => {
     setNativeKeyboardState({ open: true, heightPx: info.keyboardHeight ?? 0 });
+    // Re-assert after show — iOS sometimes restores the accessory bar.
+    void Keyboard.setAccessoryBarVisible({ isVisible: false }).catch(() => {});
   });
   void Keyboard.addListener("keyboardWillHide", () => {
     setNativeKeyboardState({ open: false, heightPx: 0 });

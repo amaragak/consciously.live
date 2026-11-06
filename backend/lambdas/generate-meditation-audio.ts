@@ -61,6 +61,8 @@ import {
 import {
   getSpeechifyApiKey,
   MEDITATION_SPEECHIFY_EMOTION,
+  SPEECHIFY_COMMA_BREAK_MS,
+  SPEECHIFY_PERIOD_BREAK_MS,
   speechifyRateToSsml,
   speechifyTtsMp3,
   type SpeechifyEmotionTag,
@@ -1050,8 +1052,9 @@ async function synthesizeSegmentMp3(params: {
       rate: params.speechifyRate,
       emotion: params.emotion ?? MEDITATION_SPEECHIFY_EMOTION,
       loudnessNormalization: params.speechifyLoudnessNormalization,
-      // Chunk first (caller), then per-chunk sentence pauses in SSML.
-      sentenceBreakMs: 777,
+      // Chunk first (caller); Speechify `<break>` after , / . ; [[PAUSE]] → ffmpeg.
+      sentenceBreakMs: SPEECHIFY_PERIOD_BREAK_MS,
+      commaBreakMs: SPEECHIFY_COMMA_BREAK_MS,
     });
   }
   if (!params.runpod) throw new Error("RunPod TTS is not configured");

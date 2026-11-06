@@ -33,6 +33,7 @@ export type SettingsKey =
   | "ai.clearChat"
   | "ai.modelTier"
   | "privacy.journalLock"
+  | "journal.showVoiceClips"
   | "privacy.newMeditationVisibility"
   | "privacy.sharedLinks"
   | "privacy.communityName"
@@ -91,6 +92,7 @@ export const SETTINGS_STATUS: Record<SettingsKey, SettingsStatus> = {
   "ai.clearChat": "wired",
   "ai.modelTier": "not_available",
   "privacy.journalLock": "wired",
+  "journal.showVoiceClips": "wired",
   "privacy.newMeditationVisibility": "not_implemented",
   "privacy.sharedLinks": "wired",
   "privacy.communityName": "wired",

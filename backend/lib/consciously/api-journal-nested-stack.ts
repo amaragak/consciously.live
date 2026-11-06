@@ -76,13 +76,17 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
         timeout: cdk.Duration.seconds(120),
-        memorySize: 512,
+        memorySize: 1024,
+        ephemeralStorageSize: cdk.Size.mebibytes(512),
+        layers: [ffmpegLayer],
         role,
         environment: {
           OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
           AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,
           AUTH_JWT_SECRET_ARN: authJwtSecret.secretArn,
+          VOICE_SERVER_MINUTES_FREE: "60",
+          VOICE_SERVER_MINUTES_PAID: "300",
         },
       },
     );
@@ -90,7 +94,11 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
     addNestHttpRoutes(this, httpApi, {
       id: "JournalTranscribeRoute",
       path: "/journal/transcribe",
-      methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      methods: [
+        apigwv2.HttpMethod.GET,
+        apigwv2.HttpMethod.POST,
+        apigwv2.HttpMethod.OPTIONS,
+      ],
       integration: new integrations.HttpLambdaIntegration(
         "JournalTranscribeIntegration",
         journalTranscribe,

@@ -52,6 +52,31 @@ function stripPauseMarkersForSpeechify(script: string): string {
 }
 
 /**
+ * Meditation Speechify punctuation breaks (built-in `<break>` tags).
+ * Custom `[[PAUSE …]]` markers are stripped here and rendered as ffmpeg
+ * silence on the segmented path — unchanged.
+ */
+/** Target band ~400–700ms after commas. */
+export const SPEECHIFY_COMMA_BREAK_MS = 550;
+/** Target band ~1–2s after full stops. */
+export const SPEECHIFY_PERIOD_BREAK_MS = 1500;
+
+/**
+ * After each comma + following space, insert a Speechify SSML break.
+ * Runs on already-escaped text so break tags are not escaped.
+ */
+export function insertSpeechifyBreaksAfterCommas(
+  escapedText: string,
+  breakMs: number,
+): string {
+  const ms = Math.round(breakMs);
+  if (!Number.isFinite(ms) || ms <= 0) return escapedText;
+  const tag = `<break time="${ms}ms"/>`;
+  // Comma followed by whitespace (list / clause), not thousands separators.
+  return escapedText.replace(/,(?=\s)/g, `,${tag}`);
+}
+
+/**
  * After each sentence-ending `.` (period + space/end), insert a Speechify SSML break.
  * Runs on already-escaped text so break tags are not escaped.
  * Skips decimals like `3.14` (digit before the period).
@@ -77,8 +102,8 @@ export const MEDITATION_SPEECHIFY_EMOTION: SpeechifyEmotionTag = "calm";
  * Wrap spoken text + admin rate. Pause markers are stripped (ffmpeg silence).
  * Emotion uses `<speechify:style>` as the **outer** wrap around `<prosody>`
  * (Speechify: unrecognised emotions are ignored; meditation uses `calm`).
- * Optional `sentenceBreakMs`: after chunking, insert `<break time="Nms"/>` after
- * each `.` inside this chunk (meditation path uses 777).
+ * Optional `sentenceBreakMs` / `commaBreakMs`: Speechify `<break>` after `.` / `,`
+ * inside this chunk (meditation uses ~1.5s / ~550ms).
  */
 export function scriptToSpeechifySsml(
   script: string,
@@ -86,9 +111,17 @@ export function scriptToSpeechifySsml(
     rate?: string;
     emotion?: SpeechifyEmotionTag | null;
     sentenceBreakMs?: number;
+    commaBreakMs?: number;
   },
 ): string {
   let inner = escapeSsmlText(stripPauseMarkersForSpeechify(script));
+  if (
+    typeof opts?.commaBreakMs === "number" &&
+    Number.isFinite(opts.commaBreakMs) &&
+    opts.commaBreakMs > 0
+  ) {
+    inner = insertSpeechifyBreaksAfterCommas(inner, opts.commaBreakMs);
+  }
   if (
     typeof opts?.sentenceBreakMs === "number" &&
     Number.isFinite(opts.sentenceBreakMs) &&
@@ -158,6 +191,8 @@ export type SpeechifyTtsParams = {
    * `<break time="{n}ms"/>` after each sentence-ending `.`.
    */
   sentenceBreakMs?: number;
+  /** When set, insert `<break time="{n}ms"/>` after each comma. */
+  commaBreakMs?: number;
 };
 
 async function speechifyTtsStream(
@@ -176,6 +211,7 @@ async function speechifyTtsStream(
     rate,
     emotion: params.emotion,
     sentenceBreakMs: params.sentenceBreakMs,
+    commaBreakMs: params.commaBreakMs,
   });
   const loudnessNormalization = params.loudnessNormalization !== false;
   const body = JSON.stringify({

@@ -974,8 +974,19 @@ export function getMedimadeMediaBaseUrl(): string | null {
   return t || null;
 }
 
+export type JournalVoiceUsage = {
+  usedMinutes: number;
+  allowanceMinutes: number;
+  remainingMinutes: number;
+  resetsAt: string;
+  month: string;
+};
+
 export type JournalTranscribeResult = {
   text: string;
+  deferred?: boolean;
+  resetsAt?: string;
+  usage?: JournalVoiceUsage;
   storage?: { audioKey: string; metaKey: string };
 };
 
@@ -1016,12 +1027,14 @@ export type JournalInsights = {
 };
 
 /**
- * Sends recorded audio (base64) to `POST /journal/transcribe` (OpenAI Whisper).
- * Requires `VITE_MEDIMADE_API_URL` and AWS secret `medimade/OPENAI_API_KEY`.
+ * Sends recorded audio (base64) to `POST /journal/transcribe` (gpt-transcribe).
+ * Server-fallback only — prefer on-device recognition in the client first.
  */
 export async function transcribeJournalAudio(params: {
   audioBase64: string;
   mimeType?: string;
+  durationSec?: number;
+  feature?: string;
 }): Promise<JournalTranscribeResult> {
   const base = getMedimadeApiBase();
   if (!base) {
@@ -1035,6 +1048,8 @@ export async function transcribeJournalAudio(params: {
     body: JSON.stringify({
       audioBase64: params.audioBase64,
       mimeType: params.mimeType,
+      durationSec: params.durationSec,
+      feature: params.feature,
       ...(token ? { sessionToken: token } : {}),
     }),
   });
@@ -1064,7 +1079,43 @@ export async function transcribeJournalAudio(params: {
   }
   const text = typeof data.text === "string" ? data.text : "";
   const storage = data.storage as JournalTranscribeResult["storage"] | undefined;
-  return { text, storage };
+  const usage = data.usage as JournalVoiceUsage | undefined;
+  return {
+    text,
+    storage,
+    usage,
+    deferred: data.deferred === true,
+    resetsAt: typeof data.resetsAt === "string" ? data.resetsAt : undefined,
+  };
+}
+
+/** Monthly server-transcription allowance (hide when on-device is used). */
+export async function fetchJournalVoiceUsage(): Promise<JournalVoiceUsage | null> {
+  const base = getMedimadeApiBase();
+  if (!base) return null;
+  const res = await medimadeFetch(`${base}/journal/transcribe`, {
+    method: "GET",
+    headers: medimadeJsonHeaders(),
+  });
+  if (!res.ok) return null;
+  try {
+    const data = (await res.json()) as Partial<JournalVoiceUsage>;
+    if (
+      typeof data.allowanceMinutes !== "number" ||
+      typeof data.remainingMinutes !== "number"
+    ) {
+      return null;
+    }
+    return {
+      usedMinutes: Number(data.usedMinutes) || 0,
+      allowanceMinutes: data.allowanceMinutes,
+      remainingMinutes: data.remainingMinutes,
+      resetsAt: typeof data.resetsAt === "string" ? data.resetsAt : "",
+      month: typeof data.month === "string" ? data.month : "",
+    };
+  } catch {
+    return null;
+  }
 }
 
 export type VisionGenerateResult = {

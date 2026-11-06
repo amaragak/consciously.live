@@ -9,8 +9,10 @@ import {
   TIPTAP_DISABLE_PLAIN_CLIPBOARD,
 } from "@/lib/tiptap-markdown-clipboard";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Image as ImageIcon, List, ListOrdered, Redo2, Undo2 } from "lucide-react";
+import { Check, Image as ImageIcon, List, ListOrdered, Redo2, Undo2, X } from "lucide-react";
 import { JournalMobileWritingBar } from "@/components/journal-mobile-writing-bar";
+import { JournalVoiceAllowanceBar } from "@/components/journal-voice-allowance-bar";
+import { hideSoftwareKeyboard } from "@/lib/native/native-bridge";
 import {
   formatJournalEntryCardDate,
   formatJournalEntryDate,
@@ -19,9 +21,23 @@ import {
 } from "@/lib/journal-storage";
 import {
   JournalVoiceClip,
+  JournalVoiceParagraphAttrs,
   blobToDataUrl,
+  clearLiveVoiceDraft,
+  dataUrlToBase64,
+  formatAudioClock,
   insertJournalVoiceClipAtCursor,
+  peaksFromAudioBlob,
+  plainTextToTipTapHtml,
+  upsertLiveVoiceDraft,
 } from "@/components/journal-voice-clip-extension";
+import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
+import {
+  polishTranscript,
+  startOnDeviceSpeech,
+  type OnDeviceSpeechHandle,
+} from "@/lib/journal-on-device-speech";
+import { transcribeJournalAudio } from "@/lib/medimade-api";
 import {
   JournalImage,
   compressImageFileToJpegDataUrl,
@@ -33,6 +49,26 @@ import {
   type JournalPromptSources,
 } from "@/components/journal-prompts-panel";
 import { journalPromptMarksFromHtml } from "@/lib/journal-storage";
+
+/** Browser SpeechRecognition (not in all TS DOM libs). */
+type BrowserSpeechRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((ev: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: ((ev: Event) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
+type BrowserSpeechRecognitionEvent = {
+  resultIndex: number;
+  results: ArrayLike<{
+    isFinal: boolean;
+    0?: { transcript?: string };
+  }>;
+};
 
 const editorClass =
   "min-h-[8rem] w-full px-7 py-6 text-base leading-[1.85] text-foreground focus:outline-none " +
@@ -137,6 +173,12 @@ export function JournalRichEditor({
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voicePaused, setVoicePaused] = useState(false);
+  const [voiceSeconds, setVoiceSeconds] = useState(0);
+  const [voiceLevel, setVoiceLevel] = useState(0);
+  const [voiceBars, setVoiceBars] = useState<number[]>(() =>
+    Array.from({ length: 48 }, () => 0.12),
+  );
   const [bodyEmpty, setBodyEmpty] = useState(true);
   const [promptsOpen, setPromptsOpen] = useState(false);
   const [usedPromptIds, setUsedPromptIds] = useState<string[]>([]);
@@ -146,32 +188,169 @@ export function JournalRichEditor({
   const mediaChunksRef = useRef<BlobPart[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const voiceDraftPosRef = useRef<number | null>(null);
+  const voiceTimerRef = useRef<number | null>(null);
+  const voiceLevelRafRef = useRef<number | null>(null);
+  const speechRecRef = useRef<BrowserSpeechRecognition | null>(null);
+  const liveTranscriptRef = useRef("");
+  const onDeviceSpeechRef = useRef<OnDeviceSpeechHandle | null>(null);
+  const usedOnDeviceRef = useRef(false);
+  const silenceSecRef = useRef(0);
+  const voiceSecondsRef = useRef(0);
+  const finishRecordingRef = useRef<() => void>(() => {});
+  const serverFallbackRef = useRef(false);
+  const [serverFallbackMode, setServerFallbackMode] = useState(false);
+  const [silenceNote, setSilenceNote] = useState<string | null>(null);
+
+  const stopVoiceMetering = useCallback(() => {
+    if (voiceTimerRef.current != null) {
+      window.clearInterval(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    if (voiceLevelRafRef.current != null) {
+      window.cancelAnimationFrame(voiceLevelRafRef.current);
+      voiceLevelRafRef.current = null;
+    }
+    setVoiceLevel(0);
+    setVoiceBars(Array.from({ length: 48 }, () => 0.12));
+  }, []);
+
+  const stopSpeechRecognition = useCallback(() => {
+    const rec = speechRecRef.current;
+    speechRecRef.current = null;
+    if (rec) {
+      try {
+        rec.onresult = null;
+        rec.onerror = null;
+        rec.onend = null;
+        rec.stop();
+      } catch {
+        try {
+          rec.abort();
+        } catch {
+          /* */
+        }
+      }
+    }
+    const od = onDeviceSpeechRef.current;
+    onDeviceSpeechRef.current = null;
+    if (od) void od.stop();
+  }, []);
 
   const stopMediaRecorderAndCollectBlob = useCallback(async (): Promise<Blob | null> => {
+    stopVoiceMetering();
+    stopSpeechRecognition();
     const rec = mediaRecorderRef.current;
-    if (!rec || rec.state === "inactive") {
-      mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
-      mediaStreamRef.current = null;
-      return null;
-    }
-    await new Promise<void>((resolve) => {
-      rec.onstop = () => resolve();
-      rec.stop();
-    });
     mediaRecorderRef.current = null;
+    if (rec && rec.state !== "inactive") {
+      await new Promise<void>((resolve) => {
+        rec.onstop = () => resolve();
+        try {
+          rec.stop();
+        } catch {
+          resolve();
+        }
+      });
+    }
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
     const parts = mediaChunksRef.current;
     mediaChunksRef.current = [];
     const preferred =
       mediaRecorderMimeRef.current ||
-      (typeof rec.mimeType === "string" ? rec.mimeType : "") ||
+      (typeof rec?.mimeType === "string" ? rec.mimeType : "") ||
       "audio/webm";
     mediaRecorderMimeRef.current = "";
     if (!parts.length) return null;
     const chunkType = (parts[0] as Blob).type;
     return new Blob(parts, { type: chunkType || preferred });
+  }, [stopSpeechRecognition, stopVoiceMetering]);
+
+  const pushLiveDraft = useCallback((text: string) => {
+    liveTranscriptRef.current = text;
+    const ed = editorRef.current;
+    if (!ed) return;
+    upsertLiveVoiceDraft(ed, text, voiceDraftPosRef);
   }, []);
+
+  const startSpeechRecognition = useCallback(() => {
+    stopSpeechRecognition();
+    usedOnDeviceRef.current = false;
+    serverFallbackRef.current = false;
+    setServerFallbackMode(false);
+    void startOnDeviceSpeech((partial) => {
+      pushLiveDraft(partial);
+    }).then((handle) => {
+      if (!handle) {
+        serverFallbackRef.current = true;
+        setServerFallbackMode(true);
+        return;
+      }
+      onDeviceSpeechRef.current = handle;
+      usedOnDeviceRef.current = handle.usedOnDevice;
+      serverFallbackRef.current = !handle.usedOnDevice;
+      setServerFallbackMode(!handle.usedOnDevice);
+    });
+  }, [pushLiveDraft, stopSpeechRecognition]);
+
+  const startVoiceMetering = useCallback(
+    (stream: MediaStream) => {
+      stopVoiceMetering();
+      setVoiceSeconds(0);
+      silenceSecRef.current = 0;
+      voiceSecondsRef.current = 0;
+      voiceTimerRef.current = window.setInterval(() => {
+        setVoiceSeconds((s) => {
+          const next = s + 1;
+          voiceSecondsRef.current = next;
+          // Server fallback: hard stop at 15 minutes.
+          if (serverFallbackRef.current && next >= 15 * 60) {
+            finishRecordingRef.current();
+          }
+          return next;
+        });
+      }, 1000);
+      try {
+        const Ctx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext })
+            .webkitAudioContext;
+        if (!Ctx) return;
+        const ctx = new Ctx();
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          analyser.getByteFrequencyData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) sum += data[i] ?? 0;
+          const avg = sum / (data.length * 255);
+          const level = Math.min(1, avg * 2.2);
+          setVoiceLevel(level);
+          if (level < 0.08) silenceSecRef.current += 1 / 60;
+          else silenceSecRef.current = 0;
+          if (silenceSecRef.current >= 60) {
+            silenceSecRef.current = 0;
+            setSilenceNote("Stopped after a minute of silence");
+            finishRecordingRef.current();
+          }
+          setVoiceBars((prev) => {
+            const next = prev.slice(1);
+            next.push(0.12 + level * 0.88);
+            return next;
+          });
+          voiceLevelRafRef.current = window.requestAnimationFrame(tick);
+        };
+        voiceLevelRafRef.current = window.requestAnimationFrame(tick);
+        void ctx;
+      } catch {
+        /* waveform optional */
+      }
+    },
+    [stopVoiceMetering],
+  );
 
   const startVoiceRecording = useCallback(async () => {
     setVoiceError(null);
@@ -184,6 +363,9 @@ export function JournalRichEditor({
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
       mediaChunksRef.current = [];
+      liveTranscriptRef.current = "";
+      voiceDraftPosRef.current = null;
+      setVoicePaused(false);
       // Prefer WebM on Chromium; Safari needs audio/mp4 (m4a) for Whisper.
       const candidates = [
         "audio/webm;codecs=opus",
@@ -201,13 +383,60 @@ export function JournalRichEditor({
       rec.ondataavailable = (ev) => {
         if (ev.data.size > 0) mediaChunksRef.current.push(ev.data);
       };
+      for (const track of stream.getAudioTracks()) {
+        track.onmute = () => {
+          setVoicePaused(true);
+          try {
+            if (mediaRecorderRef.current?.state === "recording") {
+              mediaRecorderRef.current.pause();
+            }
+          } catch {
+            /* */
+          }
+        };
+        track.onunmute = () => {
+          setVoicePaused(false);
+          try {
+            if (mediaRecorderRef.current?.state === "paused") {
+              mediaRecorderRef.current.resume();
+            }
+          } catch {
+            /* */
+          }
+        };
+      }
       rec.start(200);
+      startVoiceMetering(stream);
+      startSpeechRecognition();
       setVoiceRecording(true);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not access microphone";
       setVoiceError(msg);
     }
-  }, [transcribeApiBase, voiceBusy]);
+  }, [
+    startSpeechRecognition,
+    startVoiceMetering,
+    transcribeApiBase,
+    voiceBusy,
+  ]);
+
+  // Keep show/hide clips in sync with the account preference.
+  useEffect(() => {
+    let cancelled = false;
+    void import("@/lib/journal-voice-clips-pref").then(async (m) => {
+      m.applyShowVoiceClipsToDom(m.readShowVoiceClips());
+      try {
+        const { fetchUserSettings } = await import("@/lib/settings-api");
+        const { settings } = await fetchUserSettings();
+        if (!cancelled) m.syncShowVoiceClipsFromSettings(settings);
+      } catch {
+        /* offline / local */
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Overview “Talk it out” sets this before navigating to a new entry.
   useEffect(() => {
@@ -229,6 +458,16 @@ export function JournalRichEditor({
     setVoiceError(null);
     setVoiceBusy(true);
     setVoiceRecording(false);
+    setVoicePaused(false);
+    const liveRaw =
+      onDeviceSpeechRef.current?.getText() || liveTranscriptRef.current;
+    const live = polishTranscript(liveRaw);
+    const usedOnDevice = usedOnDeviceRef.current && Boolean(live);
+    const durationSec = voiceSecondsRef.current;
+    const note = silenceNote;
+    setSilenceNote(null);
+    clearLiveVoiceDraft(ed, voiceDraftPosRef);
+    liveTranscriptRef.current = "";
     try {
       const blob = await stopMediaRecorderAndCollectBlob();
       if (!blob) {
@@ -244,19 +483,126 @@ export function JournalRichEditor({
         (blob.type || mediaRecorderMimeRef.current || "audio/webm").split(
           ";",
         )[0] || "audio/webm";
-      insertJournalVoiceClipAtCursor(ed, {
-        src: dataUrl,
-        mimeType,
-      });
+      const peaks = await peaksFromAudioBlob(blob);
+      if (usedOnDevice) {
+        const html = plainTextToTipTapHtml(live);
+        insertJournalVoiceClipAtCursor(ed, {
+          src: dataUrl,
+          mimeType,
+          peaks: peaks || null,
+          transcriptPlain: live,
+          transcriptHtml: html,
+        });
+        if (note) {
+          ed.chain()
+            .focus()
+            .insertContent(
+              `<p data-voice-transcript="1"><em class="journal-voice-live">${note}</em></p>`,
+            )
+            .run();
+        }
+      } else {
+        // Server fallback: place clip, show status, then Whisper.
+        insertJournalVoiceClipAtCursor(ed, {
+          src: dataUrl,
+          mimeType,
+          peaks: peaks || null,
+          transcriptPlain: "Transcribing…",
+          transcriptHtml: plainTextToTipTapHtml("Transcribing…"),
+        });
+        try {
+          const { text, deferred, resetsAt } = await transcribeJournalAudio({
+            audioBase64: dataUrlToBase64(dataUrl),
+            mimeType,
+            durationSec,
+            feature: "journal-transcribe",
+          });
+          // Replace the placeholder transcript paragraph(s) after the last clip.
+          let clipPos: number | null = null;
+          ed.state.doc.descendants((node, pos) => {
+            if (node.type.name === "journalVoiceClip") clipPos = pos;
+          });
+          if (clipPos != null) {
+            const clipNode = ed.state.doc.nodeAt(clipPos);
+            if (clipNode) {
+              let scan = clipPos + clipNode.nodeSize;
+              const tr = ed.state.tr;
+              while (scan < tr.doc.content.size) {
+                const $pos = tr.doc.resolve(scan);
+                const n = $pos.nodeAfter;
+                if (!n) break;
+                if (n.type.name === "paragraph" && n.attrs?.voiceTranscript) {
+                  tr.delete(scan, scan + n.nodeSize);
+                  continue;
+                }
+                break;
+              }
+              ed.view.dispatch(tr);
+              let replacement: string;
+              if (deferred) {
+                const when = resetsAt
+                  ? new Date(resetsAt).toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                    })
+                  : "next month";
+                replacement = `Transcribes on ${when}`;
+              } else {
+                replacement = polishTranscript(text || "");
+              }
+              if (replacement) {
+                const html = plainTextToTipTapHtml(replacement);
+                if (html) {
+                  const show = true;
+                  const wrapped = html.replace(
+                    /<p(\s|>)/g,
+                    show ? '<p data-voice-transcript="1"$1' : "<p$1",
+                  );
+                  const insertAt =
+                    clipPos + (ed.state.doc.nodeAt(clipPos)?.nodeSize ?? 0);
+                  ed.chain().focus().insertContentAt(insertAt, wrapped).run();
+                }
+              }
+              if (note) {
+                ed.chain()
+                  .focus()
+                  .insertContent(
+                    `<p data-voice-transcript="1"><em class="journal-voice-live">${note}</em></p>`,
+                  )
+                  .run();
+              }
+            }
+          }
+        } catch (e) {
+          setVoiceError(
+            e instanceof Error ? e.message : "Could not transcribe recording",
+          );
+        }
+      }
     } catch (e) {
       setVoiceError(e instanceof Error ? e.message : "Could not save recording");
     } finally {
       setVoiceBusy(false);
+      setVoiceSeconds(0);
+      voiceSecondsRef.current = 0;
+      usedOnDeviceRef.current = false;
+      serverFallbackRef.current = false;
+      setServerFallbackMode(false);
     }
-  }, [stopMediaRecorderAndCollectBlob, voiceBusy]);
+  }, [silenceNote, stopMediaRecorderAndCollectBlob, voiceBusy]);
+
+  finishRecordingRef.current = () => {
+    void finishRecordingIntoEditor();
+  };
 
   const cancelVoiceRecording = useCallback(async () => {
+
+    const ed = editorRef.current;
+    if (ed) clearLiveVoiceDraft(ed, voiceDraftPosRef);
+    liveTranscriptRef.current = "";
     setVoiceRecording(false);
+    setVoicePaused(false);
+    setVoiceSeconds(0);
     await stopMediaRecorderAndCollectBlob();
     setVoiceError(null);
   }, [stopMediaRecorderAndCollectBlob]);
@@ -288,6 +634,7 @@ export function JournalRichEditor({
         emptyEditorClass: "is-editor-empty",
       }),
       JournalVoiceClip,
+      JournalVoiceParagraphAttrs,
       JournalImage,
       JournalPrompt,
     ],
@@ -493,6 +840,31 @@ export function JournalRichEditor({
   }, [voiceRecording, cancelVoiceRecording]);
 
   useEffect(() => {
+    if (!voiceRecording) return;
+    function onVis() {
+      const rec = mediaRecorderRef.current;
+      if (!rec) return;
+      if (document.hidden) {
+        setVoicePaused(true);
+        try {
+          if (rec.state === "recording") rec.pause();
+        } catch {
+          /* */
+        }
+      } else {
+        setVoicePaused(false);
+        try {
+          if (rec.state === "paused") rec.resume();
+        } catch {
+          /* */
+        }
+      }
+    }
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [voiceRecording]);
+
+  useEffect(() => {
     if (!menuOpen) return;
     function onDocClick(e: MouseEvent) {
       if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
@@ -563,24 +935,72 @@ export function JournalRichEditor({
     </span>
   );
 
+  const recordingBarInner = (
+    <div className="flex h-full w-full items-center gap-2">
+      <button
+        type="button"
+        aria-label="Cancel recording"
+        disabled={voiceBusy}
+        onClick={() => void cancelVoiceRecording()}
+        className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-foreground disabled:opacity-50"
+      >
+        <X aria-hidden className="size-5" strokeWidth={2} />
+      </button>
+      <span className="flex shrink-0 items-center gap-2">
+        <span
+          className="relative flex size-2.5 items-center justify-center"
+          aria-hidden
+        >
+          <span className="absolute size-4 rounded-full bg-danger/25" />
+          <span className="relative size-2.5 rounded-full bg-danger" />
+        </span>
+        <span className="min-w-[2.5rem] font-mono text-[13px] tabular-nums text-foreground">
+          {voicePaused
+            ? "Paused"
+            : serverFallbackMode && voiceSeconds >= 13 * 60
+              ? `${Math.max(0, 15 * 60 - voiceSeconds)}s left`
+              : formatAudioClock(voiceSeconds)}
+        </span>
+      </span>
+      <div
+        className="flex h-8 min-w-0 flex-1 items-end justify-between gap-px px-1"
+        aria-hidden
+      >
+        {voiceBars.map((h, i) => (
+          <span
+            key={i}
+            className="w-[2px] rounded-full bg-accent/70"
+            style={{
+              height: `${Math.max(12, Math.round(h * 100))}%`,
+              opacity: 0.35 + voiceLevel * 0.65,
+            }}
+          />
+        ))}
+      </div>
+      <button
+        type="button"
+        aria-label="Done recording"
+        disabled={voiceBusy}
+        onClick={() => void finishRecordingIntoEditor()}
+        className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-[#AFC2DC] text-on-accent disabled:opacity-50"
+        style={PRIMARY_ACCENT_FILL_STYLE}
+      >
+        <Check aria-hidden className="size-4" strokeWidth={2.5} />
+      </button>
+    </div>
+  );
+
   const micButton = transcribeApiBase ? (
     <button
       type="button"
-      title={voiceRecording ? "Stop and place clip" : "Record voice"}
-      aria-label={voiceRecording ? "Stop and place clip" : "Record voice"}
-      aria-pressed={voiceRecording}
-      disabled={voiceBusy}
+      title="Record voice"
+      aria-label="Record voice"
+      disabled={voiceBusy || voiceRecording}
       onClick={() => {
-        if (voiceBusy) return;
-        if (voiceRecording) {
-          void finishRecordingIntoEditor();
-          return;
-        }
+        if (voiceBusy || voiceRecording) return;
         void startVoiceRecording();
       }}
-      className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${
-        voiceRecording ? "animate-pulse" : ""
-      }`}
+      className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
     >
       <IconMic />
     </button>
@@ -588,38 +1008,61 @@ export function JournalRichEditor({
 
   const writingBarPortal =
     mobileCardLayout && typeof document !== "undefined" ? (
-      <JournalMobileWritingBar>
-        {micButton}
-        <ToolbarBtn
-          label="Bold"
-          active={editor.isActive("bold")}
-          onClick={() => editor.chain().focus().toggleBold().run()}
-        >
-          <span className="font-bold">B</span>
-        </ToolbarBtn>
-        <ToolbarBtn
-          label="Italic"
-          active={editor.isActive("italic")}
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-        >
-          <span className="italic">I</span>
-        </ToolbarBtn>
-        <ToolbarBtn
-          label="More formatting"
-          active={toolbarMoreOpen}
-          onClick={() => setToolbarMoreOpen((v) => !v)}
-        >
-          <IconDotsHorizontal />
-        </ToolbarBtn>
-        <button
-          type="button"
-          onClick={() => setPromptsOpen((open) => !open)}
-          aria-pressed={promptsOpen}
-          className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border px-3 text-[13px] font-semibold text-foreground"
-        >
-          Prompts
-        </button>
-      </JournalMobileWritingBar>
+      <>
+        {voiceRecording || serverFallbackMode ? (
+          <div className="pointer-events-none fixed inset-x-0 z-[119] px-3 md:hidden">
+            <div
+              className="pointer-events-auto mx-auto max-w-lg rounded-2xl border border-border bg-card/95 px-3 py-2 shadow-sm backdrop-blur-sm"
+              style={{
+                bottom: "calc(env(safe-area-inset-bottom, 0px) + 72px)",
+                position: "fixed",
+                left: 12,
+                right: 12,
+              }}
+            >
+              <JournalVoiceAllowanceBar forceShow={serverFallbackMode} compact />
+            </div>
+          </div>
+        ) : null}
+        <JournalMobileWritingBar>
+          {voiceRecording ? (
+            recordingBarInner
+          ) : (
+            <>
+              {micButton}
+              <ToolbarBtn
+                label="Bold"
+                active={editor.isActive("bold")}
+                onClick={() => editor.chain().focus().toggleBold().run()}
+              >
+                <span className="font-bold">B</span>
+              </ToolbarBtn>
+              <ToolbarBtn
+                label="Italic"
+                active={editor.isActive("italic")}
+                onClick={() => editor.chain().focus().toggleItalic().run()}
+              >
+                <span className="italic">I</span>
+              </ToolbarBtn>
+              <ToolbarBtn
+                label="More formatting"
+                active={toolbarMoreOpen}
+                onClick={() => setToolbarMoreOpen((v) => !v)}
+              >
+                <IconDotsHorizontal />
+              </ToolbarBtn>
+              <button
+                type="button"
+                onClick={() => setPromptsOpen((open) => !open)}
+                aria-pressed={promptsOpen}
+                className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border px-3 text-[13px] font-semibold text-foreground"
+              >
+                Prompts
+              </button>
+            </>
+          )}
+        </JournalMobileWritingBar>
+      </>
     ) : null;
 
   return (
@@ -838,35 +1281,24 @@ export function JournalRichEditor({
               aria-hidden
             />
           ) : null}
-        {/* sm+: full toolbar (unchanged wrapping behavior) */}
-        <div className="hidden flex-wrap items-center gap-1 border-t border-border px-3 py-2 sm:flex">
+        {/* sm+: full toolbar — recording bar replaces tools while capturing */}
+        <div className="hidden items-center gap-1 border-t border-border px-3 py-2 sm:flex">
+          {voiceRecording ? (
+            <div className="h-9 w-full min-w-0">{recordingBarInner}</div>
+          ) : (
+            <>
             {transcribeApiBase ? (
               <>
                 <button
                   type="button"
-                  title={
-                    voiceRecording
-                      ? "Stop and place clip"
-                      : "Record voice"
-                  }
-                  aria-label={
-                    voiceRecording
-                      ? "Stop and place clip"
-                      : "Record voice"
-                  }
-                  aria-pressed={voiceRecording}
+                  title="Record voice"
+                  aria-label="Record voice"
                   disabled={voiceBusy}
                   onClick={() => {
                     if (voiceBusy) return;
-                    if (voiceRecording) {
-                      void finishRecordingIntoEditor();
-                      return;
-                    }
                     void startVoiceRecording();
                   }}
-                  className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${
-                    voiceRecording ? "animate-pulse" : ""
-                  }`}
+                  className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <IconMic />
                 </button>
@@ -985,6 +1417,8 @@ export function JournalRichEditor({
               </svg>
               Prompts
             </button>
+            </>
+          )}
         </div>
         {/* Mobile in-page toolbar — superseded by JournalMobileWritingBar when
             mobileCardLayout is on (consciously-journal-entry-mobile).
@@ -993,6 +1427,10 @@ export function JournalRichEditor({
         {!mobileCardLayout ? (
           <div className="border-t border-border sm:hidden">
             <div className="flex flex-nowrap items-center gap-1 overflow-x-auto px-3 py-2">
+              {voiceRecording ? (
+                <div className="h-9 w-full min-w-0">{recordingBarInner}</div>
+              ) : (
+                <>
               {micButton}
               {micButton ? (
                 <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
@@ -1027,6 +1465,8 @@ export function JournalRichEditor({
               >
                 Prompts
               </button>
+                </>
+              )}
             </div>
             {toolbarMoreOpen ? (
               <div className="flex flex-nowrap items-center gap-1 overflow-x-auto border-t border-border px-3 py-2">
@@ -1166,16 +1606,18 @@ export function JournalRichEditor({
             </ToolbarBtn>
           </div>
         ) : null}
-        {voiceRecording || voiceError ? (
+        {/* Recording hint superseded by recording bar (voice-notes-v2)
+        {voiceRecording ? (
           <div className="border-t border-border px-4 py-2 text-xs">
-            {voiceRecording ? (
-              <span className="font-medium text-accent-link">
-                Recording… tap the mic again to place the clip.
-              </span>
-            ) : null}
-            {voiceError ? (
-              <span className="text-danger">{voiceError}</span>
-            ) : null}
+            <span className="font-medium text-accent-link">
+              Recording… tap the mic again to place the clip.
+            </span>
+          </div>
+        ) : null}
+        */}
+        {voiceError ? (
+          <div className="border-t border-border px-4 py-2 text-xs">
+            <span className="text-danger">{voiceError}</span>
           </div>
         ) : null}
         <input
@@ -1212,6 +1654,37 @@ export function JournalRichEditor({
           if (target.closest(".ProseMirror")) return;
           e.preventDefault();
           editor.commands.focus("end");
+        }}
+        onTouchStart={(e) => {
+          if (!mobileCardLayout) return;
+          const t = e.touches[0];
+          if (!t) return;
+          const el = e.currentTarget;
+          el.dataset.kbDismissY = String(t.clientY);
+          el.dataset.kbDismissScroll = String(el.scrollTop);
+          el.dataset.kbDismissed = "0";
+        }}
+        onTouchMove={(e) => {
+          if (!mobileCardLayout) return;
+          const el = e.currentTarget;
+          if (el.dataset.kbDismissed === "1") return;
+          const startY = Number(el.dataset.kbDismissY ?? "");
+          const startScroll = Number(el.dataset.kbDismissScroll ?? "");
+          const t = e.touches[0];
+          if (!t || !Number.isFinite(startY)) return;
+          const dy = t.clientY - startY;
+          // Clear downward pull while at (or near) the top of the entry.
+          if (dy > 56 && startScroll <= 2) {
+            const active = document.activeElement;
+            const editing =
+              active instanceof HTMLElement &&
+              (active.isContentEditable ||
+                active.tagName === "TEXTAREA" ||
+                active.tagName === "INPUT");
+            if (!editing) return;
+            el.dataset.kbDismissed = "1";
+            hideSoftwareKeyboard();
+          }
         }}
       >
         <JournalTranscribeApiContext.Provider value={transcribeApiBase}>

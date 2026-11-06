@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  polishTranscript,
+  startOnDeviceSpeech,
+  type OnDeviceSpeechHandle,
+} from "@/lib/journal-on-device-speech";
 import { transcribeJournalAudio } from "@/lib/medimade-api";
 
 function pickRecorderMime(): string {
@@ -46,6 +51,9 @@ export function useWhisperDictation() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const levelRafRef = useRef<number | null>(null);
   const smoothLevelRef = useRef(0);
+  const onDeviceRef = useRef<OnDeviceSpeechHandle | null>(null);
+  const durationSecRef = useRef(0);
+  const durationTimerRef = useRef<number | null>(null);
 
   const stopLevelMeter = useCallback(() => {
     if (levelRafRef.current != null) {
@@ -161,6 +169,22 @@ export function useWhisperDictation() {
       };
       rec.start(200);
       startLevelMeter(stream);
+      durationSecRef.current = 0;
+      if (durationTimerRef.current != null) {
+        window.clearInterval(durationTimerRef.current);
+      }
+      durationTimerRef.current = window.setInterval(() => {
+        durationSecRef.current += 1;
+        // Onboarding talk server cap: 20 minutes.
+        if (durationSecRef.current >= 20 * 60) {
+          /* caller should stop; keep recording until stopAndTranscribe */
+        }
+      }, 1000);
+      void startOnDeviceSpeech(() => {
+        /* live text optional for onboarding fields */
+      }).then((h) => {
+        onDeviceRef.current = h;
+      });
       setRecording(true);
     } catch (e) {
       releaseStream();
@@ -171,6 +195,13 @@ export function useWhisperDictation() {
   const cancel = useCallback(async () => {
     setRecording(false);
     setError(null);
+    if (durationTimerRef.current != null) {
+      window.clearInterval(durationTimerRef.current);
+      durationTimerRef.current = null;
+    }
+    const od = onDeviceRef.current;
+    onDeviceRef.current = null;
+    if (od) void od.stop();
     await collectBlob();
   }, [collectBlob]);
 
@@ -179,6 +210,14 @@ export function useWhisperDictation() {
     setError(null);
     setBusy(true);
     setRecording(false);
+    if (durationTimerRef.current != null) {
+      window.clearInterval(durationTimerRef.current);
+      durationTimerRef.current = null;
+    }
+    const od = onDeviceRef.current;
+    onDeviceRef.current = null;
+    const live = polishTranscript(od?.getText() ?? "");
+    if (od) await od.stop();
     try {
       const blob = await collectBlob();
       if (!blob) {
@@ -189,12 +228,21 @@ export function useWhisperDictation() {
         setError("Recording too short.");
         return null;
       }
+      if (live && od?.usedOnDevice) {
+        return live;
+      }
       const audioBase64 = await blobToBase64(blob);
-      const { text } = await transcribeJournalAudio({
+      const { text, deferred } = await transcribeJournalAudio({
         audioBase64,
         mimeType: blob.type || "audio/webm",
+        durationSec: durationSecRef.current,
+        feature: "onboarding-transcribe",
       });
-      const spoken = text.trim();
+      if (deferred) {
+        setError("Voice allowance used up for this month.");
+        return null;
+      }
+      const spoken = polishTranscript(text || "");
       if (!spoken) {
         setError("No speech detected.");
         return null;

@@ -9,6 +9,16 @@ import {
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { randomUUID } from "crypto";
 import { optionalUserJson } from "./_shared/consciously-auth-http";
+import { recordAiUsage } from "./_shared/ai-usage";
+import {
+  addVoiceServerMinutes,
+  getVoiceServerUsage,
+  nextVoiceResetIso,
+} from "./_shared/voice-server-allowance";
+import {
+  preprocessVoiceForServerTranscribe,
+  probeAudioDurationSec,
+} from "./_shared/voice-transcribe-preprocess";
 
 const OPENAI_TRANSCRIPTIONS_URL =
   "https://api.openai.com/v1/audio/transcriptions";
@@ -132,7 +142,7 @@ export async function handler(
       statusCode: 204,
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
         "Access-Control-Allow-Headers":
           "Content-Type,Authorization,X-Medimade-Authorization",
         "Access-Control-Max-Age": "86400",
@@ -141,17 +151,30 @@ export async function handler(
     };
   }
 
+  if (method === "GET") {
+    const auth = await optionalUserJson(event, null);
+    const userId = auth?.sub?.trim() || "guest";
+    const usage = await getVoiceServerUsage(userId, auth?.plan);
+    return json(200, {
+      ...usage,
+      /** Clients that use on-device recognition should hide the bar. */
+      showAllowance: true,
+    });
+  }
+
   if (method !== "POST") {
     return json(405, { error: "Method not allowed" });
   }
 
-  let body: { audioBase64?: string; mimeType?: string; sessionToken?: string };
+  let body: {
+    audioBase64?: string;
+    mimeType?: string;
+    sessionToken?: string;
+    durationSec?: number;
+    feature?: string;
+  };
   try {
-    body = JSON.parse(event.body || "{}") as {
-      audioBase64?: string;
-      mimeType?: string;
-      sessionToken?: string;
-    };
+    body = JSON.parse(event.body || "{}") as typeof body;
   } catch {
     return json(400, { error: "Invalid JSON body" });
   }
@@ -204,17 +227,94 @@ export async function handler(
     return json(400, { error: resolved.error });
   }
   const { ext, mime } = resolved;
-  const filename = `journal-${randomUUID().slice(0, 8)}.${ext}`;
 
+  const probed = await probeAudioDurationSec(buf, ext);
+  const clientDur =
+    typeof body.durationSec === "number" && Number.isFinite(body.durationSec)
+      ? Math.max(0, body.durationSec)
+      : null;
+  const durationSec = probed ?? clientDur ?? 0;
+
+  // Hard reject absurd single requests (60 minutes of audio).
+  if (durationSec > 60 * 60) {
+    return json(400, {
+      error: "Audio longer than 60 minutes cannot be transcribed on the server",
+    });
+  }
+
+  const usage = await getVoiceServerUsage(userId, auth?.plan);
+  const minutesNeeded = Math.max(0.1, durationSec / 60);
+  const deferred = usage.remainingMinutes <= 0;
+
+  const id = randomUUID();
+  const d = new Date();
+  const y = d.getUTCFullYear();
+  const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const prefix = `journal-transcriptions/${userId}/${y}/${mo}`;
+  const audioKey = `${prefix}/${id}.${ext}`;
+  const metaKey = `${prefix}/${id}.json`;
+
+  // Always keep the original clip for playback.
+  try {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: audioKey,
+        Body: buf,
+        ContentType: mime,
+      }),
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "S3 upload failed";
+    console.error("journal-transcribe S3 audio", msg);
+    return json(500, {
+      error: "Could not store transcription in media bucket",
+      detail: msg,
+    });
+  }
+
+  if (deferred) {
+    const resetsAt = usage.resetsAt || nextVoiceResetIso();
+    try {
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: metaKey,
+          Body: JSON.stringify({
+            text: "",
+            deferred: true,
+            resetsAt,
+            audioKey,
+            mimeType: mime,
+            model: "gpt-transcribe",
+            durationSec,
+            transcribedAt: d.toISOString(),
+          }),
+          ContentType: "application/json; charset=utf-8",
+        }),
+      );
+    } catch {
+      /* audio already stored */
+    }
+    return json(200, {
+      text: "",
+      deferred: true,
+      resetsAt,
+      usage,
+      storage: { audioKey, metaKey },
+    });
+  }
+
+  const prepared = await preprocessVoiceForServerTranscribe(buf, ext);
+  const filename = `journal-${randomUUID().slice(0, 8)}.${prepared.ext}`;
   const form = new FormData();
-  // Prefer File so multipart includes a real filename + clean Content-Type.
-  const fileBytes = new Uint8Array(buf);
+  const fileBytes = new Uint8Array(prepared.buf);
   const filePart =
     typeof File !== "undefined"
-      ? new File([fileBytes], filename, { type: mime })
-      : new Blob([fileBytes], { type: mime });
+      ? new File([fileBytes], filename, { type: prepared.mime })
+      : new Blob([fileBytes], { type: prepared.mime });
   form.append("file", filePart, filename);
-  form.append("model", "whisper-1");
+  form.append("model", "gpt-transcribe");
 
   const upstream = await fetch(OPENAI_TRANSCRIPTIONS_URL, {
     method: "POST",
@@ -236,7 +336,7 @@ export async function handler(
       /* keep raw */
     }
     return json(upstream.status >= 400 ? upstream.status : 502, {
-      error: "OpenAI Whisper request failed",
+      error: "OpenAI transcription request failed",
       detail,
     });
   }
@@ -249,23 +349,23 @@ export async function handler(
     return json(502, { error: "Invalid JSON from OpenAI" });
   }
 
-  const id = randomUUID();
-  const d = new Date();
-  const y = d.getUTCFullYear();
-  const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const prefix = `journal-transcriptions/${userId}/${y}/${mo}`;
-  const audioKey = `${prefix}/${id}.${ext}`;
-  const metaKey = `${prefix}/${id}.json`;
+  await addVoiceServerMinutes(userId, minutesNeeded);
+  void recordAiUsage({
+    provider: "openai",
+    model: "gpt-transcribe",
+    feature:
+      typeof body.feature === "string" && body.feature.trim()
+        ? body.feature.trim()
+        : "journal-transcribe",
+    unit: "chars",
+    quantity: Math.max(1, text.length),
+    userId,
+    meta: { durationSec, minutesNeeded },
+  });
+
+  const usageAfter = await getVoiceServerUsage(userId, auth?.plan);
 
   try {
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: bucket,
-        Key: audioKey,
-        Body: buf,
-        ContentType: mime,
-      }),
-    );
     await s3.send(
       new PutObjectCommand({
         Bucket: bucket,
@@ -274,7 +374,8 @@ export async function handler(
           text,
           audioKey,
           mimeType: mime,
-          model: "whisper-1",
+          model: "gpt-transcribe",
+          durationSec,
           transcribedAt: d.toISOString(),
         }),
         ContentType: "application/json; charset=utf-8",
@@ -282,12 +383,13 @@ export async function handler(
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "S3 upload failed";
-    console.error("journal-transcribe S3", msg);
-    return json(500, { error: "Could not store transcription in media bucket", detail: msg });
+    console.error("journal-transcribe S3 meta", msg);
   }
 
   return json(200, {
     text,
+    deferred: false,
+    usage: usageAfter,
     storage: { audioKey, metaKey },
   });
 }
