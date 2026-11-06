@@ -6,7 +6,6 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown } from "lucide-react";
 import {
   APP_MOBILE_TAB_BAR_H_PX,
   APP_MOBILE_TAB_PILL_INSET_PX,
@@ -24,6 +23,13 @@ import {
 
 type Props = {
   children: ReactNode;
+  /**
+   * When true (journal entry with Keyboard.resize native), the pill docks to
+   * the bottom of the resized web view — do not also lift by keyboard height.
+   */
+  nativeResize?: boolean;
+  /** Notify parent when the software keyboard is open (for Done / Prompts). */
+  onKeyboardOpenChange?: (open: boolean) => void;
 };
 
 function readViewportKeyboardOpen(): boolean {
@@ -36,15 +42,32 @@ function readViewportKeyboardOpen(): boolean {
 }
 
 /**
- * Floating writing tools pill — same slot as the tab bar. Stays visible and
- * rides above the keyboard (native overlay + visualViewport). While the
- * keyboard is open, appends a hide-keyboard control on the far right.
+ * Floating writing tools pill — same slot as the tab bar. Stays visible above
+ * the keyboard. While the keyboard is open, shows a clear Done control.
  */
-export function JournalMobileWritingBar({ children }: Props) {
+export function JournalMobileWritingBar({
+  children,
+  nativeResize = false,
+  onKeyboardOpenChange,
+}: Props) {
   const [bottomPx, setBottomPx] = useState(readMobileTabPillBottomOffsetPx());
   const [keyboardOpen, setKeyboardOpen] = useState(readViewportKeyboardOpen);
 
   useEffect(() => {
+    onKeyboardOpenChange?.(keyboardOpen);
+  }, [keyboardOpen, onKeyboardOpenChange]);
+
+  useEffect(() => {
+    const dockBottom = () => {
+      const bottomOffsetPx = readMobileTabPillBottomOffsetPx();
+      setBottomPx(bottomOffsetPx);
+      setAppMobileTabBarState({
+        visible: true,
+        offsetPx: mobileTabContentClearancePx(),
+        bottomOffsetPx,
+      });
+    };
+
     const sync = () => {
       const vv = window.visualViewport;
       const occluded =
@@ -54,6 +77,14 @@ export function JournalMobileWritingBar({ children }: Props) {
       const open =
         (isNativeApp() && isNativeKeyboardOpen()) || occluded > 80;
       setKeyboardOpen(open);
+
+      // Native resize / Android adjustResize: web view already ends above the
+      // keyboard — keep the pill at the viewport bottom.
+      if (nativeResize && isNativeApp()) {
+        dockBottom();
+        return;
+      }
+
       if (occluded > 80) {
         const bottom = Math.max(8, occluded + 8);
         setBottomPx(bottom);
@@ -65,16 +96,10 @@ export function JournalMobileWritingBar({ children }: Props) {
         return;
       }
       if (isNativeApp() && isNativeKeyboardOpen()) {
-        /* native event handler sets bottom from keyboard height */
+        /* native event handler sets bottom from keyboard height when overlaying */
         return;
       }
-      const bottomOffsetPx = readMobileTabPillBottomOffsetPx();
-      setBottomPx(bottomOffsetPx);
-      setAppMobileTabBarState({
-        visible: true,
-        offsetPx: mobileTabContentClearancePx(),
-        bottomOffsetPx,
-      });
+      dockBottom();
     };
 
     sync();
@@ -86,6 +111,10 @@ export function JournalMobileWritingBar({ children }: Props) {
     const onNative = (e: Event) => {
       const detail = (e as CustomEvent<NativeKeyboardDetail>).detail;
       setKeyboardOpen(detail.open);
+      if (nativeResize && isNativeApp()) {
+        dockBottom();
+        return;
+      }
       if (detail.open) {
         const h = detail.heightPx ?? 0;
         setBottomPx(Math.max(8, h + 8));
@@ -99,9 +128,6 @@ export function JournalMobileWritingBar({ children }: Props) {
       }
     };
     if (isNativeApp()) {
-      if (isNativeKeyboardOpen()) {
-        /* sync() already ran; native event will refine */
-      }
       window.addEventListener(NATIVE_KEYBOARD_EVENT, onNative);
     }
 
@@ -116,7 +142,7 @@ export function JournalMobileWritingBar({ children }: Props) {
         bottomOffsetPx: 0,
       });
     };
-  }, []);
+  }, [nativeResize]);
 
   const pill = (
     <div
@@ -136,16 +162,16 @@ export function JournalMobileWritingBar({ children }: Props) {
         {keyboardOpen ? (
           <button
             type="button"
-            aria-label="Hide keyboard"
-            title="Hide keyboard"
-            className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border text-muted transition-colors hover:border-accent/40 hover:text-foreground"
+            aria-label="Done"
+            title="Done"
+            className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border px-3 text-[13px] font-semibold text-foreground transition-colors hover:border-accent/40"
             onMouseDown={(e) => {
               // Keep caret/selection in the editor; don't steal focus first.
               e.preventDefault();
             }}
             onClick={() => hideSoftwareKeyboard()}
           >
-            <ChevronDown aria-hidden className="size-4" strokeWidth={2} />
+            Done
           </button>
         ) : null}
       </div>

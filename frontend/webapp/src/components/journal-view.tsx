@@ -2196,9 +2196,19 @@ export function JournalView() {
     return (
     <JournalLockGate>
     {/* Match Chat: sidebar + writing stay inside max-w-6xl; pattern gutter takes the right strip. */}
-    <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
     <div
-      className={`flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden ${
+      className={`flex min-h-0 w-full min-w-0 flex-1 bg-transparent ${
+        mobileJournalEditor
+          ? "max-sm:overflow-visible sm:overflow-hidden"
+          : "overflow-hidden"
+      }`}
+    >
+    <div
+      className={`flex h-full min-h-0 w-full min-w-0 flex-col ${
+        mobileJournalEditor
+          ? "max-sm:overflow-visible sm:overflow-hidden"
+          : "overflow-hidden"
+      } ${
         !mobileJournalEditor &&
         !mobileGratitudeCompose &&
         !mobileInsightsLetter
@@ -2264,7 +2274,11 @@ export function JournalView() {
       ) : null}
       {!insightsOpen ? (
       <div
-        className={`flex min-h-0 flex-1 overflow-hidden ${
+        className={`flex min-h-0 flex-1 ${
+          mobileJournalEditor
+            ? "max-sm:overflow-visible sm:overflow-hidden"
+            : "overflow-hidden"
+        } ${
           journalTab === "journal" || journalTab === "gratitude"
             ? "flex-col gap-0 md:flex-row"
             : "flex-col gap-6 lg:flex-row lg:gap-4"
@@ -2922,7 +2936,11 @@ export function JournalView() {
         )}
 
         <section
-          className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${
+          className={`flex min-h-0 min-w-0 flex-1 flex-col ${
+            mobileJournalEditor
+              ? "max-sm:overflow-visible sm:overflow-hidden"
+              : "overflow-hidden"
+          } ${
             journalTab === "journal" || journalTab === "gratitude"
               ? "bg-transparent"
               : ""
@@ -2969,7 +2987,13 @@ export function JournalView() {
             activeEntryId &&
             activeEntry &&
             !isGratitudeEntry(activeEntry) ? (
-            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div
+              className={`relative flex min-h-0 min-w-0 flex-1 flex-col ${
+                mobileJournalEditor
+                  ? "max-sm:overflow-visible sm:overflow-hidden"
+                  : "overflow-hidden"
+              }`}
+            >
               <JournalRichEditor
                 key={`${activeEntryId}-${editorExternalSyncKey}`}
                 entryId={activeEntryId}

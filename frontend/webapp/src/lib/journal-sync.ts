@@ -196,6 +196,11 @@ export function recordJournalSyncOk(): void {
 
 export function recordJournalSyncError(message: string): void {
   const msg = message.trim().slice(0, 240) || "Sync failed";
+  try {
+    console.error("[journal-sync]", msg);
+  } catch {
+    /* */
+  }
   writeDiag({
     ...readDiag(),
     lastSyncError: msg,

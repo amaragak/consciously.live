@@ -228,8 +228,9 @@
     background-image: none;
   }
   .app-header-home-btn .navy-paisley-plate {
-    /* Tighter tile so the pattern reads in a 40px circle. */
-    background-size: 160px 160px;
+    /* Same tile scale as dashboard hero (`.navy-paisley-plate` 640px) —
+       a crop of the pattern, not a shrunk tile that reads as flat navy. */
+    background-size: 640px 640px;
   }
   .app-header-home-btn .app-header-brand-sun {
     position: relative;

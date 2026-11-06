@@ -12,7 +12,19 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Check, Image as ImageIcon, List, ListOrdered, Redo2, Undo2, X } from "lucide-react";
 import { JournalMobileWritingBar } from "@/components/journal-mobile-writing-bar";
 import { JournalVoiceAllowanceBar } from "@/components/journal-voice-allowance-bar";
-import { hideSoftwareKeyboard } from "@/lib/native/native-bridge";
+import {
+  APP_MOBILE_TAB_BAR_GAP_PX,
+  APP_MOBILE_TAB_BAR_H_PX,
+  readMobileTabPillBottomOffsetPx,
+} from "@/lib/app-mobile-tab-bar";
+import {
+  NATIVE_KEYBOARD_EVENT,
+  hideSoftwareKeyboard,
+  isNativeApp,
+  isNativeKeyboardOpen,
+  setNativeKeyboardOverlay,
+  type NativeKeyboardDetail,
+} from "@/lib/native/native-bridge";
 import {
   formatJournalEntryCardDate,
   formatJournalEntryDate,
@@ -26,14 +38,16 @@ import {
   clearLiveVoiceDraft,
   dataUrlToBase64,
   formatAudioClock,
+  findJournalVoiceClipPosById,
   insertJournalVoiceClipAtCursor,
   NO_SPEECH_LABEL,
   peaksFromAudioBlob,
   plainTextToTipTapHtml,
   replaceTranscriptAfterClip,
+  scrubOrphanVoiceHtml,
   silentWavDataUrl,
-  upsertLiveVoiceDraft,
-  findJournalVoiceClipPosById,
+  stripOrphanJournalVoicePlaceholders,
+  updateJournalVoiceClipSrc,
 } from "@/components/journal-voice-clip-extension";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import {
@@ -42,7 +56,6 @@ import {
   writeTranscriptionEngineDiag,
   type OnDeviceSpeechHandle,
 } from "@/lib/journal-on-device-speech";
-import { isNativeApp } from "@/lib/native/native-bridge";
 import {
   transcribeJournalAudio,
   uploadJournalVoice,
@@ -192,6 +205,8 @@ export function JournalRichEditor({
   const [promptsOpen, setPromptsOpen] = useState(false);
   const [usedPromptIds, setUsedPromptIds] = useState<string[]>([]);
   const [bodyFocused, setBodyFocused] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const entryScrollRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaRecorderMimeRef = useRef<string>("");
   const mediaChunksRef = useRef<BlobPart[]>([]);
@@ -213,6 +228,10 @@ export function JournalRichEditor({
   /** Capgo-only native session (no MediaRecorder — dual mic crashes iOS). */
   const nativeCapgoOnlyRef = useRef(false);
   const voicePeaksAccRef = useRef<number[]>([]);
+  /** In-memory speech buffers — never written into the TipTap doc until Done. */
+  const committedSpeechRef = useRef("");
+  const currentSegmentRef = useRef("");
+  const [livePreviewText, setLivePreviewText] = useState<string | null>(null);
 
   const stopVoiceMetering = useCallback(() => {
     if (voiceTimerRef.current != null) {
@@ -278,11 +297,44 @@ export function JournalRichEditor({
     return new Blob(parts, { type: chunkType || preferred });
   }, [stopSpeechRecognition, stopVoiceMetering]);
 
-  const pushLiveDraft = useCallback((text: string) => {
-    liveTranscriptRef.current = text;
+  const refreshLivePreview = useCallback(() => {
+    const full = [committedSpeechRef.current, currentSegmentRef.current]
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    liveTranscriptRef.current = full;
+    setLivePreviewText(full || null);
+  }, []);
+
+  const commitSpeechSegment = useCallback(() => {
+    const cur = currentSegmentRef.current.trim();
+    if (!cur) return;
+    committedSpeechRef.current = [committedSpeechRef.current, cur]
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    currentSegmentRef.current = "";
+    refreshLivePreview();
+  }, [refreshLivePreview]);
+
+  /** Replace-only live hypothesis for the current segment (never append into the doc). */
+  const pushLiveDraft = useCallback(
+    (text: string) => {
+      currentSegmentRef.current = text.trim();
+      refreshLivePreview();
+    },
+    [refreshLivePreview],
+  );
+
+  const clearLivePreview = useCallback(() => {
+    committedSpeechRef.current = "";
+    currentSegmentRef.current = "";
+    liveTranscriptRef.current = "";
+    setLivePreviewText(null);
     const ed = editorRef.current;
-    if (!ed) return;
-    upsertLiveVoiceDraft(ed, text, voiceDraftPosRef);
+    if (ed) clearLiveVoiceDraft(ed, voiceDraftPosRef);
   }, []);
 
   const pushCapgoLevel = useCallback((level: number) => {
@@ -316,6 +368,9 @@ export function JournalRichEditor({
         onPartial: (partial) => {
           pushLiveDraft(partial);
         },
+        onSegmentEnd: () => {
+          commitSpeechSegment();
+        },
         onLevel: opts?.withLevels ? pushCapgoLevel : undefined,
       }).then((handle) => {
         if (!handle) {
@@ -329,7 +384,7 @@ export function JournalRichEditor({
         setServerFallbackMode(!handle.usedOnDevice);
       });
     },
-    [pushCapgoLevel, pushLiveDraft, stopSpeechRecognition],
+    [commitSpeechSegment, pushCapgoLevel, pushLiveDraft, stopSpeechRecognition],
   );
 
   const startVoiceMetering = useCallback(
@@ -446,7 +501,7 @@ export function JournalRichEditor({
   const startVoiceRecording = useCallback(async () => {
     setVoiceError(null);
     if (!transcribeApiBase || voiceBusy) return;
-    liveTranscriptRef.current = "";
+    clearLivePreview();
     voiceDraftPosRef.current = null;
     voicePeaksAccRef.current = [];
     silenceSecRef.current = 0;
@@ -454,6 +509,7 @@ export function JournalRichEditor({
     nativeCapgoOnlyRef.current = false;
     setVoicePaused(false);
     setVoiceSeconds(0);
+    setVoiceBars(Array.from({ length: 48 }, () => 0.12));
 
     // Native: Capgo alone for on-device live text (MediaRecorder + Capgo crashes iOS).
     if (isNativeApp()) {
@@ -465,13 +521,19 @@ export function JournalRichEditor({
         onPartial: (partial) => {
           pushLiveDraft(partial);
         },
+        onSegmentEnd: () => {
+          commitSpeechSegment();
+        },
         onLevel: pushCapgoLevel,
       });
       if (handle?.usedOnDevice) {
         onDeviceSpeechRef.current = handle;
         usedOnDeviceRef.current = true;
         nativeCapgoOnlyRef.current = true;
-        stopVoiceMetering();
+        // Keep audioLevel-driven bars; only start the clock (don't wipe levels).
+        if (voiceTimerRef.current != null) {
+          window.clearInterval(voiceTimerRef.current);
+        }
         voiceTimerRef.current = window.setInterval(() => {
           setVoiceSeconds((s) => {
             const next = s + 1;
@@ -512,12 +574,13 @@ export function JournalRichEditor({
       setVoiceError(msg);
     }
   }, [
+    clearLivePreview,
+    commitSpeechSegment,
     pushCapgoLevel,
     pushLiveDraft,
     startMediaRecorderPath,
     startSpeechRecognition,
     stopSpeechRecognition,
-    stopVoiceMetering,
     transcribeApiBase,
     voiceBusy,
   ]);
@@ -538,6 +601,42 @@ export function JournalRichEditor({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Journal entry: shrink the web view with the keyboard (native resize) so the
+  // page can scroll the caret above the writing bar. Restore overlay on leave.
+  useEffect(() => {
+    if (!mobileCardLayout || !isNativeApp()) return;
+    setNativeKeyboardOverlay(false);
+    return () => {
+      setNativeKeyboardOverlay(true);
+    };
+  }, [mobileCardLayout]);
+
+  const scrollCaretAboveWritingBar = useCallback(() => {
+    const ed = editorRef.current;
+    const scroller = entryScrollRef.current;
+    if (!ed || !scroller || typeof window === "undefined") return;
+    try {
+      const coords = ed.view.coordsAtPos(ed.state.selection.head);
+      const barBottom = readMobileTabPillBottomOffsetPx();
+      const clearAboveBar =
+        APP_MOBILE_TAB_BAR_H_PX + APP_MOBILE_TAB_BAR_GAP_PX + 24;
+      const limitY = window.innerHeight - barBottom - clearAboveBar;
+      if (coords.bottom > limitY) {
+        scroller.scrollBy({
+          top: coords.bottom - limitY,
+          behavior: "smooth",
+        });
+      } else if (coords.top < 72) {
+        scroller.scrollBy({
+          top: coords.top - 72,
+          behavior: "smooth",
+        });
+      }
+    } catch {
+      /* selection can be transiently invalid */
+    }
   }, []);
 
   // Overview “Talk it out” sets this before navigating to a new entry.
@@ -561,24 +660,21 @@ export function JournalRichEditor({
     setVoiceBusy(true);
     setVoiceRecording(false);
     setVoicePaused(false);
-    const liveRaw =
-      onDeviceSpeechRef.current?.getText() || liveTranscriptRef.current;
+    // Fold the last open segment into the committed buffer before reading.
+    commitSpeechSegment();
+    const liveRaw = liveTranscriptRef.current;
     const live = polishTranscript(liveRaw);
-    // Capgo session counts as on-device even with no words (keep clip + label).
     const usedOnDevice = usedOnDeviceRef.current;
     const capgoOnly = nativeCapgoOnlyRef.current;
     const durationSec = Math.max(1, voiceSecondsRef.current);
     const note = silenceNote;
     const peakSamples = voicePeaksAccRef.current.slice();
     setSilenceNote(null);
-    clearLiveVoiceDraft(ed, voiceDraftPosRef);
-    liveTranscriptRef.current = "";
+    // Remove preview entirely before inserting anything into the document.
+    clearLivePreview();
     try {
       let blob: Blob | null = null;
       if (capgoOnly) {
-        // Capgo owned the mic — no MediaRecorder bytes. Keep a playable (silent)
-        // clip so ambient/empty sessions are never deleted; real audio needs a
-        // shared AVAudioEngine tap (future). Peaks come from Capgo audioLevel.
         stopVoiceMetering();
         const od = onDeviceSpeechRef.current;
         onDeviceSpeechRef.current = null;
@@ -590,15 +686,12 @@ export function JournalRichEditor({
       } else {
         blob = await stopMediaRecorderAndCollectBlob();
       }
-      // Never drop a finished take for being “empty” / short — Cancel is the
-      // only discard path. Tiny blobs still become a clip with No speech.
       if (!blob || blob.size < 32) {
         const silent = silentWavDataUrl(durationSec);
         const res = await fetch(silent);
         blob = await res.blob();
         mediaRecorderMimeRef.current = "audio/wav";
       }
-      const dataUrl = await blobToDataUrl(blob);
       const mimeType =
         (blob.type || mediaRecorderMimeRef.current || "audio/webm").split(
           ";",
@@ -614,37 +707,42 @@ export function JournalRichEditor({
       }
       if (!peaks) peaks = (await peaksFromAudioBlob(blob)) || "";
 
-      // Upload binary to S3 first — embedding data:audio in contentHtml exceeds
-      // DynamoDB entry limits and left sync on "Couldn't save · retrying".
-      let src = dataUrl;
-      try {
-        const uploaded = await uploadJournalVoice({
-          audioBase64: dataUrlToBase64(dataUrl),
-          mimeType,
-        });
-        src = uploaded.url;
-      } catch (e) {
-        writeTranscriptionEngineDiag(
-          "server",
-          e instanceof Error
-            ? `Voice upload failed: ${e.message}`
-            : "Voice upload failed",
-        );
-        // Keep local data URL so the clip isn't lost offline; sync may still fail
-        // until upload succeeds on retry.
-        src = dataUrl;
-      }
-
+      // Local blob URL first so the clip row plays immediately; never embed
+      // data:audio in contentHtml (DynamoDB size limit → save retry loop).
+      const localUrl = URL.createObjectURL(blob);
       const transcriptForInsert = usedOnDevice
         ? live || NO_SPEECH_LABEL
         : "Transcribing…";
       const { clipId } = insertJournalVoiceClipAtCursor(ed, {
-        src,
+        src: localUrl,
         mimeType,
         peaks: peaks || null,
         transcriptPlain: transcriptForInsert,
         transcriptHtml: plainTextToTipTapHtml(transcriptForInsert),
       });
+
+      const dataUrl = await blobToDataUrl(blob);
+      void (async () => {
+        try {
+          const uploaded = await uploadJournalVoice({
+            audioBase64: dataUrlToBase64(dataUrl),
+            mimeType,
+          });
+          const edNow = editorRef.current;
+          if (edNow) updateJournalVoiceClipSrc(edNow, clipId, uploaded.url);
+          try {
+            URL.revokeObjectURL(localUrl);
+          } catch {
+            /* */
+          }
+        } catch (e) {
+          const msg =
+            e instanceof Error ? e.message : "Voice upload failed";
+          console.error("[journal-voice] upload failed", e);
+          writeTranscriptionEngineDiag("server", `Voice upload failed: ${msg}`);
+          // Leave blob: src so local play still works; sync stays small.
+        }
+      })();
 
       if (usedOnDevice) {
         if (note) {
@@ -698,6 +796,7 @@ export function JournalRichEditor({
         }
       }
     } catch (e) {
+      console.error("[journal-voice] finish failed", e);
       setVoiceError(e instanceof Error ? e.message : "Could not save recording");
     } finally {
       setVoiceBusy(false);
@@ -709,16 +808,21 @@ export function JournalRichEditor({
       voicePeaksAccRef.current = [];
       setServerFallbackMode(false);
     }
-  }, [silenceNote, stopMediaRecorderAndCollectBlob, stopVoiceMetering, voiceBusy]);
+  }, [
+    clearLivePreview,
+    commitSpeechSegment,
+    silenceNote,
+    stopMediaRecorderAndCollectBlob,
+    stopVoiceMetering,
+    voiceBusy,
+  ]);
 
   finishRecordingRef.current = () => {
     void finishRecordingIntoEditor();
   };
 
   const cancelVoiceRecording = useCallback(async () => {
-    const ed = editorRef.current;
-    if (ed) clearLiveVoiceDraft(ed, voiceDraftPosRef);
-    liveTranscriptRef.current = "";
+    clearLivePreview();
     setVoiceRecording(false);
     setVoicePaused(false);
     setVoiceSeconds(0);
@@ -726,7 +830,7 @@ export function JournalRichEditor({
     voicePeaksAccRef.current = [];
     await stopMediaRecorderAndCollectBlob();
     setVoiceError(null);
-  }, [stopMediaRecorderAndCollectBlob]);
+  }, [clearLivePreview, stopMediaRecorderAndCollectBlob]);
 
   const editorRef = useRef<Editor | null>(null);
 
@@ -759,7 +863,7 @@ export function JournalRichEditor({
       JournalImage,
       JournalPrompt,
     ],
-    content: initialHtml,
+    content: scrubOrphanVoiceHtml(initialHtml),
     immediatelyRender: false,
     enableCoreExtensions: TIPTAP_DISABLE_PLAIN_CLIPBOARD,
     editorProps: {
@@ -780,6 +884,9 @@ export function JournalRichEditor({
     },
     onCreate: ({ editor: ed }) => {
       editorRef.current = ed;
+      if (stripOrphanJournalVoicePlaceholders(ed)) {
+        onHtmlChange(ed.getHTML());
+      }
       setBodyEmpty(ed.isEmpty);
       setUsedPromptIds(
         journalPromptMarksFromHtml(ed.getHTML())
@@ -799,7 +906,10 @@ export function JournalRichEditor({
     if (!editor) return;
     if (editorSeededForEntryRef.current === entryId) return;
     editorSeededForEntryRef.current = entryId;
-    editor.commands.setContent(initialHtml, { emitUpdate: false });
+    editor.commands.setContent(scrubOrphanVoiceHtml(initialHtml), {
+      emitUpdate: false,
+    });
+    stripOrphanJournalVoicePlaceholders(editor);
     setBodyEmpty(editor.isEmpty);
   }, [entryId, initialHtml, editor]);
 
@@ -851,6 +961,34 @@ export function JournalRichEditor({
     }, 50);
     return () => window.clearTimeout(timer);
   }, [editor, entryId, mobileCardLayout]);
+
+  useEffect(() => {
+    if (!mobileCardLayout || !editor) return;
+    const onUpdate = () => {
+      if (!keyboardOpen && !isNativeKeyboardOpen()) return;
+      scrollCaretAboveWritingBar();
+    };
+    editor.on("selectionUpdate", onUpdate);
+    editor.on("update", onUpdate);
+    const onNative = (e: Event) => {
+      const detail = (e as CustomEvent<NativeKeyboardDetail>).detail;
+      if (detail.open) {
+        window.requestAnimationFrame(() => scrollCaretAboveWritingBar());
+      }
+    };
+    window.addEventListener(NATIVE_KEYBOARD_EVENT, onNative);
+    const vv = window.visualViewport;
+    const onVv = () => {
+      if (keyboardOpen || isNativeKeyboardOpen()) scrollCaretAboveWritingBar();
+    };
+    vv?.addEventListener("resize", onVv);
+    return () => {
+      editor.off("selectionUpdate", onUpdate);
+      editor.off("update", onUpdate);
+      window.removeEventListener(NATIVE_KEYBOARD_EVENT, onNative);
+      vv?.removeEventListener("resize", onVv);
+    };
+  }, [editor, keyboardOpen, mobileCardLayout, scrollCaretAboveWritingBar]);
 
   useEffect(() => {
     if (!editor) return;
@@ -1145,7 +1283,10 @@ export function JournalRichEditor({
             </div>
           </div>
         ) : null}
-        <JournalMobileWritingBar>
+        <JournalMobileWritingBar
+          nativeResize
+          onKeyboardOpenChange={setKeyboardOpen}
+        >
           {voiceRecording ? (
             recordingBarInner
           ) : (
@@ -1172,30 +1313,61 @@ export function JournalRichEditor({
               >
                 <IconDotsHorizontal />
               </ToolbarBtn>
-              <button
-                type="button"
-                onClick={() => setPromptsOpen((open) => !open)}
-                aria-pressed={promptsOpen}
-                style={PRIMARY_ACCENT_FILL_STYLE}
-                className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full accent-fill-gradient px-3 text-[13px] font-semibold text-on-accent transition-opacity hover:opacity-90"
-              >
-                Prompts
-              </button>
+              {!keyboardOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setPromptsOpen((open) => !open)}
+                  aria-pressed={promptsOpen}
+                  style={PRIMARY_ACCENT_FILL_STYLE}
+                  className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full accent-fill-gradient px-3 text-[13px] font-semibold text-on-accent transition-opacity hover:opacity-90"
+                >
+                  Prompts
+                </button>
+              ) : null}
             </>
           )}
         </JournalMobileWritingBar>
       </>
     ) : null;
 
+  const writingBarClearancePx =
+    APP_MOBILE_TAB_BAR_H_PX +
+    APP_MOBILE_TAB_BAR_GAP_PX +
+    readMobileTabPillBottomOffsetPx();
+
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden bg-transparent">
+    <div
+      className={`flex min-h-0 flex-1 bg-transparent ${
+        mobileCardLayout
+          ? "max-sm:overflow-y-auto max-sm:overscroll-contain sm:overflow-hidden"
+          : "overflow-hidden"
+      }`}
+      ref={mobileCardLayout ? entryScrollRef : undefined}
+      onMouseDown={(e) => {
+        if (!mobileCardLayout) return;
+        const t = e.target as HTMLElement;
+        // Tap empty page chrome outside the card → dismiss keyboard.
+        if (t.closest("[data-journal-entry-card]")) return;
+        if (t.closest(".ProseMirror")) return;
+        hideSoftwareKeyboard();
+      }}
+    >
       {/* Fills the writing pane; parent journal shell is max-w-6xl + right pattern gutter. */}
       <div
-        className={`relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden ${
+        data-journal-entry-card="1"
+        className={`relative flex min-h-0 w-full min-w-0 flex-1 flex-col ${
           mobileCardLayout
-            ? "journal-entry-paper journal-entry-paper-from-sm max-sm:bg-transparent sm:bg-[color:var(--journal-warm-bg)]"
-            : "journal-entry-paper bg-[color:var(--journal-warm-bg)]"
+            ? "journal-entry-paper journal-entry-paper-from-sm max-sm:overflow-visible max-sm:bg-transparent sm:overflow-hidden sm:bg-[color:var(--journal-warm-bg)]"
+            : "journal-entry-paper overflow-hidden bg-[color:var(--journal-warm-bg)]"
         }`}
+        style={
+          mobileCardLayout
+            ? {
+                // Room to scroll the last line above the writing bar.
+                paddingBottom: writingBarClearancePx,
+              }
+            : undefined
+        }
       >
         <div
           className={`flex shrink-0 flex-col ${
@@ -1203,6 +1375,17 @@ export function JournalRichEditor({
               ? `journal-entry-paper journal-entry-paper-until-sm max-sm:mx-3 max-sm:mt-1 max-sm:rounded-t-[18px] max-sm:border max-sm:border-b-0 max-sm:border-border max-sm:bg-card sm:border-b sm:border-border`
               : "border-b border-border"
           }`}
+          onMouseDown={(e) => {
+            if (!mobileCardLayout) return;
+            const t = e.target as HTMLElement;
+            // Tapping header chrome (not inputs) closes the keyboard.
+            if (
+              t.closest("input, textarea, button, a, [contenteditable='true']")
+            ) {
+              return;
+            }
+            hideSoftwareKeyboard();
+          }}
         >
           <div
             className={`relative flex items-start gap-2 px-7 pb-3 pt-3 ${
@@ -1728,6 +1911,22 @@ export function JournalRichEditor({
             >
               <Redo2 aria-hidden className="size-4" strokeWidth={2} />
             </ToolbarBtn>
+            {keyboardOpen ? (
+              <>
+                <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setToolbarMoreOpen(false);
+                    setPromptsOpen(true);
+                  }}
+                  style={PRIMARY_ACCENT_FILL_STYLE}
+                  className="inline-flex h-8 shrink-0 cursor-pointer items-center rounded-full accent-fill-gradient px-3 text-[13px] font-semibold text-on-accent"
+                >
+                  Prompts
+                </button>
+              </>
+            ) : null}
           </div>
         ) : null}
         {/* Recording hint superseded by recording bar (voice-notes-v2)
@@ -1766,10 +1965,10 @@ export function JournalRichEditor({
         />
       </div>
       <div
-        className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${
+        className={`min-h-0 flex-1 ${
           mobileCardLayout
-            ? "journal-entry-paper journal-entry-paper-until-sm max-sm:mx-3 max-sm:mb-3 max-sm:min-h-[12rem] max-sm:rounded-b-[18px] max-sm:border max-sm:border-t-0 max-sm:border-border max-sm:bg-card"
-            : ""
+            ? "journal-entry-paper journal-entry-paper-until-sm max-sm:mx-3 max-sm:mb-3 max-sm:min-h-[12rem] max-sm:overflow-visible max-sm:rounded-b-[18px] max-sm:border max-sm:border-t-0 max-sm:border-border max-sm:bg-card sm:overflow-y-auto sm:overscroll-contain"
+            : "overflow-y-auto overscroll-contain"
         }`}
         onMouseDown={(e) => {
           if (!mobileCardLayout || !editor) return;
@@ -1783,22 +1982,23 @@ export function JournalRichEditor({
           if (!mobileCardLayout) return;
           const t = e.touches[0];
           if (!t) return;
-          const el = e.currentTarget;
+          const el = entryScrollRef.current ?? e.currentTarget;
           el.dataset.kbDismissY = String(t.clientY);
           el.dataset.kbDismissScroll = String(el.scrollTop);
           el.dataset.kbDismissed = "0";
         }}
         onTouchMove={(e) => {
           if (!mobileCardLayout) return;
-          const el = e.currentTarget;
+          const el = entryScrollRef.current ?? e.currentTarget;
           if (el.dataset.kbDismissed === "1") return;
           const startY = Number(el.dataset.kbDismissY ?? "");
           const startScroll = Number(el.dataset.kbDismissScroll ?? "");
           const t = e.touches[0];
           if (!t || !Number.isFinite(startY)) return;
           const dy = t.clientY - startY;
-          // Clear downward pull while at (or near) the top of the entry.
-          if (dy > 56 && startScroll <= 2) {
+          // Pack: finger scroll while typing must not dismiss. Only a clear
+          // pull-down past the top closes the keyboard.
+          if (dy > 72 && startScroll <= 2) {
             const active = document.activeElement;
             const editing =
               active instanceof HTMLElement &&
@@ -1820,6 +2020,17 @@ export function JournalRichEditor({
                 : undefined
             }
           />
+          {/* Live speech preview — React overlay only (not TipTap content / not saved). */}
+          {livePreviewText ? (
+            <p
+              className={`pointer-events-none select-none px-7 pb-3 text-base leading-[1.85] ${
+                mobileCardLayout ? "max-sm:px-4 max-sm:text-[16px] max-sm:leading-[1.7]" : ""
+              }`}
+              aria-live="polite"
+            >
+              <em className="journal-voice-live">{livePreviewText}</em>
+            </p>
+          ) : null}
         </JournalTranscribeApiContext.Provider>
         {/* Empty-entry suggestions stay in the tree but are not shown.
             New entry opens blank; prompts come from the Prompts control.

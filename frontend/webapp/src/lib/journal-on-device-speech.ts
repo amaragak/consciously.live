@@ -97,9 +97,18 @@ export function polishTranscript(raw: string): string {
 }
 
 export type StartOnDeviceSpeechOpts = {
+  /**
+   * Full hypothesis for the *current* recognition segment (replace, never append).
+   * When the engine restarts after silence, a new segment begins from "".
+   */
   onPartial: (text: string) => void;
   /** Native Capgo mic level 0..1 for the recording waveform. */
   onLevel?: (level: number) => void;
+  /**
+   * Fired when a recognition segment ends (silence / restart / stop) so the
+   * caller can commit the last partial into an in-memory buffer.
+   */
+  onSegmentEnd?: () => void;
 };
 
 /**
@@ -156,19 +165,40 @@ async function startNativeOnDevice(
 
     let text = "";
     const handles: Array<{ remove: () => Promise<void> }> = [];
+    const endSegment = () => {
+      opts.onSegmentEnd?.();
+      text = "";
+    };
     const partial = await SpeechRecognition.addListener(
       "partialResults",
       (e) => {
+        if ((e as { isRestarting?: boolean }).isRestarting) {
+          // Segment boundary only — don't re-apply the prior hypothesis.
+          endSegment();
+          return;
+        }
+        // Prefer current-session matches over accumulatedText so we REPLACE
+        // the live hypothesis instead of stacking Capgo restart chunks.
         const next =
-          (e as { accumulatedText?: string }).accumulatedText?.trim() ||
           e.matches?.[0]?.trim() ||
+          (e as { accumulatedText?: string }).accumulatedText?.trim() ||
           "";
-        if (!next) return;
         text = next;
         opts.onPartial(text);
       },
     );
     handles.push(partial);
+
+    const listening = await SpeechRecognition.addListener(
+      "listeningState",
+      (e) => {
+        const state = e.state || e.status;
+        if (state === "stopped" || state === "stoppingListening") {
+          endSegment();
+        }
+      },
+    );
+    handles.push(listening);
 
     if (opts.onLevel) {
       const level = await SpeechRecognition.addListener("audioLevel", (e) => {
@@ -256,8 +286,11 @@ function startBrowserSpeech(
         if (r?.isFinal) finalAcc = `${finalAcc} ${piece}`.trim();
         else interim += piece;
       }
+      // Expose only the current interim hypothesis to the caller as "partial";
+      // finals live in finalAcc and are joined by the editor's committed buffer
+      // via onSegmentEnd when a phrase finalises.
       latest = `${finalAcc} ${interim}`.trim();
-      onPartial(latest);
+      onPartial(interim.trim() ? `${finalAcc} ${interim}`.trim() : finalAcc);
     };
     rec.onerror = () => {
       /* server fallback on Done */

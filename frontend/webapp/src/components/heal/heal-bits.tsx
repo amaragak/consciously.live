@@ -1,4 +1,4 @@
-import { Heart, KeyRound, Leaf, Lock, MessageCircle, Repeat } from "lucide-react";
+import { Heart, Leaf } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "@/lib/spa-nav";
@@ -13,6 +13,9 @@ import {
   type HealStoreV1,
 } from "@/lib/heal-store";
 import { HealNameChip } from "@/components/heal/heal-name-chip";
+import { HealTypeIcon } from "@/components/heal/heal-type-icon";
+
+export { HealTypeIcon } from "@/components/heal/heal-type-icon";
 
 export const HEAL_PAGE =
   "mx-auto w-full min-w-0 max-w-6xl px-4 pb-28 pt-6 sm:px-6 sm:pb-10";
@@ -45,42 +48,15 @@ export function HealAvatar({
   size: number;
 }) {
   const photo = healPhotoUrl(store, item);
-  const letter = item.title.trim().slice(0, 1).toUpperCase() || "•";
   return (
     <span
-      className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-heal-tint font-semibold text-heal-accent"
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.38) }}
+      className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-heal-tint text-heal-accent"
+      style={{ width: size, height: size }}
     >
       {photo ? (
         <img src={photo} alt="" className="h-full w-full object-cover" />
-      ) : item.type === "shame" ? (
-        <Lock
-          aria-hidden
-          strokeWidth={1.8}
-          style={{ width: Math.round(size * 0.42), height: Math.round(size * 0.42) }}
-        />
-      ) : item.type === "pattern" || item.type === "recurring_thought" || item.type === "belief" ? (
-        item.type === "belief" ? (
-          <KeyRound
-            aria-hidden
-            strokeWidth={1.8}
-            style={{ width: Math.round(size * 0.42), height: Math.round(size * 0.42) }}
-          />
-        ) : item.type === "recurring_thought" ? (
-          <MessageCircle
-            aria-hidden
-            strokeWidth={1.8}
-            style={{ width: Math.round(size * 0.42), height: Math.round(size * 0.42) }}
-          />
-        ) : (
-          <Repeat
-            aria-hidden
-            strokeWidth={1.8}
-            style={{ width: Math.round(size * 0.42), height: Math.round(size * 0.42) }}
-          />
-        )
       ) : (
-        letter
+        <HealTypeIcon type={item.type} size={Math.round(size * 0.42)} />
       )}
     </span>
   );

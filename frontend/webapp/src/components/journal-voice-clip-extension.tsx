@@ -376,6 +376,92 @@ export function clearLiveVoiceDraft(
   upsertLiveVoiceDraft(editor, "", draftPosRef);
 }
 
+/** Update a clip's audio src (blob: → CDN) without touching its transcript. */
+export function updateJournalVoiceClipSrc(
+  editor: Editor,
+  clipId: string,
+  src: string,
+): void {
+  const pos = findJournalVoiceClipPosById(editor, clipId);
+  if (pos == null) return;
+  const node = editor.state.doc.nodeAt(pos);
+  if (!node || node.type.name !== "journalVoiceClip") return;
+  editor
+    .chain()
+    .command(({ tr, dispatch }) => {
+      if (dispatch) {
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, src });
+      }
+      return true;
+    })
+    .run();
+}
+
+function isTranscribingPlaceholder(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  return t === "transcribing…" || t === "transcribing...";
+}
+
+/**
+ * Drop leftover live-draft / orphan "Transcribing…" nodes from broken sessions.
+ * Keeps "Transcribing…" only when it immediately follows a voice clip.
+ */
+export function stripOrphanJournalVoicePlaceholders(editor: Editor): boolean {
+  type Range = { from: number; to: number };
+  const doomed: Range[] = [];
+  const doc = editor.state.doc;
+  doc.descendants((node, pos) => {
+    if (node.type.name !== "paragraph") return;
+    const text = node.textContent.trim();
+    if (node.attrs?.voiceDraft) {
+      doomed.push({ from: pos, to: pos + node.nodeSize });
+      return;
+    }
+    if (node.attrs?.voiceTranscript && isTranscribingPlaceholder(text)) {
+      let prevBlock: typeof node | null = null;
+      try {
+        const $pos = doc.resolve(pos);
+        if ($pos.index($pos.depth) > 0) {
+          prevBlock = $pos.node($pos.depth).child($pos.index($pos.depth) - 1);
+        }
+      } catch {
+        /* */
+      }
+      if (!prevBlock || prevBlock.type.name !== "journalVoiceClip") {
+        doomed.push({ from: pos, to: pos + node.nodeSize });
+      }
+    }
+  });
+  if (!doomed.length) return false;
+  let tr = editor.state.tr;
+  for (const r of doomed.sort((a, b) => b.from - a.from)) {
+    tr = tr.delete(r.from, r.to);
+  }
+  editor.view.dispatch(tr);
+  return true;
+}
+
+/** Strip draft / orphan markers from HTML before seeding the editor. */
+export function scrubOrphanVoiceHtml(html: string): string {
+  if (typeof document === "undefined" || !html) return html;
+  try {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = html;
+    wrap.querySelectorAll("p[data-voice-draft='1']").forEach((el) => el.remove());
+    wrap.querySelectorAll("p[data-voice-transcript='1']").forEach((el) => {
+      const text = (el.textContent || "").trim().toLowerCase();
+      if (text !== "transcribing…" && text !== "transcribing...") return;
+      const prev = el.previousElementSibling;
+      if (!prev || prev.getAttribute("data-journal-voice-clip") !== "1") {
+        el.remove();
+      }
+    });
+    return wrap.innerHTML;
+  } catch {
+    return html;
+  }
+}
+
 function ClipWaveform({
   peaks,
   progress,

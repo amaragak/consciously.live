@@ -54,7 +54,22 @@ export function JournalContextPicker({ open, selected, onClose, onAdd }: Props) 
         if (cancel) return;
         setMeditations(
           items
-            .filter((item) => !item.archived && !item.isDraft && item.title?.trim())
+            .filter((item) => {
+              if (item.archived || item.isDraft) return false;
+              // Only catalogued library rows with real metadata — skip
+              // "Uncatalogued audio" and bare generate stubs.
+              if (item.catalogued !== true) return false;
+              const title = (item.title || "").trim();
+              if (!title) return false;
+              if (/^uncatalogued audio$/i.test(title)) return false;
+              const hasMeta =
+                Boolean(item.coverImageUrl?.trim()) ||
+                (typeof item.durationSeconds === "number" &&
+                  item.durationSeconds > 0) ||
+                Boolean(item.speakerName?.trim()) ||
+                Boolean(item.description?.trim());
+              return hasMeta;
+            })
             .sort(
               (a, b) =>
                 Date.parse(b.createdAt || "") - Date.parse(a.createdAt || ""),
@@ -206,7 +221,6 @@ export function JournalContextPicker({ open, selected, onClose, onAdd }: Props) 
                   key={area.id}
                   checked={checked({ targetType: "life_area", targetId: area.id })}
                   title={area.title}
-                  art={<span className="font-display text-[15px]">{area.title.trim().slice(0, 1).toUpperCase()}</span>}
                   onClick={() =>
                     toggle({
                       targetType: "life_area",
@@ -276,7 +290,8 @@ function PickRow({
   checked: boolean;
   title: string;
   meta?: string;
-  art: ReactNode;
+  /** Optional art — omit for life areas (no letter-in-circle). */
+  art?: ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -292,9 +307,11 @@ function PickRow({
       >
         {checked ? <Check className="size-3" strokeWidth={2} /> : null}
       </span>
-      <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-full bg-background text-muted">
-        {art}
-      </span>
+      {art != null ? (
+        <span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-full bg-background text-muted">
+          {art}
+        </span>
+      ) : null}
       <span className="min-w-0">
         {meta ? (
           <span className="block text-[10px] font-semibold uppercase tracking-[1.3px] text-muted">

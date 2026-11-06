@@ -1907,19 +1907,28 @@ export async function putAssistantChatStoreRemote(
 
 /**
  * Uploads recorded audio to `POST /journal/voice` and returns a CloudFront URL for embedding in HTML.
+ * API requires `ownerId` (journal device id); without it the upload 400s and clients that then
+ * embed data:audio in contentHtml blow past DynamoDB limits → "Couldn't save · retrying".
  */
 export async function uploadJournalVoice(params: {
   audioBase64: string;
   mimeType?: string;
+  ownerId?: string;
 }): Promise<JournalVoiceUploadResult> {
   const base = getMedimadeApiBase();
   if (!base) {
     throw new Error("VITE_MEDIMADE_API_URL is not set");
   }
+  const { getOrCreateJournalOwnerId } = await import("@/lib/journal-storage");
+  const ownerId = (params.ownerId || getOrCreateJournalOwnerId()).trim();
+  if (!ownerId) {
+    throw new Error("Journal owner id missing for voice upload");
+  }
   const res = await medimadeFetch(`${base}/journal/voice`, {
     method: "POST",
     headers: medimadeJsonHeaders(),
     body: JSON.stringify({
+      ownerId,
       audioBase64: params.audioBase64,
       mimeType: params.mimeType,
     }),
@@ -1935,7 +1944,8 @@ export async function uploadJournalVoice(params: {
       (typeof data.detail === "string" && data.detail) ||
       (typeof data.error === "string" && data.error) ||
       res.statusText;
-    throw new Error(msg);
+    console.error("[journal-voice] upload failed", res.status, data);
+    throw new Error(msg || `Voice upload failed (${res.status})`);
   }
   const key = typeof data.key === "string" ? data.key : "";
   const url = typeof data.url === "string" ? data.url : "";
