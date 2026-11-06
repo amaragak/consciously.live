@@ -37,14 +37,79 @@ export function useWhisperDictation() {
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Smoothed 0–1 input level while recording (for waveforms). */
+  const [level, setLevel] = useState(0);
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const levelRafRef = useRef<number | null>(null);
+  const smoothLevelRef = useRef(0);
+
+  const stopLevelMeter = useCallback(() => {
+    if (levelRafRef.current != null) {
+      cancelAnimationFrame(levelRafRef.current);
+      levelRafRef.current = null;
+    }
+    analyserRef.current = null;
+    try {
+      void audioCtxRef.current?.close();
+    } catch {
+      /* */
+    }
+    audioCtxRef.current = null;
+    smoothLevelRef.current = 0;
+    setLevel(0);
+  }, []);
+
+  const startLevelMeter = useCallback(
+    (stream: MediaStream) => {
+      stopLevelMeter();
+      try {
+        const Ctx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext })
+            .webkitAudioContext;
+        if (!Ctx) return;
+        const ctx = new Ctx();
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.85;
+        source.connect(analyser);
+        audioCtxRef.current = ctx;
+        analyserRef.current = analyser;
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          const a = analyserRef.current;
+          if (!a) return;
+          a.getByteTimeDomainData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i]! - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / data.length);
+          const target = Math.min(1, rms * 3.2);
+          smoothLevelRef.current =
+            smoothLevelRef.current * 0.72 + target * 0.28;
+          setLevel(smoothLevelRef.current);
+          levelRafRef.current = requestAnimationFrame(tick);
+        };
+        levelRafRef.current = requestAnimationFrame(tick);
+      } catch {
+        /* level optional */
+      }
+    },
+    [stopLevelMeter],
+  );
 
   const releaseStream = useCallback(() => {
+    stopLevelMeter();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
-  }, []);
+  }, [stopLevelMeter]);
 
   const collectBlob = useCallback(async (): Promise<Blob | null> => {
     const rec = recRef.current;
@@ -69,10 +134,11 @@ export function useWhisperDictation() {
       if (recRef.current?.state === "recording") recRef.current.stop();
       recRef.current = null;
       chunksRef.current = [];
+      stopLevelMeter();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     };
-  }, []);
+  }, [stopLevelMeter]);
 
   const start = useCallback(async () => {
     setError(null);
@@ -94,12 +160,13 @@ export function useWhisperDictation() {
         if (ev.data.size > 0) chunksRef.current.push(ev.data);
       };
       rec.start(200);
+      startLevelMeter(stream);
       setRecording(true);
     } catch (e) {
       releaseStream();
       setError(e instanceof Error ? e.message : "Could not access microphone");
     }
-  }, [busy, releaseStream]);
+  }, [busy, releaseStream, startLevelMeter]);
 
   const cancel = useCallback(async () => {
     setRecording(false);
@@ -141,5 +208,5 @@ export function useWhisperDictation() {
     }
   }, [busy, collectBlob]);
 
-  return { recording, busy, error, start, cancel, stopAndTranscribe };
+  return { recording, busy, error, level, start, cancel, stopAndTranscribe };
 }

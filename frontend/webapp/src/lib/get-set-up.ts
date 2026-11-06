@@ -24,6 +24,7 @@ import {
 
 export const GET_SET_UP_CHANGED = "mm-get-set-up-changed";
 const STORE_KEY = "mm_get_set_up_v1";
+/** Legacy session-only hide — migrated into durable store on read. */
 const HIDE_SESSION_KEY = "mm_get_set_up_hidden_visit";
 
 export type GetSetUpItemId =
@@ -59,16 +60,25 @@ type Store = {
   skipped: GetSetUpItemId[];
   /** Set when every item is done or skipped — panel never returns. */
   finishedAt: string | null;
+  /**
+   * Device-local: user tapped “Hide for now”. Stays collapsed until Continue.
+   * Not synced to the cloud.
+   */
+  hiddenUntilContinue: boolean;
 };
 
 function emptyStore(): Store {
-  return { skipped: [], finishedAt: null };
+  return { skipped: [], finishedAt: null, hiddenUntilContinue: false };
 }
 
 function parseStore(raw: string | null): Store {
   if (!raw) return emptyStore();
   try {
-    const o = JSON.parse(raw) as { skipped?: unknown; finishedAt?: unknown };
+    const o = JSON.parse(raw) as {
+      skipped?: unknown;
+      finishedAt?: unknown;
+      hiddenUntilContinue?: unknown;
+    };
     const skipped = Array.isArray(o.skipped)
       ? o.skipped.filter((id): id is GetSetUpItemId =>
           GET_SET_UP_ITEMS.includes(id as GetSetUpItemId),
@@ -77,6 +87,7 @@ function parseStore(raw: string | null): Store {
     return {
       skipped: [...new Set(skipped)],
       finishedAt: typeof o.finishedAt === "string" ? o.finishedAt : null,
+      hiddenUntilContinue: o.hiddenUntilContinue === true,
     };
   } catch {
     return emptyStore();
@@ -87,9 +98,9 @@ export function readGetSetUpStore(): Store {
   return parseStore(readAccountLocalStorage(STORE_KEY));
 }
 
-function writeGetSetUpStore(store: Store): void {
+function writeGetSetUpStore(store: Store, opts?: { silent?: boolean }): void {
   writeAccountLocalStorage(STORE_KEY, JSON.stringify(store));
-  if (typeof window !== "undefined") {
+  if (!opts?.silent && typeof window !== "undefined") {
     window.dispatchEvent(new Event(GET_SET_UP_CHANGED));
   }
 }
@@ -102,24 +113,52 @@ export function skipGetSetUpItem(id: GetSetUpItemId): void {
 }
 
 export function isGetSetUpHiddenThisVisit(): boolean {
+  const store = readGetSetUpStore();
+  if (store.hiddenUntilContinue) return true;
+  // One-time migrate: older builds used sessionStorage for a single visit.
   if (typeof window === "undefined") return false;
   try {
-    return sessionStorage.getItem(HIDE_SESSION_KEY) === "1";
+    if (sessionStorage.getItem(HIDE_SESSION_KEY) === "1") {
+      writeGetSetUpStore(
+        { ...store, hiddenUntilContinue: true },
+        { silent: true },
+      );
+      sessionStorage.removeItem(HIDE_SESSION_KEY);
+      return true;
+    }
   } catch {
-    return false;
+    /* */
   }
+  return false;
 }
 
+/** Collapse the checklist until the user taps Continue (device-local). */
 export function hideGetSetUpForVisit(): void {
-  try {
-    sessionStorage.setItem(HIDE_SESSION_KEY, "1");
+  const store = readGetSetUpStore();
+  if (store.hiddenUntilContinue) {
     window.dispatchEvent(new Event(GET_SET_UP_CHANGED));
+    return;
+  }
+  writeGetSetUpStore({ ...store, hiddenUntilContinue: true });
+  try {
+    sessionStorage.removeItem(HIDE_SESSION_KEY);
   } catch {
     /* */
   }
 }
 
+/** Expand again after Continue. */
 export function clearGetSetUpVisitHide(): void {
+  const store = readGetSetUpStore();
+  if (!store.hiddenUntilContinue) {
+    try {
+      sessionStorage.removeItem(HIDE_SESSION_KEY);
+    } catch {
+      /* */
+    }
+    return;
+  }
+  writeGetSetUpStore({ ...store, hiddenUntilContinue: false });
   try {
     sessionStorage.removeItem(HIDE_SESSION_KEY);
   } catch {

@@ -1574,6 +1574,79 @@ export async function fetchJournalStoreRemote(): Promise<JournalStoreV2 | null> 
   return store as JournalStoreV2;
 }
 
+export type JournalStoreDelta = {
+  serverTime: string;
+  changes: JournalStoreV2["entries"];
+  deletedIds: string[];
+  activeEntryId?: string | null;
+  folders?: JournalStoreV2["folders"];
+};
+
+/**
+ * Delta pull: `GET /journal/store?since=<iso>`.
+ * Without `since` (or on older APIs), falls back to a full store as a synthetic delta.
+ */
+export async function fetchJournalStoreDelta(opts?: {
+  since?: string | null;
+}): Promise<
+  | { kind: "delta"; delta: JournalStoreDelta }
+  | { kind: "full"; store: JournalStoreV2 | null; serverTime: string }
+> {
+  const base = getMedimadeApiBase();
+  if (!base) {
+    throw new Error("VITE_MEDIMADE_API_URL is not set");
+  }
+  const since = opts?.since?.trim() || "";
+  const qs = since ? `?since=${encodeURIComponent(since)}` : "";
+  const res = await medimadeFetch(`${base}/journal/store${qs}`, {
+    headers: medimadeApiAuthHeaders(),
+  });
+  let data: Record<string, unknown> = {};
+  try {
+    data = (await res.json()) as Record<string, unknown>;
+  } catch {
+    /* ignore */
+  }
+  if (!res.ok) {
+    const msg =
+      (typeof data.detail === "string" && data.detail) ||
+      (typeof data.error === "string" && data.error) ||
+      res.statusText;
+    throw new Error(msg);
+  }
+  const serverTime =
+    typeof data.serverTime === "string" && data.serverTime.trim()
+      ? data.serverTime.trim()
+      : new Date().toISOString();
+  if (data.delta === true) {
+    const changes = Array.isArray(data.changes)
+      ? (data.changes as JournalStoreV2["entries"])
+      : [];
+    const deletedIds = Array.isArray(data.deletedIds)
+      ? data.deletedIds.filter((x): x is string => typeof x === "string")
+      : [];
+    return {
+      kind: "delta",
+      delta: {
+        serverTime,
+        changes,
+        deletedIds,
+        activeEntryId:
+          data.activeEntryId === null || typeof data.activeEntryId === "string"
+            ? (data.activeEntryId as string | null)
+            : undefined,
+        folders: Array.isArray(data.folders)
+          ? (data.folders as JournalStoreV2["folders"])
+          : undefined,
+      },
+    };
+  }
+  const store = data.store;
+  if (store == null) return { kind: "full", store: null, serverTime };
+  if (typeof store !== "object") return { kind: "full", store: null, serverTime };
+  return { kind: "full", store: store as JournalStoreV2, serverTime };
+}
+
 export type DashboardDailyStatus = {
   gratitude: boolean;
   meditation: boolean;

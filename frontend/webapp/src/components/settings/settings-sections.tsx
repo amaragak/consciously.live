@@ -24,6 +24,7 @@ import {
   deleteMedimadeAccount,
   fetchCognitoAuthConfig,
   fetchUsernameProfile,
+  getMedimadeApiBase,
   listLibraryMeditations,
   putAssistantChatStoreRemote,
   saveMedimadeProfileDisplayName,
@@ -33,9 +34,16 @@ import {
 import {
   getMedimadeSessionDisplayName,
   getMedimadeSessionEmail,
+  getMedimadeSessionUserId,
   isMedimadeGuestAccount,
   setMedimadeSession,
 } from "@/lib/auth-session";
+import { getJournalSyncDiagnostics } from "@/lib/journal-sync";
+import {
+  onboardingHref,
+  runOnboardingAgain,
+} from "@/lib/onboarding-state";
+import { isNativeApp } from "@/lib/native/native-bridge";
 import { journalLockIsSet } from "@/lib/journal-prefs";
 import { cacheDailyTodos } from "@/lib/daily-todos";
 import { getSessionPrivileges } from "@/lib/session-privileges";
@@ -2187,6 +2195,55 @@ function GeneralSection({ settings, onPatch }: SectionProps) {
         helper="Share this if you contact support about a problem."
         control={
           <span className="font-mono text-sm text-muted">{version}</span>
+        }
+      />,
+    );
+  }
+
+  // Hidden diagnostics: Vite DEV or native builds only (sync support).
+  if (
+    (import.meta.env.DEV || isNativeApp()) &&
+    shouldShowSettingsRow("general.diagnostics")
+  ) {
+    const diag = getJournalSyncDiagnostics();
+    const email = getMedimadeSessionEmail()?.trim() || "—";
+    const userId = getMedimadeSessionUserId()?.trim() || "—";
+    const apiBase = getMedimadeApiBase() || "—";
+    const lastSync = diag.lastSyncAt
+      ? new Date(diag.lastSyncAt).toLocaleString()
+      : "—";
+    const lastErr = diag.lastSyncError?.trim() || "—";
+    helpRows.push(
+      <SettingsRow
+        key="diagnostics"
+        settingsKey="general.diagnostics"
+        title="Diagnostics"
+        helper="Dev / native only. Email, user id, API, last journal sync."
+        control={
+          <div className="max-w-[min(100%,18rem)] space-y-1 text-right font-mono text-[11px] leading-snug text-muted">
+            <p className="break-all">{email}</p>
+            <p className="break-all">{userId}</p>
+            <p className="break-all">{apiBase}</p>
+            <p>Sync {lastSync}</p>
+            <p className="break-all">Err {lastErr}</p>
+          </div>
+        }
+      />,
+    );
+    helpRows.push(
+      <SettingsRow
+        key="diagnostics-onboarding"
+        settingsKey="general.diagnostics"
+        title="Run onboarding again"
+        helper="Starts Tell me for this account in merge mode. Existing data is kept."
+        control={
+          <Link
+            to={onboardingHref({ step: "tell_me", mode: "merge" })}
+            className="inline-flex h-9 items-center justify-center rounded-full border border-border bg-[#FFFDF8] px-4 text-[13px] font-semibold text-foreground"
+            onClick={() => runOnboardingAgain()}
+          >
+            Run
+          </Link>
         }
       />,
     );

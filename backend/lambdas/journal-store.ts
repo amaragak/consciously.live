@@ -21,6 +21,9 @@ const s3 = new S3Client({});
 
 const SK_META = "META";
 const entrySk = (id: string) => `ENTRY#${id}`;
+const tombstoneSk = (id: string) => `TOMBSTONE#${id}`;
+/** Keep deletion markers so delta pulls can learn about removes. */
+const TOMBSTONE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
 /** Full HTTP body cap (API Gateway limit is higher; keep headroom). */
 const MAX_REQUEST_BODY_BYTES = 6 * 1024 * 1024;
@@ -529,12 +532,30 @@ async function persistStoreToDdb(
   const existing = await queryAllKeys(table, ownerId);
   const incomingIds = new Set(store.entries.map((e) => e.id));
   const ops: BatchOp[] = [];
+  const nowIso = new Date().toISOString();
 
   for (const { pk, sk } of existing) {
     if (sk === SK_META) continue;
     if (sk.startsWith("ENTRY#")) {
       const id = sk.slice("ENTRY#".length);
       if (!incomingIds.has(id)) {
+        ops.push({ op: "del", pk, sk });
+        ops.push({
+          op: "put",
+          item: {
+            pk,
+            sk: tombstoneSk(id),
+            id,
+            deletedAt: nowIso,
+          },
+        });
+      }
+      continue;
+    }
+    if (sk.startsWith("TOMBSTONE#")) {
+      const id = sk.slice("TOMBSTONE#".length);
+      // Entry is back — drop the tombstone. Also prune ancient markers.
+      if (incomingIds.has(id)) {
         ops.push({ op: "del", pk, sk });
       }
     }
@@ -639,6 +660,12 @@ async function persistStoreToDdb(
       op: "put",
       item,
     });
+    // Revive: clear any deletion marker for this id.
+    ops.push({
+      op: "del",
+      pk: ownerId,
+      sk: tombstoneSk(e.id),
+    });
   });
 
   ops.push({
@@ -647,6 +674,7 @@ async function persistStoreToDdb(
       pk: ownerId,
       sk: SK_META,
       activeEntryId: store.activeEntryId,
+      updatedAt: nowIso,
       ...(foldersFromUnknown(store.folders)
         ? { folders: foldersFromUnknown(store.folders) }
         : {}),
@@ -717,23 +745,83 @@ export async function handler(
     // Guests without a JWT use local demo / device journal only — never scan every owner's store.
     // Continue as guest has a JWT and uses the same cloud path as any account.
     if (!user) {
-      return json(200, { store: null });
+      return json(200, { store: null, serverTime: new Date().toISOString() });
     }
     const ownerId = user.sub;
+    const sinceRaw =
+      event.queryStringParameters?.since?.trim() ||
+      event.queryStringParameters?.lastPulledAt?.trim() ||
+      "";
+    const sinceMs = sinceRaw ? Date.parse(sinceRaw) : NaN;
+    const wantDelta = Number.isFinite(sinceMs) && sinceMs > 0;
+    const serverTime = new Date().toISOString();
     try {
       const items = await queryAllItems(table, ownerId);
       if (items.length) {
+        if (wantDelta) {
+          const changes: JournalEntry[] = [];
+          const deletedIds: string[] = [];
+          let activeEntryId: string | null = null;
+          let folders: JournalFolder[] | undefined;
+          const tombstoneCutoff = Date.now() - TOMBSTONE_TTL_MS;
+          for (const item of items) {
+            const sk = item.sk;
+            if (sk === SK_META) {
+              const ae = item.activeEntryId;
+              activeEntryId =
+                ae === null || typeof ae === "string"
+                  ? (ae as string | null)
+                  : null;
+              folders = foldersFromUnknown(item.folders);
+              continue;
+            }
+            if (typeof sk !== "string") continue;
+            if (sk.startsWith("ENTRY#")) {
+              const id =
+                typeof item.id === "string" ? item.id : sk.slice("ENTRY#".length);
+              const entry = journalEntryFromItem(item, id);
+              if (!entry) continue;
+              const updated = Date.parse(entry.updatedAt) || 0;
+              if (updated > sinceMs) changes.push(entry);
+              continue;
+            }
+            if (sk.startsWith("TOMBSTONE#")) {
+              const id =
+                typeof item.id === "string"
+                  ? item.id
+                  : sk.slice("TOMBSTONE#".length);
+              const deletedAt =
+                typeof item.deletedAt === "string"
+                  ? Date.parse(item.deletedAt)
+                  : NaN;
+              if (!Number.isFinite(deletedAt)) continue;
+              if (deletedAt < tombstoneCutoff) continue;
+              if (deletedAt > sinceMs && id) deletedIds.push(id);
+            }
+          }
+          return json(200, {
+            delta: true,
+            serverTime,
+            changes,
+            deletedIds,
+            activeEntryId,
+            ...(folders ? { folders } : {}),
+          });
+        }
         const store = ddbItemsToStore(items);
         return json(200, {
           store: store ?? { version: 2, activeEntryId: null, entries: [] },
+          serverTime,
         });
       }
       const bucket = process.env.MEDIA_BUCKET_NAME?.trim();
       if (bucket) {
         const migrated = await tryMigrateLegacyS3Json(bucket, table, ownerId);
-        if (migrated) return json(200, { store: migrated });
+        if (migrated) {
+          return json(200, { store: migrated, serverTime });
+        }
       }
-      return json(200, { store: null });
+      return json(200, { store: null, serverTime });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Read failed";
       return json(500, { error: msg });

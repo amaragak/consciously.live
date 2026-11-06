@@ -13,7 +13,10 @@ import type { AppBreadcrumbCrumb } from "@/lib/app-nav";
 
 function TrailSeparator() {
   return (
-    <span className="app-header-crumb-sep mx-2 shrink-0 text-[13px]" aria-hidden>
+    <span
+      className="app-header-crumb-sep mx-2 shrink-0 text-[13px] max-md:mx-0"
+      aria-hidden
+    >
       ›
     </span>
   );

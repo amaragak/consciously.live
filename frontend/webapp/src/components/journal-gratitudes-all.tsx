@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "@/lib/spa-nav";
 import { JournalGratitudeDayRow } from "@/components/journal-gratitude-day-row";
 import { JournalLockGate } from "@/components/journal-lock-gate";
+import { JournalMobileSectionTabs } from "@/components/journal-mobile-section-tabs";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 import {
   GRATITUDES_HUB_HREF,
@@ -103,8 +104,13 @@ export function JournalGratitudesAll() {
     <JournalLockGate>
       <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
         <div className="journal-mobile-paisley-bg relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col overflow-hidden border-r-[0.5px] border-border">
+          <JournalMobileSectionTabs
+            value="gratitude"
+            className="shrink-0 px-4 pb-3 pt-1 md:hidden sm:px-6"
+          />
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-8">
-            <div className="px-5 pt-3 sm:px-6">
+            {/* Mobile hub switch is the section tabs above; keep in-page back on md+. */}
+            <div className="hidden px-5 pt-3 sm:px-6 md:block">
               <Link
                 href={GRATITUDES_HUB_HREF}
                 className="inline-flex items-center gap-0.5 text-[14.5px] font-semibold text-muted hover:text-foreground"

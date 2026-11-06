@@ -48,6 +48,17 @@ export async function initNativeShell(): Promise<void> {
 
   void App.addListener("appStateChange", ({ isActive }) => {
     nativeAudioLog("app", isActive ? "foreground" : "background");
+    try {
+      window.dispatchEvent(
+        new CustomEvent(
+          isActive
+            ? "consciously-app-foreground"
+            : "consciously-app-background",
+        ),
+      );
+    } catch {
+      /* */
+    }
   });
 
   // Overlay hides the launch splash after it paints. Do NOT SplashScreen.show()

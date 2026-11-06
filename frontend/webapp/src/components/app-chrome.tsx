@@ -13,6 +13,7 @@ import {
   loadAppSidebarCollapsed,
   saveAppSidebarCollapsed,
 } from "@/lib/app-nav";
+import { installJournalSyncBootHooks } from "@/lib/journal-sync";
 
 type Props = {
   children: ReactNode;
@@ -39,6 +40,10 @@ export function AppChrome({ children }: Props) {
   }, []);
 
   useEffect(() => {
+    installJournalSyncBootHooks();
+  }, []);
+
+  useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
@@ -59,6 +64,22 @@ export function AppChrome({ children }: Props) {
       return next;
     });
   }, []);
+
+  const path = pathname.split("?")[0] ?? pathname;
+  const onboardingImmersive =
+    path === "/onboarding" || path.startsWith("/onboarding/");
+
+  if (onboardingImmersive) {
+    return (
+      <AppPrimaryTabsProvider>
+        <div className="flex h-dvh min-h-0 flex-1 flex-col overflow-hidden bg-[var(--background)]">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            {children}
+          </div>
+        </div>
+      </AppPrimaryTabsProvider>
+    );
+  }
 
   return (
     <AppPrimaryTabsProvider>

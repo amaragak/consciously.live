@@ -814,11 +814,8 @@ export function buildAppBreadcrumbs(
           })()
         : null;
       if (isAll || (entrySlug && entrySlug.toLowerCase() === "all")) {
-        // All list: Journal | Gratitudes (in-page back chevron handles return).
-        return [
-          { label: "Journal", href: "/journal" },
-          { label: "Gratitudes", href: null },
-        ];
+        // All list sits under Gratitudes; mobile tabs already say Gratitudes.
+        return [{ label: "Journal", href: "/journal" }];
       }
       if (isNew && !entrySlug) {
         return [
@@ -827,27 +824,35 @@ export function buildAppBreadcrumbs(
         ];
       }
       if (entrySlug) {
+        // Open gratitude: Journal › short date (or title fallback).
         const label = opts?.gratitudeEntryLabel?.trim() || "Gratitude";
         return [
-          { label: "Journal", href: "/journal" },
-          { label: "Gratitudes", href: "/journal/gratitudes" },
+          { label: "Journal", href: "/journal/gratitudes" },
           { label, href: null },
         ];
       }
-      // Hub: Journal | Gratitudes
-      return [
-        { label: "Journal", href: "/journal" },
-        { label: "Gratitudes", href: null },
-      ];
+      // Hub: header is just "Journal"; mobile tabs switch the page.
+      return [{ label: "Journal", href: "/journal" }];
     }
     if (
       pathname === "/journal/insights" ||
       pathname.startsWith("/journal/insights/")
     ) {
-      return [
-        { label: "Journal", href: "/journal" },
-        { label: "Insights", href: null },
-      ];
+      const letterMatch = /^\/journal\/insights\/([^/]+)\/?$/.exec(pathname);
+      if (letterMatch?.[1]) {
+        let label = letterMatch[1];
+        try {
+          label = decodeURIComponent(letterMatch[1]);
+        } catch {
+          /* keep raw */
+        }
+        return [
+          { label: "Journal", href: "/journal/insights" },
+          { label, href: null },
+        ];
+      }
+      // Hub: header is just "Journal"; mobile tabs switch the page.
+      return [{ label: "Journal", href: "/journal" }];
     }
     if (new URLSearchParams(search).get("new") === "1") {
       return [
@@ -855,19 +860,46 @@ export function buildAppBreadcrumbs(
         { label: "New entry", href: null },
       ];
     }
-    const entryMatch = /^\/journal\/entries\/([^/]+)\/?$/.exec(pathname);
-    if (entryMatch?.[1]) {
+    // Readable `/journal/:slug` or legacy `/journal/entries/:slug`.
+    const entryMatch =
+      /^\/journal\/entries\/([^/]+)\/?$/.exec(pathname) ??
+      /^\/journal\/([^/]+)\/?$/.exec(pathname);
+    const entrySlug = entryMatch?.[1]
+      ? (() => {
+          try {
+            return decodeURIComponent(entryMatch[1]!);
+          } catch {
+            return entryMatch[1]!;
+          }
+        })()
+      : null;
+    const journalReserved = new Set([
+      "entries",
+      "gratitudes",
+      "gratitude",
+      "insights",
+      "guides",
+      "import",
+      "my",
+    ]);
+    if (
+      entrySlug &&
+      (pathname.startsWith("/journal/entries/") ||
+        !journalReserved.has(entrySlug.toLowerCase()))
+    ) {
+      // Mobile entry chrome: "New entry" or short date ("Thu 5 Nov") — not the title.
       const title = opts?.journalEntryTitle?.trim() || "Entry";
       return [
         { label: "Journal", href: "/journal" },
         { label: title, href: null },
       ];
     }
-    if (pathname === "/journal/entries" || pathname.startsWith("/journal/entries/")) {
-      return [
-        { label: "Journal", href: "/journal" },
-        { label: "Entries", href: null },
-      ];
+    if (
+      pathname === "/journal/entries" ||
+      pathname === "/journal/entries/"
+    ) {
+      // Hub: header is just "Journal"; mobile tabs switch the page.
+      return [{ label: "Journal", href: "/journal" }];
     }
     return [{ label: "Journal", href: "/journal" }];
   }

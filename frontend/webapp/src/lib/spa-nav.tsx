@@ -13,19 +13,41 @@ import {
   type ComponentPropsWithoutRef,
   type MouseEvent,
 } from "react";
+import { clearTabScroll, scrollAppToTop } from "@/lib/tab-scroll";
 
 export function usePathname(): string {
   return useLocation().pathname;
+}
+
+function pathOnly(href: string): string {
+  const q = href.indexOf("?");
+  const h = href.indexOf("#");
+  let end = href.length;
+  if (q >= 0) end = Math.min(end, q);
+  if (h >= 0) end = Math.min(end, h);
+  return href.slice(0, end) || "/";
+}
+
+/** Scroll to top after a nav click (clears overview restore for the destination). */
+function scheduleScrollToTop(href: string): void {
+  clearTabScroll(pathOnly(href));
+  const run = () => scrollAppToTop();
+  queueMicrotask(run);
+  requestAnimationFrame(run);
 }
 
 export function useRouter() {
   const navigate = useNavigate();
   return {
     push: (href: string) => {
+      clearTabScroll(pathOnly(href));
       void navigate(href);
+      scheduleScrollToTop(href);
     },
     replace: (href: string) => {
+      clearTabScroll(pathOnly(href));
       void navigate(href, { replace: true });
+      scheduleScrollToTop(href);
     },
     prefetch: (_href: string) => {
       /* no-op in SPA */
@@ -46,6 +68,7 @@ type SpaLinkProps = Omit<ComponentPropsWithoutRef<"a">, "href"> & {
   href: string;
   replace?: boolean;
   prefetch?: boolean;
+  /** When true (default), scroll the app shell to top on navigate — like Next.js Link. */
   scroll?: boolean;
 };
 
@@ -54,7 +77,10 @@ type SpaLinkProps = Omit<ComponentPropsWithoutRef<"a">, "href"> & {
  * External http(s) links render a plain <a>.
  */
 export const Link = forwardRef<HTMLAnchorElement, SpaLinkProps>(
-  function SpaLink({ href, replace, onClick, children, ...rest }, ref) {
+  function SpaLink(
+    { href, replace, onClick, scroll = true, children, ...rest },
+    ref,
+  ) {
     const external =
       /^https?:\/\//i.test(href) ||
       href.startsWith("mailto:") ||
@@ -66,10 +92,15 @@ export const Link = forwardRef<HTMLAnchorElement, SpaLinkProps>(
         </a>
       );
     }
+    const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
+      onClick?.(e);
+      if (e.defaultPrevented || scroll === false) return;
+      scheduleScrollToTop(href);
+    };
     const rrProps: RRLinkProps = {
       to: href,
       replace,
-      onClick: onClick as ((e: MouseEvent<HTMLAnchorElement>) => void) | undefined,
+      onClick: handleClick,
       ...rest,
     };
     return (

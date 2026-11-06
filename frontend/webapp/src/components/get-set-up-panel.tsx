@@ -11,6 +11,7 @@ import {
   emptyDoneMap,
   GET_SET_UP_CHANGED,
   GET_SET_UP_ITEMS,
+  clearGetSetUpVisitHide,
   hideGetSetUpForVisit,
   skipGetSetUpItem,
   type GetSetUpDoneMap,
@@ -18,6 +19,11 @@ import {
   type GetSetUpSnapshot,
 } from "@/lib/get-set-up";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
+import {
+  onboardingGapRows,
+  type OnboardingGapRow,
+} from "@/lib/onboarding-get-set-up";
+import { ONBOARDING_CHANGED } from "@/lib/onboarding-state";
 
 const PANEL =
   "rounded-[22px] border border-border bg-[rgba(251,248,242,0.95)] shadow-[0_2px_14px_rgba(15,27,45,0.05)]";
@@ -269,6 +275,71 @@ function ItemRow({
   );
 }
 
+function OnboardingGapRowView({
+  row,
+  primary,
+}: {
+  row: OnboardingGapRow;
+  primary: boolean;
+}) {
+  if (row.kind === "voice") {
+    return (
+      <div className="relative mt-3 overflow-hidden rounded-2xl bg-[#1E232E] px-4 py-3.5 text-[#F7F1E6]">
+        <span className="navy-paisley-plate" aria-hidden />
+        <div className="relative z-[1] flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[14.5px] font-semibold">{row.title}</p>
+            <p className="text-[12.5px] leading-snug text-[#D8D0C2]">
+              {row.body}
+            </p>
+          </div>
+          <Link
+            href={row.href}
+            className={`${MIST_BTN} h-[34px] px-3 text-[13px]`}
+            style={PRIMARY_ACCENT_FILL_STYLE}
+          >
+            {row.action}
+          </Link>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-3 border-t border-border py-3">
+      <span className={`${ICON_WRAP} size-[38px] rounded-[11px]`}>
+        <svg
+          width="19"
+          height="19"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          aria-hidden
+        >
+          <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+        </svg>
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[14.5px] font-semibold text-foreground">{row.title}</p>
+        <p className="text-[12.5px] leading-snug text-muted md:text-[13.5px]">
+          {row.body}
+        </p>
+      </div>
+      <Link
+        href={row.href}
+        className={
+          primary
+            ? `${MIST_BTN} h-[34px] px-3 text-[13px]`
+            : `${OUTLINE_BTN} h-[34px] px-3 text-[13px]`
+        }
+        style={primary ? PRIMARY_ACCENT_FILL_STYLE : undefined}
+      >
+        {row.action}
+      </Link>
+    </div>
+  );
+}
+
 export function GetSetUpPanel() {
   const [done, setDone] = useState<GetSetUpDoneMap>(() => emptyDoneMap());
   const [tick, setTick] = useState(0);
@@ -290,6 +361,7 @@ export function GetSetUpPanel() {
     const unsubIdeate = subscribeIdeateCloud(refresh);
     const unsubAffirm = subscribeAffirmations(refresh);
     window.addEventListener(GET_SET_UP_CHANGED, refresh);
+    window.addEventListener(ONBOARDING_CHANGED, refresh);
     window.addEventListener("medimade-session-changed", refresh);
     window.addEventListener("storage", refresh);
     return () => {
@@ -297,6 +369,7 @@ export function GetSetUpPanel() {
       unsubIdeate();
       unsubAffirm();
       window.removeEventListener(GET_SET_UP_CHANGED, refresh);
+      window.removeEventListener(ONBOARDING_CHANGED, refresh);
       window.removeEventListener("medimade-session-changed", refresh);
       window.removeEventListener("storage", refresh);
     };
@@ -309,9 +382,11 @@ export function GetSetUpPanel() {
     [done, tick],
   );
 
-  if (!snapshot) return null;
+  const onboardingRows = useMemo(() => onboardingGapRows(), [tick]);
 
-  if (snapshot.hiddenThisVisit) {
+  if (!snapshot && onboardingRows.length === 0) return null;
+
+  if (snapshot?.hiddenThisVisit) {
     return (
       <div
         data-dash-reveal
@@ -322,16 +397,13 @@ export function GetSetUpPanel() {
           {snapshot.remaining.length} left
         </p>
         <Link
-          href={snapshot.remaining[0]?.href ?? "/"}
+          href={
+            onboardingRows[0]?.href ??
+            snapshot.remaining[0]?.href ??
+            "/"
+          }
           className="shrink-0 text-[13px] font-semibold text-accent-link"
-          onClick={() => {
-            try {
-              sessionStorage.removeItem("mm_get_set_up_hidden_visit");
-              window.dispatchEvent(new Event(GET_SET_UP_CHANGED));
-            } catch {
-              /* */
-            }
-          }}
+          onClick={() => clearGetSetUpVisitHide()}
         >
           Continue
         </Link>
@@ -339,9 +411,11 @@ export function GetSetUpPanel() {
     );
   }
 
-  const remaining = snapshot.remaining;
-  const useRows = remaining.length <= 2;
-  const compactChips = snapshot.chips.length >= 3;
+  const remaining = snapshot?.remaining ?? [];
+  const useRows = remaining.length <= 2 || onboardingRows.length > 0;
+  const compactChips = (snapshot?.chips.length ?? 0) >= 3;
+  const voiceRow = onboardingRows.find((r) => r.kind === "voice");
+  const gapRows = onboardingRows.filter((r) => r.kind === "row");
 
   return (
     <section
@@ -349,11 +423,35 @@ export function GetSetUpPanel() {
       aria-label="Get set up"
       className={`${PANEL} px-4 py-4 md:px-[22px] md:py-5`}
     >
-      <ProgressHeader snapshot={snapshot} compactChips={compactChips} />
+      {snapshot ? (
+        <ProgressHeader snapshot={snapshot} compactChips={compactChips} />
+      ) : (
+        <h2 className="font-display text-[21px] font-normal text-foreground md:text-[24px]">
+          Get set up
+        </h2>
+      )}
+      {voiceRow ? (
+        <OnboardingGapRowView row={voiceRow} primary />
+      ) : null}
+      {gapRows.length ? (
+        <div className="mt-1 flex flex-col">
+          {gapRows.map((row, index) => (
+            <OnboardingGapRowView
+              key={row.id}
+              row={row}
+              primary={!voiceRow && index === 0 && remaining.length === 0}
+            />
+          ))}
+        </div>
+      ) : null}
       {useRows ? (
         <div className="mt-1 flex flex-col">
           {remaining.map((item, index) => (
-            <ItemRow key={item.id} item={item} primary={index === 0} />
+            <ItemRow
+              key={item.id}
+              item={item}
+              primary={!voiceRow && gapRows.length === 0 && index === 0}
+            />
           ))}
         </div>
       ) : (

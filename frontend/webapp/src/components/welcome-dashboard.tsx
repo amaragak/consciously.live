@@ -30,6 +30,7 @@ import { formatDuration } from "@/components/library-meditation-card";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import { DashboardAffirmationsCard } from "@/components/plan/daily-affirmations-card";
 import { GetSetUpPanel } from "@/components/get-set-up-panel";
+import { MostlySetUpSheet } from "@/components/onboarding/mostly-set-up-sheet";
 import { JournalEntryListTitle } from "@/components/journal-prompt-question";
 import { SelectChevron } from "@/components/select-chevron";
 import { useLibraryPlayer } from "@/components/library-player-provider";
@@ -604,6 +605,7 @@ export function WelcomeDashboard() {
       </section>
 
       <GetSetUpPanel />
+      <MostlySetUpSheet />
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
         <DashCard

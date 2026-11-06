@@ -4,6 +4,7 @@ import { AppChrome } from "@/components/app-chrome";
 import { DailyAffirmationsWarmup } from "@/components/plan/daily-affirmations-card";
 import { IdeateCloudProvider } from "@/components/plan/ideate-cloud-provider";
 import { LibraryPlayerProvider } from "@/components/library-player-provider";
+import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import {
   ensureMedimadeSession,
   getMedimadeSessionJwt,
@@ -88,9 +89,11 @@ export function AppShell() {
       <LibraryPlayerProvider>
         <IdeateCloudProvider>
           <DailyAffirmationsWarmup />
-          <AppChrome>
-            <Outlet />
-          </AppChrome>
+          <OnboardingGate>
+            <AppChrome>
+              <Outlet />
+            </AppChrome>
+          </OnboardingGate>
         </IdeateCloudProvider>
       </LibraryPlayerProvider>
     </MvpFlagsProvider>

@@ -136,29 +136,15 @@
     position: relative;
     top: 1px;
   }
-  /* Hairline between the section name and the next crumb. Later chevrons stay. */
-  .app-header-phone-feature > ol:last-of-type > li:nth-child(2) > .app-header-crumb-sep {
-    display: inline-block;
-    width: 1px;
-    height: 16px;
-    margin-inline: 10px;
-    overflow: hidden;
-    font-size: 0;
-    line-height: 0;
-    color: transparent;
-    background-color: rgb(255 255 255 / 0.42);
-    align-self: center;
+  /* Small muted chevron between trail levels (~8px each side). */
+  .app-header-phone-feature > ol:last-of-type > li:nth-child(n + 2) > .app-header-crumb-sep {
+    margin-inline: 8px;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--muted);
   }
 }
 @media (max-width: 767px) {
-  :root.hybrid
-    .app-header-phone-feature
-    > ol:last-of-type
-    > li:nth-child(2)
-    > .app-header-crumb-sep {
-    background-color: var(--border);
-  }
-
   /*
    * Previous A-lite full-bleed light header (superseded by floating capsule).
    * .app-top-bar { background: var(--background); border-bottom; … }
@@ -200,6 +186,9 @@
     height: 3rem;
     width: 100%;
     align-items: center;
+    /* Equal inset so sun + avatar sit snug in the rounded ends. */
+    padding-left: 4px;
+    padding-right: 4px;
     overflow: hidden;
     border-radius: 9999px;
     border: 1px solid var(--border);
@@ -222,10 +211,7 @@
     color: var(--foreground);
     -webkit-text-fill-color: var(--foreground);
   }
-  .app-header-phone-feature > ol:last-of-type > li:nth-child(2) > .app-header-crumb-sep {
-    background-color: var(--border);
-  }
-  /* ~40px circle; sun nearly fills it; fill is a faint gold wash only. */
+  /* ~40px circle; sun nearly fills it; flat navy fill (hero / paisley cards). */
   .app-header-home-btn {
     display: inline-flex;
     height: 2.5rem;
@@ -233,12 +219,17 @@
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
+    /* ~14px from button edge to first breadcrumb. */
+    margin-right: 14px;
     border-radius: 9999px;
-    background-color: color-mix(
-      in srgb,
-      var(--header-gold, #d9b87c) 12%,
-      transparent
-    );
+    background-color: #1e232e;
+    background-image: none;
+  }
+  /* Avatar matches the sun button (2.5rem). */
+  .app-top-bar .app-mobile-account-trigger {
+    height: 2.5rem;
+    width: 2.5rem;
+    font-size: 0.875rem;
   }
 }
 
@@ -689,7 +680,8 @@ main[data-page-kind="standard"] {
     0px,
     calc((100% - min(100%, var(--content-max-width))) / 2)
   );
-  --page-pattern-opacity: 0.24;
+  /* Flat canvas (#F8F1E4 light) — paisley page tile off for now. */
+  --page-pattern-opacity: 0;
 }
 
 main[data-page-kind="standard"][data-app-layout="signed-in"] {
@@ -703,15 +695,11 @@ main[data-page-kind="standard"][data-app-layout="signed-in"] :where(.mx-auto) {
 }
 
 :root.dark main[data-page-kind="standard"] {
-  --page-pattern-opacity: 0.18;
+  --page-pattern-opacity: 0;
 }
 
-/*
- * Hybrid: same throughout → right-edge fade as light/dark, at a quieter base
- * opacity so the content column stays readable.
- */
 :root.hybrid main[data-page-kind="standard"] {
-  --page-pattern-opacity: 0.16;
+  --page-pattern-opacity: 0;
 }
 
 .page-pattern-tile {

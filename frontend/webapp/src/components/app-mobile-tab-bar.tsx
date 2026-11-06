@@ -34,6 +34,7 @@ import {
   shouldHideMobileTabBar,
 } from "@/lib/app-mobile-tab-bar";
 import { applyMvpNav, useMvpFlags } from "@/lib/mvp-flags";
+import { scrollAppToTop } from "@/lib/tab-scroll";
 import {
   APP_NAV_MAIN,
   activeNavSectionId,
@@ -528,9 +529,7 @@ export function AppMobileTabBar() {
           openSheet(section.id);
           return;
         }
-        window.scrollTo({ top: 0, behavior: "smooth" });
-        const main = document.querySelector("main");
-        main?.scrollTo?.({ top: 0, behavior: "smooth" });
+        scrollAppToTop({ behavior: "smooth", clearPath: landing });
         return;
       }
 

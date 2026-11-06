@@ -35,3 +35,38 @@ export function restoreTabScroll(pathname: string): void {
   if (top == null) return;
   main.scrollTop = top;
 }
+
+/** Drop a remembered overview scroll (header / tab nav wants the top). */
+export function clearTabScroll(pathname: string): void {
+  scrollByPath.delete(tabScrollKey(pathname));
+}
+
+/**
+ * Scroll the app shell (and nested page scrollers) to the top.
+ * Call after header / nav clicks so landing pages don't stay mid-scroll.
+ */
+export function scrollAppToTop(opts?: {
+  behavior?: ScrollBehavior;
+  /** Clear remembered tab overview scroll for this path before restoring. */
+  clearPath?: string;
+}): void {
+  if (typeof document === "undefined") return;
+  if (opts?.clearPath) clearTabScroll(opts.clearPath);
+  const behavior = opts?.behavior ?? "auto";
+  try {
+    window.scrollTo({ top: 0, left: 0, behavior });
+  } catch {
+    window.scrollTo(0, 0);
+  }
+  const main = mainEl();
+  if (!main) return;
+  try {
+    main.scrollTo({ top: 0, left: 0, behavior });
+  } catch {
+    main.scrollTop = 0;
+  }
+  // Journal / immersive pages keep their own overflow; reset those too.
+  main.querySelectorAll<HTMLElement>("*").forEach((el) => {
+    if (el.scrollTop > 0) el.scrollTop = 0;
+  });
+}

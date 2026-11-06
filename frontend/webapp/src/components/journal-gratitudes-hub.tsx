@@ -6,6 +6,7 @@ import { JournalEntryMeta } from "@/components/journal-entry-meta";
 import { JournalGratitudeDayRow } from "@/components/journal-gratitude-day-row";
 import { JournalGratitudeEditor } from "@/components/journal-gratitude-editor";
 import { JournalLockGate } from "@/components/journal-lock-gate";
+import { JournalMobileSectionTabs } from "@/components/journal-mobile-section-tabs";
 import { isMedimadeSessionActive } from "@/lib/auth-session";
 import {
   GRATITUDES_ALL_HREF,
@@ -137,6 +138,10 @@ export function JournalGratitudesHub() {
     <JournalLockGate>
       <div className="flex min-h-0 w-full min-w-0 flex-1 overflow-hidden bg-transparent">
         <div className="journal-mobile-paisley-bg relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col overflow-hidden border-r-[0.5px] border-border">
+          <JournalMobileSectionTabs
+            value="gratitude"
+            className="shrink-0 px-4 pb-3 pt-1 md:hidden sm:px-6"
+          />
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <JournalGratitudeEditor
               createdAt={journalEntryDateIso(today)}

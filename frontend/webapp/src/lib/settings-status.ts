@@ -66,7 +66,8 @@ export type SettingsKey =
   | "general.captions"
   | "general.billing"
   | "general.help"
-  | "general.version";
+  | "general.version"
+  | "general.diagnostics";
 
 export const SETTINGS_STATUS: Record<SettingsKey, SettingsStatus> = {
   "account.displayName": "wired",
@@ -124,6 +125,8 @@ export const SETTINGS_STATUS: Record<SettingsKey, SettingsStatus> = {
   "general.billing": "wired",
   "general.help": "wired",
   "general.version": "wired",
+  /** Dev builds + native only — see GeneralSection gate. */
+  "general.diagnostics": "wired",
 };
 
 export function settingsStatusLabel(status: SettingsStatus): string {

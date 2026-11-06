@@ -37,6 +37,7 @@ import {
   getMedimadeSessionDisplayName,
   getMedimadeSessionEmail,
 } from "@/lib/auth-session";
+import { findEntityByPathSlug } from "@/lib/entity-href";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import { subscribeGuides } from "@/content/guides";
@@ -52,15 +53,15 @@ import {
 import { parseCreateMeditationPathname } from "@/lib/create-meditation-path";
 import { formatGratitudeRowDate } from "@/lib/journal-gratitudes";
 import {
-  formatJournalEntryDate,
-  journalEntryListTitle,
+  findJournalEntryByPathSlug,
+  formatJournalEntryCrumbDate,
+  journalEntryHasMeaningfulContent,
   loadJournalStoreRaw,
   localDateKey,
   localDateKeyFromIso,
   subscribeJournalStore,
 } from "@/lib/journal-storage";
 import {
-  getJournalEntryLiveTitle,
   subscribeJournalEntryLiveTitle,
 } from "@/lib/journal-entry-live-title";
 
@@ -176,11 +177,34 @@ function AccountMenu({ accountLabel }: { accountLabel: string }) {
 }
 
 function lifeAreaTitleFromPath(pathname: string): string | null {
-  const m = pathname.match(/^\/(?:manifest|ideate|dream|plan)\/goal\/([^/?#]+)/);
-  if (!m?.[1]) return null;
+  // Legacy: `/manifest/goal/<id>`
+  const legacy = pathname.match(
+    /^\/(?:manifest|ideate|dream|plan)\/goal\/([^/?#]+)/,
+  );
+  // Readable: `/manifest/<slug>` (and nested `/manifest/<slug>/tracker/…`)
+  const reserved = new Set([
+    "story",
+    "poster",
+    "guides",
+    "vision-board",
+    "tracker",
+    "insights",
+    "words",
+    "questions",
+    "goal",
+    "my",
+  ]);
+  const slugMatch = pathname.match(
+    /^\/(?:manifest|ideate|dream|plan)\/([^/?#]+)/,
+  );
+  const raw =
+    legacy?.[1] ??
+    (slugMatch?.[1] && !reserved.has(slugMatch[1].toLowerCase())
+      ? slugMatch[1]
+      : null);
+  if (!raw) return null;
   try {
-    const id = decodeURIComponent(m[1]);
-    const dream = loadIdeateStore().dreams.find((d) => d.id === id);
+    const dream = findEntityByPathSlug(loadIdeateStore().dreams, raw);
     return dream?.title?.trim() || null;
   } catch {
     return null;
@@ -224,17 +248,31 @@ function createProgramTitleFromSession(pathname: string): string | null {
   return title || null;
 }
 
+const JOURNAL_ENTRY_RESERVED = new Set([
+  "entries",
+  "gratitudes",
+  "gratitude",
+  "insights",
+  "guides",
+  "import",
+  "my",
+]);
+
 function journalEntryTitleFromPath(pathname: string): string | null {
   if (
     pathname === "/journal/entries" ||
     pathname === "/journal/entries/" ||
     pathname.startsWith("/journal/gratitudes") ||
     pathname.startsWith("/journal/gratitude") ||
-    pathname.startsWith("/journal/insights")
+    pathname.startsWith("/journal/insights") ||
+    pathname.startsWith("/journal/guides") ||
+    pathname.startsWith("/journal/import")
   ) {
     return null;
   }
-  const m = /^\/journal\/entries\/([^/]+)\/?$/.exec(pathname);
+  const m =
+    /^\/journal\/entries\/([^/]+)\/?$/.exec(pathname) ??
+    /^\/journal\/([^/]+)\/?$/.exec(pathname);
   if (!m?.[1]) return null;
   let id: string;
   try {
@@ -242,15 +280,21 @@ function journalEntryTitleFromPath(pathname: string): string | null {
   } catch {
     id = m[1];
   }
+  if (
+    !pathname.startsWith("/journal/entries/") &&
+    JOURNAL_ENTRY_RESERVED.has(id.toLowerCase())
+  ) {
+    return null;
+  }
   try {
-    const live = getJournalEntryLiveTitle(id);
-    if (live != null) {
-      const t = live.trim();
-      if (t) return t;
-    }
-    const entry = loadJournalStoreRaw().entries.find((e) => e.id === id);
-    if (!entry) return live != null ? "Untitled entry" : "Entry";
-    return journalEntryListTitle(entry);
+    const entry = findJournalEntryByPathSlug(
+      loadJournalStoreRaw().entries,
+      id,
+      "journal",
+    );
+    if (!entry) return "New entry";
+    if (!journalEntryHasMeaningfulContent(entry)) return "New entry";
+    return formatJournalEntryCrumbDate(entry.entryDate || entry.createdAt);
   } catch {
     return "Entry";
   }
@@ -609,7 +653,7 @@ export function AppTopBar({
 
       {/* Compact (&lt; lg). Phone: Home sun + divider + title. md–lg: BrandPhrase. */}
       <div
-        className={`relative z-10 flex min-w-0 items-center overflow-hidden py-0 pl-1.5 pr-1 transition-transform duration-200 ease-out max-md:flex-1 md:w-fit md:max-w-[min(100%,42%)] md:shrink-0 md:pl-3 md:pr-2 lg:hidden ${
+        className={`relative z-10 flex min-w-0 items-center overflow-hidden py-0 pl-1.5 pr-1 transition-transform duration-200 ease-out max-md:flex-1 max-md:pl-0 max-md:pr-0 md:w-fit md:max-w-[min(100%,42%)] md:shrink-0 md:pl-3 md:pr-2 lg:hidden ${
           mobileSearchOpen
             ? "pointer-events-none -translate-x-full"
             : "translate-x-0"
@@ -626,10 +670,6 @@ export function AppTopBar({
           >
             <LogoMark size={30} className="app-header-brand-sun block" />
           </Link>
-          <span
-            className="mx-2 hidden h-4 w-px shrink-0 bg-border max-md:block"
-            aria-hidden
-          />
           {onNotifications ? (
             <button
               type="button"
@@ -705,7 +745,7 @@ export function AppTopBar({
       {/* lg+: keeps right cluster at the trailing edge under the absolute centre slot. */}
       <div className="hidden min-w-0 flex-1 lg:block" aria-hidden />
 
-      <div className="relative z-20 ml-auto flex shrink-0 items-center gap-1 pr-1 max-md:gap-0 sm:pr-4 md:gap-2 md:pr-3 lg:ml-0">
+      <div className="relative z-20 ml-auto flex shrink-0 items-center gap-1 pr-1 max-md:gap-0 max-md:pr-0 sm:pr-4 md:gap-2 md:pr-3 lg:ml-0">
         <AppTopBarTrailingSlot className="flex max-w-[min(100vw-11rem,28rem)] items-center justify-end overflow-x-auto" />
         <div className="hidden lg:contents">
           {isCrossOriginApp() ? (

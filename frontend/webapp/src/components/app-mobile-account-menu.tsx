@@ -92,7 +92,7 @@ export function AppMobileAccountMenu({
         }
         title={accountLabel}
         onClick={() => setOpen((v) => !v)}
-        className={`header-gold-sunlit-fill relative flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-semibold text-on-accent transition-[box-shadow,opacity] hover:opacity-90 ${
+        className={`app-mobile-account-trigger header-gold-sunlit-fill relative flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-semibold text-on-accent transition-[box-shadow,opacity] hover:opacity-90 ${
           open ? "ring-2 ring-accent ring-offset-2 ring-offset-card" : ""
         }`}
       >

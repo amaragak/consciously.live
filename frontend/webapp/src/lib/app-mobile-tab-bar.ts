@@ -81,11 +81,19 @@ export function setAppMobileTabBarState(
 /** Routes where the tab bar hides (own bottom chrome / immersive). */
 export function shouldHideMobileTabBar(pathname: string): boolean {
   const path = pathname.split("?")[0] ?? pathname;
+  // Journal entry editor owns a floating writing bar on mobile.
+  const journalEntry =
+    /^\/journal\/entries\/[^/]+\/?$/.test(path) &&
+    path !== "/journal/entries" &&
+    !path.startsWith("/journal/entries?");
   return (
     path === "/meditate/create" ||
     path.startsWith("/meditate/create/") ||
     path === "/create" ||
-    path.startsWith("/create/")
+    path.startsWith("/create/") ||
+    path === "/onboarding" ||
+    path.startsWith("/onboarding/") ||
+    journalEntry
   );
 }
 

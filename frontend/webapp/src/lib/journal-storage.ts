@@ -164,6 +164,35 @@ export function formatJournalEntryDate(iso: string): string {
   }
 }
 
+/** Mobile entry breadcrumb: "Thu 5 Nov". */
+export function formatJournalEntryCrumbDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "Entry";
+    const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
+    const day = d.getDate();
+    const month = d.toLocaleDateString("en-US", { month: "short" });
+    return `${weekday} ${day} ${month}`;
+  } catch {
+    return "Entry";
+  }
+}
+
+/** Mobile entry card heading: "Thursday 5 November". */
+export function formatJournalEntryCardDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("en-GB", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    });
+  } catch {
+    return "—";
+  }
+}
+
 export function stripHtmlToText(html: string): string {
   return html
     .replace(/<\/(p|div|h[1-6]|li|br)\s*>/gi, " ")
@@ -1038,6 +1067,23 @@ function normalizeEntry(e: JournalEntry): JournalEntry {
  * `preferActiveId` keeps the entry the user just opened (local) selected when
  * the remote snapshot still points at an older active row.
  */
+function entryUpdatedAtMs(e: JournalEntry): number {
+  const t = Date.parse(e.updatedAt || e.createdAt);
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** Prefer the newer of two versions of the same entry (last write wins). */
+export function pickNewerJournalEntry(
+  a: JournalEntry,
+  b: JournalEntry,
+): JournalEntry {
+  return entryUpdatedAtMs(a) >= entryUpdatedAtMs(b) ? a : b;
+}
+
+/**
+ * Merge cloud + local. Shared ids: last `updatedAt` wins. Local-only drafts and
+ * in-flight creates that aren't on the remote yet are kept.
+ */
 export function mergeRemoteJournalKeepingLocalOnly(
   remote: JournalStoreV2,
   localEntries: JournalEntry[],
@@ -1049,21 +1095,28 @@ export function mergeRemoteJournalKeepingLocalOnly(
   const remoteNormalized = remote.entries.map((remoteEntry) => {
     const normalized = normalizeEntry(remoteEntry);
     const local = localById.get(normalized.id);
+    if (!local) return normalized;
+    const newer = pickNewerJournalEntry(local, normalized);
+    const base = normalizeEntry(newer);
     // Cloud used to drop meditation fields on PUT — keep a local link until
     // the remote entry carries one.
     if (
-      (local?.meditationId?.trim() && !normalized.meditationId?.trim()) ||
-      (local?.links?.length && !normalized.links?.length)
+      (local.meditationId?.trim() && !base.meditationId?.trim()) ||
+      (local.links?.length && !base.links?.length)
     ) {
       return normalizeEntry({
-        ...normalized,
-        meditationId: normalized.meditationId || local?.meditationId,
-        meditationSource: normalized.meditationSource || local?.meditationSource,
-        meditationSnapshot: normalized.meditationSnapshot || local?.meditationSnapshot,
-        links: normalized.links?.length ? normalized.links : local?.links,
+        ...base,
+        meditationId: base.meditationId || local.meditationId,
+        meditationSource: base.meditationSource || local.meditationSource,
+        meditationSnapshot: base.meditationSnapshot || local.meditationSnapshot,
+        links: base.links?.length ? base.links : local.links,
       });
     }
-    return normalized;
+    // Winning side was local: clear localOnly so a subsequent PUT can upload it.
+    if (newer === local && local.localOnly && journalEntryHasMeaningfulContent(local)) {
+      return normalizeEntry({ ...base, localOnly: undefined });
+    }
+    return base;
   });
   const remoteIds = new Set(remoteNormalized.map((e) => e.id));
   const localExtras = localEntries
@@ -1093,8 +1146,17 @@ export function mergeRemoteJournalKeepingLocalOnly(
   };
 }
 
+/**
+ * Rows that may be uploaded. Skips demos, explicit local-only drafts, and empty
+ * stubs so + New never creates a cloud "Nothing written yet" row.
+ */
 export function entriesForCloudPut(entries: JournalEntry[]): JournalEntry[] {
-  return entries.filter((e) => !e.localOnly && !isDemoJournalEntry(e));
+  return entries.filter(
+    (e) =>
+      !e.localOnly &&
+      !isDemoJournalEntry(e) &&
+      journalEntryHasMeaningfulContent(e),
+  );
 }
 
 /** Consecutive local calendar days with a meaningful entry, ending today or yesterday. */
@@ -1310,7 +1372,16 @@ export function newGratitudeJournalEntry(now = new Date()): JournalEntry {
     gratitude: lines,
     title: gratitudeTitleForDate(now),
     contentHtml: gratitudeLinesToHtml(lines),
+    // Not uploaded until at least one line is filled.
+    localOnly: true,
   });
+}
+
+/** Clear `localOnly` once the draft has something worth syncing. */
+export function promoteJournalEntryForCloud(entry: JournalEntry): JournalEntry {
+  if (!entry.localOnly) return entry;
+  if (!journalEntryHasMeaningfulContent(entry)) return entry;
+  return { ...entry, localOnly: undefined };
 }
 
 export function findGratitudeEntryForLocalDate(
@@ -1353,6 +1424,9 @@ export function journalEntryHasMeaningfulContent(e: JournalEntry): boolean {
   if (e.title.trim().length > 0) return true;
   // Reflect stubs are kept even before the first keystroke.
   if (e.meditationId?.trim()) return true;
+  if (typeof e.mood === "string" && e.mood.trim()) return true;
+  if ((e.tags ?? []).some((t) => t.trim().length > 0)) return true;
+  if ((e.links ?? []).length > 0) return true;
   if (/<img\b/i.test(e.contentHtml)) return true;
   if (/data-journal-prompt="1"/i.test(e.contentHtml)) return true;
   return stripHtmlToText(e.contentHtml).trim().length > 0;

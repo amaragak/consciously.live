@@ -34,6 +34,7 @@ import {
   HealSupportPage,
 } from "./pages/heal-page";
 import { HomePage } from "./pages/home-page";
+import { OnboardingPage } from "./pages/onboarding-page";
 import { JournalPage } from "./pages/journal-page";
 import { LibraryPage } from "./pages/library-page";
 import { ManifestGoalPage } from "./pages/manifest-goal-page";
@@ -109,6 +110,7 @@ export function App() {
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<HomePage />} />
+        <Route path="onboarding" element={<OnboardingPage />} />
         <Route path="heal" element={<HealHomePage />} />
         <Route path="heal/rested" element={<HealRestedPage />} />
         <Route path="heal/support" element={<HealSupportPage />} />

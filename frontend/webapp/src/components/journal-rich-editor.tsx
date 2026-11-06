@@ -10,7 +10,9 @@ import {
 } from "@/lib/tiptap-markdown-clipboard";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Image as ImageIcon, List, ListOrdered, Redo2, Undo2 } from "lucide-react";
+import { JournalMobileWritingBar } from "@/components/journal-mobile-writing-bar";
 import {
+  formatJournalEntryCardDate,
   formatJournalEntryDate,
   isoToDateInput,
   dateInputToIso,
@@ -81,8 +83,15 @@ type Props = {
   bottomBar?: ReactNode;
   /** Hide the created-date line when date is shown elsewhere. */
   hideCreatedDate?: boolean;
+  /**
+   * Mobile entry compose (consciously-journal-entry-mobile): one card, floating
+   * writing bar, in-page toolbar commented out on phone.
+   */
+  mobileCardLayout?: boolean;
   /** Passage to highlight when opened from Insights (`?highlight=`). */
   highlightQuote?: string | null;
+  /** Muted autosave line by the date ("Saving…", "Saved", …). */
+  syncStatusLabel?: string | null;
   /** Optional secondary footer above the bottom bar (e.g. tags). */
   children?: ReactNode;
 };
@@ -97,7 +106,7 @@ export function JournalRichEditor({
   onEntryDateChange,
   transcribeApiBase,
   titlePlaceholder = "Title",
-  placeholder = "Write freely…",
+  placeholder = "Write what's on your mind…",
   onHtmlChange,
   onTitleChange,
   onDelete,
@@ -113,7 +122,9 @@ export function JournalRichEditor({
   promptSources,
   bottomBar,
   hideCreatedDate = false,
+  mobileCardLayout = false,
   highlightQuote = null,
+  syncStatusLabel = null,
   children,
 }: Props) {
   const titleSeededForEntryRef = useRef<string | null>(null);
@@ -129,6 +140,7 @@ export function JournalRichEditor({
   const [bodyEmpty, setBodyEmpty] = useState(true);
   const [promptsOpen, setPromptsOpen] = useState(false);
   const [usedPromptIds, setUsedPromptIds] = useState<string[]>([]);
+  const [bodyFocused, setBodyFocused] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaRecorderMimeRef = useRef<string>("");
   const mediaChunksRef = useRef<BlobPart[]>([]);
@@ -351,6 +363,39 @@ export function JournalRichEditor({
     return () => window.clearTimeout(timer);
   }, [editor, entryId]);
 
+  /** New entries: focus the body so the caret + keyboard are ready (mobile). */
+  useEffect(() => {
+    if (!editor || !mobileCardLayout) return;
+    let armed = false;
+    try {
+      armed = sessionStorage.getItem("journal-autofocus-body") === "1";
+    } catch {
+      return;
+    }
+    if (!armed) return;
+    const timer = window.setTimeout(() => {
+      editor.commands.focus("end");
+      try {
+        sessionStorage.removeItem("journal-autofocus-body");
+      } catch {
+        /* ignore */
+      }
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [editor, entryId, mobileCardLayout]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const onFocus = () => setBodyFocused(true);
+    const onBlur = () => setBodyFocused(false);
+    editor.on("focus", onFocus);
+    editor.on("blur", onBlur);
+    return () => {
+      editor.off("focus", onFocus);
+      editor.off("blur", onBlur);
+    };
+  }, [editor]);
+
   useEffect(() => {
     if (!editor || !highlightQuote?.trim()) return;
     const root = editor.view.dom as HTMLElement;
@@ -475,51 +520,202 @@ export function JournalRichEditor({
   const menuItemClass =
     "block w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-accent-soft/30";
 
-  const entryDateControl = onEntryDateChange ? (
-    <span className="relative inline-flex items-center">
-      <button
-        type="button"
-        className="cursor-pointer text-[12px] text-muted underline-offset-2 hover:text-foreground hover:underline"
-        onClick={() => {
-          const el = dateInputRef.current;
-          if (!el) return;
-          try {
-            el.showPicker?.();
-          } catch {
-            el.click();
-          }
-        }}
-      >
-        <time dateTime={entryDate}>{formatJournalEntryDate(entryDate)}</time>
-      </button>
-      <input
-        ref={dateInputRef}
-        type="date"
-        value={isoToDateInput(entryDate)}
-        onChange={(ev) => {
-          const iso = dateInputToIso(ev.target.value);
-          if (iso) onEntryDateChange(iso);
-        }}
-        className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
-        tabIndex={-1}
-        aria-label="Entry date"
-      />
+  const entryDateControl = (
+    <span className="inline-flex items-baseline gap-2">
+      {onEntryDateChange ? (
+        <span className="relative inline-flex items-center">
+          <button
+            type="button"
+            className="cursor-pointer text-[12px] text-muted underline-offset-2 hover:text-foreground hover:underline"
+            onClick={() => {
+              const el = dateInputRef.current;
+              if (!el) return;
+              try {
+                el.showPicker?.();
+              } catch {
+                el.click();
+              }
+            }}
+          >
+            <time dateTime={entryDate}>{formatJournalEntryDate(entryDate)}</time>
+          </button>
+          <input
+            ref={dateInputRef}
+            type="date"
+            value={isoToDateInput(entryDate)}
+            onChange={(ev) => {
+              const iso = dateInputToIso(ev.target.value);
+              if (iso) onEntryDateChange(iso);
+            }}
+            className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+            tabIndex={-1}
+            aria-label="Entry date"
+          />
+        </span>
+      ) : (
+        <time dateTime={entryDate} className="text-[12px] text-muted">
+          {formatJournalEntryDate(entryDate)}
+        </time>
+      )}
+      {syncStatusLabel ? (
+        <span className="text-[11px] text-muted">{syncStatusLabel}</span>
+      ) : null}
     </span>
-  ) : (
-    <time dateTime={entryDate} className="text-[12px] text-muted">
-      {formatJournalEntryDate(entryDate)}
-    </time>
   );
+
+  const micButton = transcribeApiBase ? (
+    <button
+      type="button"
+      title={voiceRecording ? "Stop and place clip" : "Record voice"}
+      aria-label={voiceRecording ? "Stop and place clip" : "Record voice"}
+      aria-pressed={voiceRecording}
+      disabled={voiceBusy}
+      onClick={() => {
+        if (voiceBusy) return;
+        if (voiceRecording) {
+          void finishRecordingIntoEditor();
+          return;
+        }
+        void startVoiceRecording();
+      }}
+      className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${
+        voiceRecording ? "animate-pulse" : ""
+      }`}
+    >
+      <IconMic />
+    </button>
+  ) : null;
+
+  const writingBarPortal =
+    mobileCardLayout && typeof document !== "undefined" ? (
+      <JournalMobileWritingBar>
+        {micButton}
+        <ToolbarBtn
+          label="Bold"
+          active={editor.isActive("bold")}
+          onClick={() => editor.chain().focus().toggleBold().run()}
+        >
+          <span className="font-bold">B</span>
+        </ToolbarBtn>
+        <ToolbarBtn
+          label="Italic"
+          active={editor.isActive("italic")}
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+        >
+          <span className="italic">I</span>
+        </ToolbarBtn>
+        <ToolbarBtn
+          label="More formatting"
+          active={toolbarMoreOpen}
+          onClick={() => setToolbarMoreOpen((v) => !v)}
+        >
+          <IconDotsHorizontal />
+        </ToolbarBtn>
+        <button
+          type="button"
+          onClick={() => setPromptsOpen((open) => !open)}
+          aria-pressed={promptsOpen}
+          className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border px-3 text-[13px] font-semibold text-foreground"
+        >
+          Prompts
+        </button>
+      </JournalMobileWritingBar>
+    ) : null;
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden bg-transparent">
       {/* Fills the writing pane; parent journal shell is max-w-6xl + right pattern gutter. */}
-      <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden bg-[color:var(--journal-warm-bg)]">
-        <div className="flex shrink-0 flex-col border-b border-border">
-          <div className="flex items-start gap-2 px-7 pb-3 pt-3">
-            <div className="min-w-0 flex-1">
-              {!hideCreatedDate ? (
+      <div
+        className={`relative flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden ${
+          mobileCardLayout
+            ? "max-sm:bg-transparent sm:bg-[color:var(--journal-warm-bg)]"
+            : "bg-[color:var(--journal-warm-bg)]"
+        }`}
+      >
+        <div
+          className={`flex shrink-0 flex-col ${
+            mobileCardLayout
+              ? `max-sm:mx-3 max-sm:mt-1 max-sm:rounded-t-[18px] max-sm:border max-sm:border-b-0 max-sm:border-border max-sm:bg-card sm:border-b sm:border-border`
+              : "border-b border-border"
+          }`}
+        >
+          <div
+            className={`relative flex items-start gap-2 px-7 pb-3 pt-3 ${
+              mobileCardLayout ? "max-sm:flex-col max-sm:gap-2 max-sm:px-4 max-sm:pb-2 max-sm:pt-3.5" : ""
+            }`}
+          >
+            {mobileCardLayout ? (
+              <div className="hidden w-full items-center justify-between gap-2 max-sm:flex">
+                <div className="relative flex min-w-0 items-baseline gap-2">
+                  <button
+                    type="button"
+                    className="cursor-pointer text-[11.5px] font-semibold uppercase tracking-[0.14em] text-[#8A6424]"
+                    onClick={() => {
+                      const el = dateInputRef.current;
+                      if (!el) return;
+                      try {
+                        el.showPicker?.();
+                      } catch {
+                        el.click();
+                      }
+                    }}
+                  >
+                    <time dateTime={entryDate}>
+                      {formatJournalEntryCardDate(entryDate)}
+                    </time>
+                  </button>
+                  {syncStatusLabel ? (
+                    <span className="truncate text-[11px] text-muted">
+                      {syncStatusLabel}
+                    </span>
+                  ) : null}
+                  {onEntryDateChange ? (
+                    <input
+                      ref={dateInputRef}
+                      type="date"
+                      value={isoToDateInput(entryDate)}
+                      onChange={(ev) => {
+                        const iso = dateInputToIso(ev.target.value);
+                        if (iso) onEntryDateChange(iso);
+                      }}
+                      className="pointer-events-none absolute inset-0 h-full w-full opacity-0"
+                      tabIndex={-1}
+                      aria-label="Entry date"
+                    />
+                  ) : null}
+                </div>
+                {showEntryMenu ? (
+                  <div className="relative shrink-0">
+                    <button
+                      type="button"
+                      aria-label="Entry actions"
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen}
+                      onClick={() => setMenuOpen((v) => !v)}
+                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted hover:bg-accent-soft/50 hover:text-foreground"
+                    >
+                      <IconMore />
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="min-w-0 flex-1 max-sm:w-full">
+              {!hideCreatedDate && !mobileCardLayout ? (
                 <div className="mb-1">{entryDateControl}</div>
+              ) : null}
+              {/* Desktop / sm+: keep prior date control when hideCreatedDate is false. */}
+              {!hideCreatedDate && mobileCardLayout ? (
+                <div className="mb-1 max-sm:hidden">{entryDateControl}</div>
+              ) : null}
+              {hideCreatedDate && syncStatusLabel ? (
+                <p
+                  className={`mb-1 text-[11px] text-muted ${
+                    mobileCardLayout ? "max-sm:hidden" : ""
+                  }`}
+                >
+                  {syncStatusLabel}
+                </p>
               ) : null}
               <label className="block">
                 <span className="sr-only">Title</span>
@@ -533,7 +729,11 @@ export function JournalRichEditor({
                   }}
                   placeholder={titlePlaceholder}
                   autoComplete="off"
-                  className="w-full border-0 border-b border-transparent bg-transparent px-0 py-0.5 font-display text-[26px] font-normal tracking-tight text-foreground outline-none ring-0 placeholder:text-muted/45 focus:border-border"
+                  className={`w-full border-0 border-b border-transparent bg-transparent px-0 py-0.5 font-display font-normal tracking-tight text-foreground outline-none ring-0 placeholder:text-muted/35 focus:border-border ${
+                    mobileCardLayout
+                      ? "text-[26px] max-sm:text-[28px] max-sm:placeholder:text-muted/35"
+                      : "text-[26px]"
+                  }`}
                 />
               </label>
               {headerBefore ? <div className="mt-2">{headerBefore}</div> : null}
@@ -544,7 +744,9 @@ export function JournalRichEditor({
                 ref={menuRef}
                 className={`relative flex shrink-0 items-center gap-2 ${
                   hideCreatedDate ? "self-center" : "self-start pt-1"
-                } ${entryMenuClassName ?? ""}`}
+                } ${entryMenuClassName ?? ""} ${
+                  mobileCardLayout ? "max-sm:hidden" : ""
+                }`}
               >
                 <button
                   type="button"
@@ -556,69 +758,85 @@ export function JournalRichEditor({
                 >
                   <IconMore />
                 </button>
-                {menuOpen ? (
-                  <div
-                    role="menu"
-                    className="absolute right-0 top-full z-20 mt-1 min-w-[12.5rem] rounded-xl border border-border bg-card py-1 shadow-lg"
+              </div>
+            ) : null}
+            {menuOpen ? (
+              <div
+                role="menu"
+                className="absolute right-4 top-12 z-30 min-w-[12.5rem] rounded-xl border border-border bg-card py-1 shadow-lg max-sm:right-3 max-sm:top-11 sm:right-7 sm:top-14"
+              >
+                {entryMenuBefore}
+                {onConnectLifeArea ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onConnectLifeArea();
+                    }}
+                    className={menuItemClass}
                   >
-                    {entryMenuBefore}
-                    {onConnectLifeArea ? (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setMenuOpen(false);
-                          onConnectLifeArea();
-                        }}
-                        className={menuItemClass}
-                      >
-                        {connectLifeAreaLabel}
-                      </button>
-                    ) : null}
-                    {onGenerateMeditation ? (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setMenuOpen(false);
-                          onGenerateMeditation();
-                        }}
-                        className={menuItemClass}
-                      >
-                        Create meditation
-                      </button>
-                    ) : null}
-                    {onDelete ? (
-                      <>
-                        {onConnectLifeArea || onGenerateMeditation || entryMenuBefore ? (
-                          <div className="my-1 border-t border-border" />
-                        ) : null}
-                        <button
-                          type="button"
-                          role="menuitem"
-                          onClick={() => {
-                            setMenuOpen(false);
-                            onDelete();
-                          }}
-                          className="block w-full cursor-pointer px-3 py-2 text-left text-sm text-danger hover:bg-danger-soft/40"
-                        >
-                          Delete entry
-                        </button>
-                      </>
-                    ) : null}
-                    <div className="my-1 border-t border-border" />
-                    <p className="px-3 py-2 text-[11px] leading-snug text-muted">
-                      Created {formatJournalEntryDate(createdAt)}
-                      {" · "}
-                      Last edited {formatJournalEntryDate(updatedAt)}
-                    </p>
-                  </div>
+                    {connectLifeAreaLabel}
+                  </button>
                 ) : null}
+                {onGenerateMeditation ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onGenerateMeditation();
+                    }}
+                    className={menuItemClass}
+                  >
+                    Create meditation
+                  </button>
+                ) : null}
+                {onDelete ? (
+                  <>
+                    {onConnectLifeArea ||
+                    onGenerateMeditation ||
+                    entryMenuBefore ? (
+                      <div className="my-1 border-t border-border" />
+                    ) : null}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onDelete();
+                      }}
+                      className="block w-full cursor-pointer px-3 py-2 text-left text-sm text-danger hover:bg-danger-soft/40"
+                    >
+                      Delete entry
+                    </button>
+                  </>
+                ) : null}
+                <div className="my-1 border-t border-border" />
+                <p className="px-3 py-2 text-[11px] leading-snug text-muted">
+                  Created {formatJournalEntryDate(createdAt)}
+                  {" · "}
+                  Last edited {formatJournalEntryDate(updatedAt)}
+                </p>
               </div>
             ) : null}
           </div>
           {belowHeader ? (
-            <div className="px-7 pb-3">{belowHeader}</div>
+            <div
+              className={`px-7 pb-3 ${
+                mobileCardLayout ? "max-sm:px-4 max-sm:pb-2" : ""
+              }`}
+            >
+              {belowHeader}
+            </div>
+          ) : null}
+          {mobileCardLayout ? (
+            <div
+              className={`mx-4 hidden h-px max-sm:block ${
+                bodyFocused ? "bg-[#8A6424]/70]" : "bg-border"
+              }`}
+              aria-hidden
+            />
           ) : null}
         {/* sm+: full toolbar (unchanged wrapping behavior) */}
         <div className="hidden flex-wrap items-center gap-1 border-t border-border px-3 py-2 sm:flex">
@@ -768,150 +986,186 @@ export function JournalRichEditor({
               Prompts
             </button>
         </div>
-        {/* Mobile: primary tools + expandable more row */}
-        <div className="border-t border-border sm:hidden">
-          <div className="flex flex-nowrap items-center gap-1 overflow-x-auto px-3 py-2">
-            {transcribeApiBase ? (
-              <>
-                <button
-                  type="button"
-                  title={
-                    voiceRecording
-                      ? "Stop and place clip"
-                      : "Record voice"
-                  }
-                  aria-label={
-                    voiceRecording
-                      ? "Stop and place clip"
-                      : "Record voice"
-                  }
-                  aria-pressed={voiceRecording}
-                  disabled={voiceBusy}
-                  onClick={() => {
-                    if (voiceBusy) return;
-                    if (voiceRecording) {
-                      void finishRecordingIntoEditor();
-                      return;
-                    }
-                    void startVoiceRecording();
-                  }}
-                  className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 ${
-                    voiceRecording ? "animate-pulse" : ""
-                  }`}
-                >
-                  <IconMic />
-                </button>
+        {/* Mobile in-page toolbar — superseded by JournalMobileWritingBar when
+            mobileCardLayout is on (consciously-journal-entry-mobile).
+        <div className="border-t border-border sm:hidden">…</div>
+        */}
+        {!mobileCardLayout ? (
+          <div className="border-t border-border sm:hidden">
+            <div className="flex flex-nowrap items-center gap-1 overflow-x-auto px-3 py-2">
+              {micButton}
+              {micButton ? (
                 <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
-              </>
-            ) : null}
-            <ToolbarBtn
-              label="Bold"
-              active={editor.isActive("bold")}
-              onClick={() => editor.chain().focus().toggleBold().run()}
-            >
-              <span className="font-bold">B</span>
-            </ToolbarBtn>
-            <ToolbarBtn
-              label="Italic"
-              active={editor.isActive("italic")}
-              onClick={() => editor.chain().focus().toggleItalic().run()}
-            >
-              <span className="italic">I</span>
-            </ToolbarBtn>
-            <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
-            <ToolbarBtn
-              label="More formatting"
-              active={toolbarMoreOpen}
-              onClick={() => setToolbarMoreOpen((v) => !v)}
-            >
-              <IconDotsHorizontal />
-            </ToolbarBtn>
-            <button
-              type="button"
-              onClick={() => setPromptsOpen((open) => !open)}
-              aria-pressed={promptsOpen}
-              className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border px-3 text-[13px] font-semibold text-foreground"
-            >
-              Prompts
-            </button>
-          </div>
-          {toolbarMoreOpen ? (
-            <div className="flex flex-nowrap items-center gap-1 overflow-x-auto border-t border-border px-3 py-2">
+              ) : null}
               <ToolbarBtn
-                label="Subscript"
-                active={editor.isActive("subscript")}
-                onClick={() => editor.chain().focus().toggleSubscript().run()}
+                label="Bold"
+                active={editor.isActive("bold")}
+                onClick={() => editor.chain().focus().toggleBold().run()}
               >
-                <span className="text-[13px] font-semibold leading-none">
-                  X<sub className="text-[9px]">2</sub>
-                </span>
+                <span className="font-bold">B</span>
               </ToolbarBtn>
               <ToolbarBtn
-                label="Superscript"
-                active={editor.isActive("superscript")}
-                onClick={() => editor.chain().focus().toggleSuperscript().run()}
+                label="Italic"
+                active={editor.isActive("italic")}
+                onClick={() => editor.chain().focus().toggleItalic().run()}
               >
-                <span className="text-[13px] font-semibold leading-none">
-                  X<sup className="text-[9px]">2</sup>
-                </span>
+                <span className="italic">I</span>
               </ToolbarBtn>
               <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
               <ToolbarBtn
-                label="Heading 2"
-                active={editor.isActive("heading", { level: 2 })}
-                onClick={() =>
-                  editor.chain().focus().toggleHeading({ level: 2 }).run()
-                }
+                label="More formatting"
+                active={toolbarMoreOpen}
+                onClick={() => setToolbarMoreOpen((v) => !v)}
               >
-                <span className="font-semibold">H2</span>
+                <IconDotsHorizontal />
               </ToolbarBtn>
-              <ToolbarBtn
-                label="Heading 3"
-                active={editor.isActive("heading", { level: 3 })}
-                onClick={() =>
-                  editor.chain().focus().toggleHeading({ level: 3 }).run()
-                }
+              <button
+                type="button"
+                onClick={() => setPromptsOpen((open) => !open)}
+                aria-pressed={promptsOpen}
+                className="ml-auto inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border px-3 text-[13px] font-semibold text-foreground"
               >
-                <span className="font-semibold">H3</span>
-              </ToolbarBtn>
-              <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
-              <ToolbarBtn
-                label="Bullet list"
-                active={editor.isActive("bulletList")}
-                onClick={() => editor.chain().focus().toggleBulletList().run()}
-              >
-                <List aria-hidden className="size-4" strokeWidth={2} />
-              </ToolbarBtn>
-              <ToolbarBtn
-                label="Numbered list"
-                active={editor.isActive("orderedList")}
-                onClick={() => editor.chain().focus().toggleOrderedList().run()}
-              >
-                <ListOrdered aria-hidden className="size-4" strokeWidth={2} />
-              </ToolbarBtn>
-              <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
-              <ToolbarBtn
-                label="Photo"
-                onClick={() => photoInputRef.current?.click()}
-              >
-                <ImageIcon aria-hidden className="size-4" strokeWidth={2} />
-              </ToolbarBtn>
-              <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
-              <ToolbarBtn
-                label="Undo"
-                onClick={() => editor.chain().focus().undo().run()}
-              >
-                <Undo2 aria-hidden className="size-4" strokeWidth={2} />
-              </ToolbarBtn>
-              <ToolbarBtn
-                label="Redo"
-                onClick={() => editor.chain().focus().redo().run()}
-              >
-                <Redo2 aria-hidden className="size-4" strokeWidth={2} />
-              </ToolbarBtn>
+                Prompts
+              </button>
             </div>
-          ) : null}
-        </div>
+            {toolbarMoreOpen ? (
+              <div className="flex flex-nowrap items-center gap-1 overflow-x-auto border-t border-border px-3 py-2">
+                <ToolbarBtn
+                  label="Subscript"
+                  active={editor.isActive("subscript")}
+                  onClick={() => editor.chain().focus().toggleSubscript().run()}
+                >
+                  <span className="text-[13px] font-semibold leading-none">
+                    X<sub className="text-[9px]">2</sub>
+                  </span>
+                </ToolbarBtn>
+                <ToolbarBtn
+                  label="Superscript"
+                  active={editor.isActive("superscript")}
+                  onClick={() =>
+                    editor.chain().focus().toggleSuperscript().run()
+                  }
+                >
+                  <span className="text-[13px] font-semibold leading-none">
+                    X<sup className="text-[9px]">2</sup>
+                  </span>
+                </ToolbarBtn>
+                <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
+                <ToolbarBtn
+                  label="Heading 2"
+                  active={editor.isActive("heading", { level: 2 })}
+                  onClick={() =>
+                    editor.chain().focus().toggleHeading({ level: 2 }).run()
+                  }
+                >
+                  <span className="font-semibold">H2</span>
+                </ToolbarBtn>
+                <ToolbarBtn
+                  label="Heading 3"
+                  active={editor.isActive("heading", { level: 3 })}
+                  onClick={() =>
+                    editor.chain().focus().toggleHeading({ level: 3 }).run()
+                  }
+                >
+                  <span className="font-semibold">H3</span>
+                </ToolbarBtn>
+                <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
+                <ToolbarBtn
+                  label="Bullet list"
+                  active={editor.isActive("bulletList")}
+                  onClick={() =>
+                    editor.chain().focus().toggleBulletList().run()
+                  }
+                >
+                  <List aria-hidden className="size-4" strokeWidth={2} />
+                </ToolbarBtn>
+                <ToolbarBtn
+                  label="Numbered list"
+                  active={editor.isActive("orderedList")}
+                  onClick={() =>
+                    editor.chain().focus().toggleOrderedList().run()
+                  }
+                >
+                  <ListOrdered aria-hidden className="size-4" strokeWidth={2} />
+                </ToolbarBtn>
+                <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
+                <ToolbarBtn
+                  label="Photo"
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  <ImageIcon aria-hidden className="size-4" strokeWidth={2} />
+                </ToolbarBtn>
+                <span className="mx-1 h-6 w-px shrink-0 bg-border" aria-hidden />
+                <ToolbarBtn
+                  label="Undo"
+                  onClick={() => editor.chain().focus().undo().run()}
+                >
+                  <Undo2 aria-hidden className="size-4" strokeWidth={2} />
+                </ToolbarBtn>
+                <ToolbarBtn
+                  label="Redo"
+                  onClick={() => editor.chain().focus().redo().run()}
+                >
+                  <Redo2 aria-hidden className="size-4" strokeWidth={2} />
+                </ToolbarBtn>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {mobileCardLayout && toolbarMoreOpen ? (
+          <div className="mx-3 flex flex-nowrap items-center gap-1 overflow-x-auto rounded-xl border border-border bg-card px-3 py-2 sm:hidden">
+            <ToolbarBtn
+              label="Subscript"
+              active={editor.isActive("subscript")}
+              onClick={() => editor.chain().focus().toggleSubscript().run()}
+            >
+              <span className="text-[13px] font-semibold leading-none">
+                X<sub className="text-[9px]">2</sub>
+              </span>
+            </ToolbarBtn>
+            <ToolbarBtn
+              label="Superscript"
+              active={editor.isActive("superscript")}
+              onClick={() => editor.chain().focus().toggleSuperscript().run()}
+            >
+              <span className="text-[13px] font-semibold leading-none">
+                X<sup className="text-[9px]">2</sup>
+              </span>
+            </ToolbarBtn>
+            <ToolbarBtn
+              label="Bullet list"
+              active={editor.isActive("bulletList")}
+              onClick={() => editor.chain().focus().toggleBulletList().run()}
+            >
+              <List aria-hidden className="size-4" strokeWidth={2} />
+            </ToolbarBtn>
+            <ToolbarBtn
+              label="Numbered list"
+              active={editor.isActive("orderedList")}
+              onClick={() => editor.chain().focus().toggleOrderedList().run()}
+            >
+              <ListOrdered aria-hidden className="size-4" strokeWidth={2} />
+            </ToolbarBtn>
+            <ToolbarBtn
+              label="Photo"
+              onClick={() => photoInputRef.current?.click()}
+            >
+              <ImageIcon aria-hidden className="size-4" strokeWidth={2} />
+            </ToolbarBtn>
+            <ToolbarBtn
+              label="Undo"
+              onClick={() => editor.chain().focus().undo().run()}
+            >
+              <Undo2 aria-hidden className="size-4" strokeWidth={2} />
+            </ToolbarBtn>
+            <ToolbarBtn
+              label="Redo"
+              onClick={() => editor.chain().focus().redo().run()}
+            >
+              <Redo2 aria-hidden className="size-4" strokeWidth={2} />
+            </ToolbarBtn>
+          </div>
+        ) : null}
         {voiceRecording || voiceError ? (
           <div className="border-t border-border px-4 py-2 text-xs">
             {voiceRecording ? (
@@ -945,9 +1199,30 @@ export function JournalRichEditor({
           }}
         />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div
+        className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${
+          mobileCardLayout
+            ? "max-sm:mx-3 max-sm:mb-3 max-sm:min-h-[12rem] max-sm:rounded-b-[18px] max-sm:border max-sm:border-t-0 max-sm:border-border max-sm:bg-card"
+            : ""
+        }`}
+        onMouseDown={(e) => {
+          if (!mobileCardLayout || !editor) return;
+          const target = e.target as HTMLElement;
+          // Tap empty card chrome (not already in the prose) → focus end.
+          if (target.closest(".ProseMirror")) return;
+          e.preventDefault();
+          editor.commands.focus("end");
+        }}
+      >
         <JournalTranscribeApiContext.Provider value={transcribeApiBase}>
-          <EditorContent editor={editor} />
+          <EditorContent
+            editor={editor}
+            className={
+              mobileCardLayout
+                ? "max-sm:min-h-[10rem] max-sm:[&_.ProseMirror]:min-h-[10rem] max-sm:[&_.ProseMirror]:px-4 max-sm:[&_.ProseMirror]:py-4 max-sm:[&_.ProseMirror]:text-[16px] max-sm:[&_.ProseMirror]:leading-[1.7] max-sm:[&_p.is-editor-empty:first-child::before]:text-muted/55"
+                : undefined
+            }
+          />
         </JournalTranscribeApiContext.Provider>
         {/* Empty-entry suggestions stay in the tree but are not shown.
             New entry opens blank; prompts come from the Prompts control.
@@ -977,7 +1252,17 @@ export function JournalRichEditor({
           </div>
         ) : null}
         */}
-        {children ? <div className="px-7 pb-4">{children}</div> : null}
+        {children ? (
+          <div
+            className={`px-7 pb-4 ${
+              mobileCardLayout ? "max-sm:hidden" : ""
+            }`}
+          >
+            {children}
+          </div>
+        ) : null}
+        {/* Floating "Add a tag" field removed on mobile — tags via pill row.
+            {children} */}
       </div>
       {bottomBar ? (
         <div className="shrink-0 border-t-[0.5px] border-border px-6 py-3">
@@ -1014,6 +1299,7 @@ export function JournalRichEditor({
           />
         </div>
       ) : null}
+      {writingBarPortal}
       </div>
     </div>
   );

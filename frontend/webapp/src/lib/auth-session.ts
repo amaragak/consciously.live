@@ -270,6 +270,25 @@ export function getMedimadeSessionEmail(): string | null {
   return readStorage(EMAIL_KEY);
 }
 
+/** JWT `sub` (user id) for diagnostics / support. */
+export function getMedimadeSessionUserId(): string | null {
+  const jwt = getMedimadeSessionJwt();
+  if (!jwt) return null;
+  try {
+    const parts = jwt.split(".");
+    if (parts.length < 2 || !parts[1]) return null;
+    const pad =
+      parts[1].length % 4 === 0 ? "" : "=".repeat(4 - (parts[1].length % 4));
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/") + pad;
+    const payload = JSON.parse(atob(b64)) as { sub?: unknown };
+    return typeof payload.sub === "string" && payload.sub.trim()
+      ? payload.sub.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Shared Continue-as-guest account (JWT session + cloud stores). */
 export const MEDIMADE_GUEST_ACCOUNT_EMAIL = "alexmaragakis@hotmail.co.uk";
 

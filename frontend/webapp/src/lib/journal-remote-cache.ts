@@ -30,8 +30,13 @@ const weeklyBox = new Map<
   }>
 >();
 
-/** Once true, JournalView can skip another full remote store pull this session. */
-let journalStorePulledThisSession = false;
+/**
+ * Last successful journal store pull (ms). Used to debounce Strict Mode double
+ * mounts — NOT to skip pulls for the rest of the session (that broke web↔native
+ * sync while the app stayed open).
+ */
+let journalStoreLastPullAt = 0;
+const JOURNAL_STORE_PULL_DEBOUNCE_MS = 1500;
 
 function fresh<T>(box: CacheBox<T> | null | undefined): T | undefined {
   if (!box) return undefined;
@@ -102,17 +107,26 @@ export function invalidateCachedWeeklyReflection(weekKey?: string): void {
   weeklyBox.clear();
 }
 
+/** True when a pull finished very recently (avoid Strict Mode double GET). */
 export function wasJournalStorePulledThisSession(): boolean {
-  return journalStorePulledThisSession;
+  return (
+    journalStoreLastPullAt > 0 &&
+    Date.now() - journalStoreLastPullAt < JOURNAL_STORE_PULL_DEBOUNCE_MS
+  );
 }
 
 export function markJournalStorePulledThisSession(): void {
-  journalStorePulledThisSession = true;
+  journalStoreLastPullAt = Date.now();
+}
+
+/** Force the next Journal open / foreground to hit GET /journal/store. */
+export function clearJournalStorePulledThisSession(): void {
+  journalStoreLastPullAt = 0;
 }
 
 export function clearJournalRemoteSessionCache(): void {
   insightsBox = null;
   lettersBox = null;
   weeklyBox.clear();
-  journalStorePulledThisSession = false;
+  journalStoreLastPullAt = 0;
 }
