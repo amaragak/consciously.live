@@ -524,6 +524,15 @@ export function resolveAppHeaderLocation(
     return { verb: "", href: "/", trail: [] };
   }
 
+  // Notifications inbox — noun trail like Settings (no italic section verb).
+  if (path === "/notifications" || path.startsWith("/notifications/")) {
+    return {
+      verb: "",
+      href: "/",
+      trail: [{ label: "Notifications", href: null }],
+    };
+  }
+
   // Settings is not a verb — keep it in the trail (child size), never italic.
   if (path.startsWith("/settings") || path.startsWith("/account")) {
     const crumbs = buildAppBreadcrumbs(pathname, opts);
@@ -971,6 +980,9 @@ export function buildAppBreadcrumbs(
   }
   if (pathname.startsWith("/admin")) {
     return [{ label: "Admin", href: null }];
+  }
+  if (pathname === "/notifications" || pathname.startsWith("/notifications/")) {
+    return [{ label: "Notifications", href: null }];
   }
   if (pathname.startsWith("/settings")) {
     const sectionId = pathname.split("/").filter(Boolean)[1];

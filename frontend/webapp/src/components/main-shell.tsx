@@ -75,7 +75,7 @@ export function MainShell({
 
   return (
     <main
-      className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain bg-background md:pb-0"
+      className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain bg-background md:pb-0 max-md:pt-[var(--app-header-h)]"
       style={
         layout === "app"
           ? {

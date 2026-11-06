@@ -15,6 +15,8 @@ const KEY = "mm_meditate_overview_create_v1";
 export type MeditateOverviewCreateHandoff = {
   v: 1;
   step: Extract<CreateOneFlowStep, "shape" | "sound">;
+  /** Hero Create (or Skip to audio) landed on Sound without Shape chat. */
+  shapeSkipped?: boolean;
   state: CreateOneFlowState;
 };
 

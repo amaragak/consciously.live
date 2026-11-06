@@ -374,6 +374,10 @@ export function CreateOneFlow({
     if (overview) return overview.state;
     return emptyCreateOneFlowState(5);
   });
+  /** Hero Create / Skip to audio landed on Sound without Shape. */
+  const [shapeSkipped, setShapeSkipped] = useState(
+    () => Boolean(overviewCreateHandoffRef.current?.shapeSkipped),
+  );
 
   // Guide "Make this meditation": pre-fill the Start brief once.
   const guideBriefConsumedRef = useRef(false);
@@ -554,6 +558,7 @@ export function CreateOneFlow({
 
   const goStep = useCallback(
     (next: CreateOneFlowStep) => {
+      if (next === "shape") setShapeSkipped(false);
       navigate(createOneFlowHref(next), { replace: next === "start" });
       if (next === "shape") {
         window.setTimeout(() => {
@@ -1605,6 +1610,7 @@ export function CreateOneFlow({
   function enterShape(_fromPrompt: boolean) {
     // Brief stays on the card — do not inject Start text as a chat bubble.
     // goStep("shape") triggers onEnterShapeStep (cache seed or Start overrides).
+    setShapeSkipped(false);
     goStep("shape");
   }
 
@@ -1638,11 +1644,18 @@ export function CreateOneFlow({
       chat: [],
       answers: {},
     }));
+    setShapeSkipped(true);
     goStep("sound");
   }
 
   function createNow() {
+    setShapeSkipped(true);
     goStep("sound");
+  }
+
+  function backFromSound() {
+    if (shapeSkipped) goStep("start");
+    else goStep("shape");
   }
 
   function resetShape() {
@@ -2290,6 +2303,7 @@ export function CreateOneFlow({
       <CreateOneFlowStepper
         compact
         step={step}
+        shapeSkipped={shapeSkipped}
         onStepClick={onStepperStepClick}
       />
     </AppPrimaryTabsDesktop>
@@ -2303,7 +2317,7 @@ export function CreateOneFlow({
     <div
       className={[
         "z-20 border-b border-border bg-card px-4 py-2.5 md:hidden",
-        sticky ? "sticky top-0" : "shrink-0",
+        sticky ? "sticky top-0 max-md:top-[var(--app-header-h)]" : "shrink-0",
         sticky && stepBarScrolled
           ? "shadow-[0_4px_10px_rgb(15_27_45_/_0.06)]"
           : "",
@@ -2311,7 +2325,11 @@ export function CreateOneFlow({
         .filter(Boolean)
         .join(" ")}
     >
-      <CreateOneFlowStepper step={step} onStepClick={onStepperStepClick} />
+      <CreateOneFlowStepper
+        step={step}
+        shapeSkipped={shapeSkipped}
+        onStepClick={onStepperStepClick}
+      />
     </div>
   );
 
@@ -2346,7 +2364,7 @@ export function CreateOneFlow({
     `${state.lengthMinutes} min`,
   ].join(" · ");
 
-  /** Shape landing card (consciously-meditate-quick-create) — all widths. */
+  /** Shape / Sound landing card (quick-create v2) — all widths. */
   const yourBriefCard = (
     <div className="flex shrink-0 flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-[0_4px_18px_rgb(0_0_0_/_0.08)]">
       <div className="flex items-center justify-between gap-2">
@@ -2387,6 +2405,27 @@ export function CreateOneFlow({
           shapeContextAddChips
         )}
         {shapeHasFormat ? shapeFormatAddChips : null}
+        {shapeSkipped && step === "sound" ? (
+          <button
+            type="button"
+            onClick={() => enterShape(true)}
+            className="inline-flex h-[34px] shrink-0 cursor-pointer items-center gap-1.5 rounded-[10px] border border-border bg-card px-2.5 text-[13px] font-semibold text-foreground"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-3.5 w-3.5 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.85"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            Talk it through
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -2980,6 +3019,7 @@ export function CreateOneFlow({
 
           {step === "sound" ? (
             <div className="flex w-full flex-col gap-4">
+              {yourBriefCard}
               <div className="rounded-[10px] border border-accent/35 bg-accent-soft/40">
                 <div className="flex min-w-0 items-start gap-2.5 px-3.5 py-2.5">
                   <span className="mt-0.5 shrink-0 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
@@ -3486,7 +3526,11 @@ export function CreateOneFlow({
                 navigate("/meditate");
                 return;
               }
-              goStep(step === "sound" ? "shape" : "start");
+              if (step === "sound") {
+                backFromSound();
+                return;
+              }
+              goStep("start");
             }}
             className="inline-flex h-11 shrink-0 cursor-pointer items-center gap-0.5 rounded-full px-2.5 text-[15px] font-semibold text-foreground"
           >
@@ -3533,10 +3577,17 @@ export function CreateOneFlow({
           <div className="flex justify-start">
             {step !== "start" ? (
               <CreateFlowNavPill
-                onClick={() => goStep(step === "sound" ? "shape" : "start")}
+                onClick={() => {
+                  if (step === "sound") backFromSound();
+                  else goStep("start");
+                }}
               >
                 <IconArrowLeft className="h-4 w-4" />
-                {step === "sound" ? "Shape" : "Start"}
+                {step === "sound"
+                  ? shapeSkipped
+                    ? "Start"
+                    : "Shape"
+                  : "Start"}
               </CreateFlowNavPill>
             ) : null}
           </div>

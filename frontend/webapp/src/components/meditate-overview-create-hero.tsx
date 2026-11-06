@@ -1,5 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { IconArrowRight, IconPlus, IconSparkles } from "@tabler/icons-react";
+import {
+  IconArrowRight,
+  IconMessage,
+  IconPlus,
+  IconSparkles,
+} from "@tabler/icons-react";
 import { CommunityCategoryGrid } from "@/components/community-category-grid";
 import { CreateOneFlowPickerShell } from "@/components/create-one-flow-picker-shell";
 import { CreateProgramPicker } from "@/components/create-program-picker";
@@ -318,13 +323,28 @@ export function MeditateOverviewCreateHero() {
   function goToCreate(
     step: "shape" | "sound",
     nextState: CreateOneFlowState = state,
+    opts?: { shapeSkipped?: boolean },
   ) {
-    writeMeditateOverviewCreateHandoff({ v: 1, step, state: nextState });
+    writeMeditateOverviewCreateHandoff({
+      v: 1,
+      step,
+      state: nextState,
+      ...(opts?.shapeSkipped ? { shapeSkipped: true } : {}),
+    });
     router.push(createOneFlowHref(step));
   }
 
-  function onArrow() {
+  function onTalkItThrough() {
     goToCreate("shape");
+  }
+
+  function onCreateSkipShape() {
+    goToCreate("sound", state, { shapeSkipped: true });
+  }
+
+  /** @deprecated Prefer Talk it through / Create — kept for desktop arrow. */
+  function onArrow() {
+    onTalkItThrough();
   }
 
   /* Random removed from overview hero (Format/Context pack).
@@ -668,16 +688,32 @@ export function MeditateOverviewCreateHero() {
             </div>
           ) : null}
 
-          <button
-            type="button"
-            disabled={!canCreate}
-            onClick={onArrow}
-            style={PRIMARY_ACCENT_FILL_STYLE}
-            className="inline-flex h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full text-[15px] font-semibold accent-fill-gradient text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 md:hidden"
-          >
-            <IconSparkles className="h-4 w-4 shrink-0" aria-hidden />
-            Create meditation
-          </button>
+          {/* Mobile: Talk it through → Shape; Create → Sound (skip chat). */}
+          <div className="flex items-center gap-2 md:hidden">
+            <button
+              type="button"
+              disabled={!canCreate}
+              onClick={onTalkItThrough}
+              className="inline-flex h-11 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full border border-[rgb(243_237_226_/_0.28)] bg-transparent px-2.5 text-[13.5px] font-semibold text-[#F3EDE2] transition-opacity hover:bg-[rgb(243_237_226_/_0.08)] disabled:cursor-not-allowed disabled:opacity-40 sm:gap-2 sm:text-[14px]"
+            >
+              <IconMessage className="h-4 w-4 shrink-0" aria-hidden />
+              Talk it through
+            </button>
+            <button
+              type="button"
+              disabled={!canCreate}
+              onClick={onCreateSkipShape}
+              style={PRIMARY_ACCENT_FILL_STYLE}
+              className="inline-flex h-11 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full px-2.5 text-[13.5px] font-semibold accent-fill-gradient text-on-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 sm:gap-2 sm:text-[14px]"
+            >
+              <IconSparkles className="h-4 w-4 shrink-0" aria-hidden />
+              Create
+            </button>
+          </div>
+          {/*
+          Previous single Mist CTA (quick-create v1).
+          <button ... Create meditation </button>
+          */}
         </div>
       </section>
 

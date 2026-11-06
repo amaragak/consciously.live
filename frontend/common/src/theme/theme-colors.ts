@@ -63,7 +63,7 @@ const NAV_HEADER = "#1E232E";
  */
 const MARKETING_PAGE_BG = "#FFFDF9";
 /** Light app canvas. Hybrid header fill stays cream; SPA light/dark header is navy. */
-const APP_CANVAS_LIGHT = "#FAF6F0";
+const APP_CANVAS_LIGHT = "#F8F1E4";
 const NAV_LIGHT = APP_CANVAS_LIGHT;
 const NAV_FOREGROUND = WHITE;
 const NAV_MUTED = "rgb(255 255 255 / 0.68)";

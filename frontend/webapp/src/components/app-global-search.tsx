@@ -812,7 +812,7 @@ export function AppGlobalSearch({
 
       <button
         type="button"
-        className="inline-flex h-9 w-9 max-md:h-8 max-md:w-8 shrink-0 items-center justify-center rounded-full text-nav-muted transition-colors hover:bg-nav-active hover:text-nav-foreground"
+        className="inline-flex h-9 w-9 max-md:h-8 max-md:w-8 shrink-0 items-center justify-center rounded-full text-foreground transition-colors hover:bg-accent-soft hover:text-foreground md:text-nav-muted md:hover:bg-nav-active md:hover:text-nav-foreground"
         aria-label={open ? "Close search" : "Search"}
         aria-expanded={open}
         aria-controls={panelId}

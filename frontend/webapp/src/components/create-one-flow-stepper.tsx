@@ -14,14 +14,18 @@ export function CreateOneFlowStepper({
   step,
   onStepClick,
   compact = false,
+  shapeSkipped = false,
 }: {
   step: CreateOneFlowStep;
   /** Optional — only past/current steps are clickable when provided. */
   onStepClick?: (step: CreateOneFlowStep) => void;
   /** Tighter chrome for the desktop header slot. */
   compact?: boolean;
+  /** Sound was opened without Shape — show "Shape · skipped". */
+  shapeSkipped?: boolean;
 }) {
   const current = stepIndex(step);
+  const showShapeSkipped = shapeSkipped && step === "sound";
 
   /**
    * Mobile page step bar (consciously-mobile-floating-nav): three equal
@@ -31,16 +35,19 @@ export function CreateOneFlowStepper({
     return (
       <nav aria-label="Steps" className="flex w-full gap-2">
         {STEPS.map((s, i) => {
-          const done = i < current;
+          const skipped = showShapeSkipped && s.id === "shape";
+          const done = !skipped && i < current;
           const active = i === current;
-          const clickable = Boolean(onStepClick) && i <= current;
+          const clickable =
+            Boolean(onStepClick) && (i <= current || skipped);
+          const label = skipped ? "Shape · skipped" : s.label;
           return (
             <button
               key={s.id}
               type="button"
               disabled={!clickable}
               onClick={() => onStepClick?.(s.id)}
-              aria-label={s.label}
+              aria-label={label}
               aria-current={active ? "step" : undefined}
               className={`flex min-w-0 flex-1 flex-col gap-1.5 ${
                 clickable ? "cursor-pointer" : "cursor-default"
@@ -57,13 +64,13 @@ export function CreateOneFlowStepper({
                 }`}
               />
               <span
-                className={`text-[13px] ${
+                className={`truncate text-[13px] ${
                   active
                     ? "font-semibold text-foreground"
                     : "font-normal text-muted"
                 }`}
               >
-                {s.label}
+                {label}
               </span>
             </button>
           );
@@ -79,11 +86,14 @@ export function CreateOneFlowStepper({
         className="flex min-w-0 items-center gap-1.5 sm:gap-2"
       >
         {STEPS.map((s, i) => {
-          const done = i < current;
+          const skipped = showShapeSkipped && s.id === "shape";
+          const done = !skipped && i < current;
           const active = i === current;
-          const clickable = Boolean(onStepClick) && i <= current;
+          const clickable =
+            Boolean(onStepClick) && (i <= current || skipped);
           const lit = active || done;
           const hasLine = i < STEPS.length - 1;
+          const label = skipped ? "Shape · skipped" : s.label;
           return (
             <div
               key={s.id}
@@ -93,7 +103,7 @@ export function CreateOneFlowStepper({
                 type="button"
                 disabled={!clickable}
                 onClick={() => onStepClick?.(s.id)}
-                aria-label={s.label}
+                aria-label={label}
                 className={`flex items-center gap-1 sm:gap-1.5 ${
                   clickable ? "cursor-pointer" : "cursor-default"
                 }`}
@@ -101,9 +111,11 @@ export function CreateOneFlowStepper({
               >
                 <span
                   className={`hidden h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold sm:flex ${
-                    lit
-                      ? "header-gold-sunlit-fill border-transparent text-on-accent"
-                      : "border-[rgb(246_241_231_/_0.35)] bg-transparent text-nav-muted"
+                    skipped
+                      ? "border-[rgb(246_241_231_/_0.35)] bg-transparent text-nav-muted"
+                      : lit
+                        ? "header-gold-sunlit-fill border-transparent text-on-accent"
+                        : "border-[rgb(246_241_231_/_0.35)] bg-transparent text-nav-muted"
                   }`}
                 >
                   {done ? (
@@ -125,25 +137,27 @@ export function CreateOneFlowStepper({
                     s.n
                   )}
                 </span>
-                {/* Mobile compact: labels only — gold when active/done. */}
                 <span
                   className={`text-[13px] sm:hidden ${
-                    lit
-                      ? "header-gold-sunlit font-bold"
-                      : "font-normal text-nav-muted"
+                    skipped
+                      ? "font-normal text-nav-muted"
+                      : lit
+                        ? "header-gold-sunlit font-bold"
+                        : "font-normal text-nav-muted"
                   }`}
                 >
-                  {s.label}
+                  {label}
                 </span>
-                {/* sm+: circles + ivory labels when active/done. */}
                 <span
                   className={`hidden text-[13px] sm:inline ${
-                    lit
-                      ? "font-bold text-nav-foreground"
-                      : "font-normal text-nav-muted"
+                    skipped
+                      ? "font-normal text-nav-muted"
+                      : lit
+                        ? "font-bold text-nav-foreground"
+                        : "font-normal text-nav-muted"
                   }`}
                 >
-                  {s.label}
+                  {label}
                 </span>
               </button>
               {hasLine ? (

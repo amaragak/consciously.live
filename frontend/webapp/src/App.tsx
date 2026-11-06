@@ -59,6 +59,7 @@ import {
 } from "./pages/meditate-guides-page";
 import { MeditateOverviewPage } from "./pages/meditate-overview-page";
 import { SchedulePage } from "./pages/schedule-page";
+import { NotificationsPage } from "./pages/notifications-page";
 import { SettingsPage } from "./pages/settings-page";
 import { PricingPage } from "./pages/pricing-page";
 import { PricingSuccessPage } from "./pages/pricing-success-page";
@@ -196,6 +197,7 @@ export function App() {
           path="library"
           element={<Navigate to="/meditate/library/creations" replace />}
         />
+        <Route path="notifications" element={<NotificationsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="settings/:section" element={<SettingsPage />} />
         {/* Unknown settings subpaths → Account (avoid catch-all → home). */}

@@ -1,10 +1,14 @@
 "use client";
 
 import { ColorSchemePicker } from "@consciously/common";
-import { Settings, Shield } from "lucide-react";
-import { Link, usePathname } from "@/lib/spa-nav";
+import { ChevronLeft, Settings, Shield } from "lucide-react";
+import { Link, usePathname, useRouter } from "@/lib/spa-nav";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import {
+  COLOR_SCHEME_CHANGED_EVENT,
+  getLiveColorScheme,
+} from "@consciously/common";
 import { LogoMark } from "@/components/logo-mark";
 import {
   AppPrimaryTabsSlot,
@@ -374,6 +378,8 @@ export function AppTopBar({
   sidebarCollapsed?: boolean;
 }) {
   const pathname = usePathname() || "/";
+  const router = useRouter();
+  const onNotifications = pathname.startsWith("/notifications");
   const [location, setLocation] = useState<AppHeaderLocation>(EMPTY_LOCATION);
   const [accountLabel, setAccountLabel] = useState(accountLabelFromSession);
   const [showAdmin, setShowAdmin] = useState(() =>
@@ -395,6 +401,35 @@ export function AppTopBar({
     sync();
     window.addEventListener("medimade-session-changed", sync);
     return () => window.removeEventListener("medimade-session-changed", sync);
+  }, []);
+
+  /** Mobile A-lite: status-bar / theme-color follow the light header, not navy. */
+  useEffect(() => {
+    const syncThemeColor = () => {
+      const scheme = getLiveColorScheme();
+      const mobile = window.matchMedia("(max-width: 767px)").matches;
+      const content =
+        scheme === "dark"
+          ? "#1E232E"
+          : mobile || scheme === "hybrid"
+            ? "#F8F1E4"
+            : "#1E232E";
+      let meta = document.querySelector('meta[name="theme-color"]');
+      if (!meta) {
+        meta = document.createElement("meta");
+        meta.setAttribute("name", "theme-color");
+        document.head.appendChild(meta);
+      }
+      meta.setAttribute("content", content);
+    };
+    syncThemeColor();
+    const mq = window.matchMedia("(max-width: 767px)");
+    mq.addEventListener("change", syncThemeColor);
+    window.addEventListener(COLOR_SCHEME_CHANGED_EVENT, syncThemeColor);
+    return () => {
+      mq.removeEventListener("change", syncThemeColor);
+      window.removeEventListener(COLOR_SCHEME_CHANGED_EVENT, syncThemeColor);
+    };
   }, []);
 
   useLayoutEffect(() => {
@@ -494,27 +529,32 @@ export function AppTopBar({
         },
       ]
     : null;
+  const isDashboard =
+    pathname === "/" || pathname === "" || pathname === "/home";
   const phoneHubLeaf = librarySoundsPhoneLeafLabel(pathname);
-  const phoneTrail: AppBreadcrumbCrumb[] = phoneDetailTrail
-    ? phoneDetailTrail
-    : location.verb && phoneHubLeaf
-      ? [
-          { label: location.verb, href: location.href || null },
-          { label: phoneHubLeaf, href: null },
-        ]
-      : location.verb &&
-          trail.length > 0 &&
-          trail[0]?.label !== location.verb
+  const phoneTrail: AppBreadcrumbCrumb[] = isDashboard
+    ? [{ label: "Home", href: null }]
+    : phoneDetailTrail
+      ? phoneDetailTrail
+      : location.verb && phoneHubLeaf
         ? [
             { label: location.verb, href: location.href || null },
-            ...trail,
+            { label: phoneHubLeaf, href: null },
           ]
-        : trail.length > 0
-          ? trail
-          : location.verb
-            ? [{ label: location.verb, href: null }]
-            : [];
+        : location.verb &&
+            trail.length > 0 &&
+            trail[0]?.label !== location.verb
+          ? [
+              { label: location.verb, href: location.href || null },
+              ...trail,
+            ]
+          : trail.length > 0
+            ? trail
+            : location.verb
+              ? [{ label: location.verb, href: null }]
+              : [];
   const phoneTrailUsesVerbPrefix =
+    isDashboard ||
     Boolean(phoneDetailTrail) ||
     (phoneTrail.length > 0 &&
       (trail.length === 0 ||
@@ -524,11 +564,13 @@ export function AppTopBar({
   return (
     <header
       ref={headerRef}
-      className="app-top-bar relative sticky top-0 z-[130] flex h-[var(--app-header-h)] w-full shrink-0 items-center overflow-x-hidden border-b border-[color:var(--header-border)] bg-nav text-nav-foreground shadow-[var(--header-shadow)]"
+      className="app-top-bar relative sticky top-0 z-[130] flex h-[var(--app-header-h)] w-full shrink-0 items-center overflow-x-hidden border-b border-[color:var(--header-border)] bg-nav text-nav-foreground shadow-[var(--header-shadow)] max-md:fixed max-md:left-0 max-md:right-0 max-md:overflow-visible max-md:border-transparent max-md:bg-transparent max-md:text-foreground max-md:shadow-none"
     >
+      {/* Floating capsule on phone; md+ is display:contents so children layout as before. */}
+      <div className="app-top-bar-capsule md:contents">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 overflow-hidden"
+        className="pointer-events-none absolute inset-0 overflow-hidden max-md:hidden"
       >
         {/* Desktop sun center: icon inset + half of 28px LogoMark. */}
         <span
@@ -565,10 +607,9 @@ export function AppTopBar({
         </div>
       </div>
 
-      {/* Compact (&lt; lg): hamburger nav. Phone = sun only; use free band for
-          crumbs (tabs are hidden). md–lg: shrink-wrap so centre tabs fit. */}
+      {/* Compact (&lt; lg). Phone: Home sun + divider + title. md–lg: BrandPhrase. */}
       <div
-        className={`relative z-10 flex min-w-0 items-center overflow-hidden py-0 pl-3 pr-2 transition-transform duration-200 ease-out max-md:flex-1 md:w-fit md:max-w-[min(100%,42%)] md:shrink-0 lg:hidden ${
+        className={`relative z-10 flex min-w-0 items-center overflow-hidden py-0 pl-1.5 pr-1 transition-transform duration-200 ease-out max-md:flex-1 md:w-fit md:max-w-[min(100%,42%)] md:shrink-0 md:pl-3 md:pr-2 lg:hidden ${
           mobileSearchOpen
             ? "pointer-events-none -translate-x-full"
             : "translate-x-0"
@@ -576,7 +617,37 @@ export function AppTopBar({
         aria-hidden={mobileSearchOpen}
       >
         <div className="flex min-w-0 max-w-full items-center">
-          <div ref={phraseCompactRef} className="shrink-0">
+          {/* Phone: round sun always goes to the dashboard. */}
+          <Link
+            href="/"
+            title="Home"
+            aria-label="Home"
+            className="app-header-home-btn md:hidden"
+          >
+            <LogoMark size={30} className="app-header-brand-sun block" />
+          </Link>
+          <span
+            className="mx-2 hidden h-4 w-px shrink-0 bg-border max-md:block"
+            aria-hidden
+          />
+          {onNotifications ? (
+            <button
+              type="button"
+              aria-label="Back"
+              onClick={() => {
+                if (window.history.length > 1) router.back();
+                else router.push("/");
+              }}
+              className="mr-0.5 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-foreground transition-colors hover:bg-accent-soft md:hidden"
+            >
+              <ChevronLeft className="size-5" strokeWidth={1.85} aria-hidden />
+            </button>
+          ) : null}
+          {/* md–lg: previous sun + wordmark/verb cluster. */}
+          <div
+            ref={phraseCompactRef}
+            className={`hidden shrink-0 md:block ${onNotifications ? "max-md:hidden" : ""}`}
+          >
             <BrandPhrase
               verb={location.verb}
               verbHref={location.href || null}
@@ -588,10 +659,10 @@ export function AppTopBar({
           </div>
           {phoneTrailUsesVerbPrefix ? (
             <>
-              {/* Phone: no hairline. First crumb is the section, in gold italic. */}
+              {/* Phone: section / Home title in serif italic. */}
               <AppBreadcrumb
                 crumbs={phoneTrail}
-                className="app-header-phone-feature ml-1.5 min-w-0 flex-1 text-[13px] md:hidden"
+                className="app-header-phone-feature ml-0.5 min-w-0 flex-1 text-[13px] md:hidden"
               />
               {/* md–lg: leaf only — italic verb is visible in BrandPhrase. */}
               {trail.length > 0 ? (
@@ -615,7 +686,7 @@ export function AppTopBar({
               />
               <AppBreadcrumb
                 crumbs={phoneTrail}
-                className="app-header-phone-feature max-md:ml-1.5 min-w-0 flex-1 text-[13px] md:flex-none md:shrink-0"
+                className="app-header-phone-feature max-md:ml-0.5 min-w-0 flex-1 text-[13px] md:flex-none md:shrink-0"
               />
             </>
           ) : null}
@@ -634,7 +705,7 @@ export function AppTopBar({
       {/* lg+: keeps right cluster at the trailing edge under the absolute centre slot. */}
       <div className="hidden min-w-0 flex-1 lg:block" aria-hidden />
 
-      <div className="relative z-20 ml-auto flex shrink-0 items-center gap-2 pr-3 sm:pr-4 lg:ml-0">
+      <div className="relative z-20 ml-auto flex shrink-0 items-center gap-1 pr-1 max-md:gap-0 sm:pr-4 md:gap-2 md:pr-3 lg:ml-0">
         <AppTopBarTrailingSlot className="flex max-w-[min(100vw-11rem,28rem)] items-center justify-end overflow-x-auto" />
         <div className="hidden lg:contents">
           {isCrossOriginApp() ? (
@@ -649,8 +720,18 @@ export function AppTopBar({
           ) : null}
         </div>
         <div className="flex items-center max-md:gap-0 gap-0.5 lg:gap-2">
-          <AppGlobalSearch onOpenChange={setMobileSearchOpen} />
+          {/* Notifications page: search hidden. */}
+          {onNotifications ? null : (
+            <AppGlobalSearch onOpenChange={setMobileSearchOpen} />
+          )}
+          {/* Mobile: chat lives in the avatar menu — keep md+ header button. */}
+          <span className="hidden md:contents">
+            <AssistantChatHeaderButton />
+          </span>
+          {/*
+          Previous phone chat control — moved into AppMobileAccountMenu.
           <AssistantChatHeaderButton />
+          */}
           <div className="hidden lg:contents">
             <ColorSchemePicker variant="header" />
           </div>
@@ -684,7 +765,12 @@ export function AppTopBar({
               <Shield aria-hidden className="size-[18px]" strokeWidth={1.75} />
             </Link>
           ) : null}
+          {/* Mobile: hide the bell (unread → avatar dot); keep mounted for poller. */}
+          <AppNotificationsBell buttonClassName="max-md:hidden" />
+          {/*
+          Previous always-visible phone bell.
           <AppNotificationsBell />
+          */}
           {/* Phone: avatar menu. md–lg: hamburger drawer. lg+: desktop account. */}
           <AppMobileAccountMenu
             accountLabel={accountLabel}
@@ -711,7 +797,7 @@ export function AppTopBar({
           </div>
         </div>
       </div>
-
+      </div>
     </header>
   );
 }

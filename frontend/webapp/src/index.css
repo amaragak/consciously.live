@@ -6,7 +6,7 @@
 @custom-variant hybrid (&:where(.hybrid, .hybrid *));
 
 :root {
-  --background: #f6f3ee;
+  --background: #F8F1E4;
   --foreground: #1c1917;
   --muted: #78716c;
   --accent: #C8A46A;
@@ -157,6 +157,88 @@
     > li:nth-child(2)
     > .app-header-crumb-sep {
     background-color: var(--border);
+  }
+
+  /*
+   * Previous A-lite full-bleed light header (superseded by floating capsule).
+   * .app-top-bar { background: var(--background); border-bottom; … }
+   */
+
+  /**
+   * Floating capsule header (matches the tab pill): fixed over the page so the
+   * paisley runs to the top — no shell fill, fade, blur, or grey band.
+   * Desktop / md+ keep the navy `--nav` header.
+   */
+  .app-top-bar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    right: 0;
+    /* Beat Tailwind `bg-nav` / header shadow on the sticky shell. */
+    background-color: transparent !important;
+    background-image: none !important;
+    color: var(--foreground);
+    border-bottom-color: transparent !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    /* safe-area + 8px gap + 48px capsule + 8px below */
+    height: calc(4rem + env(safe-area-inset-top, 0px));
+    padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-bottom: 0.5rem;
+    align-items: stretch;
+    overflow: visible;
+  }
+  /*
+   * Previous page-bg ::before fade — looked like a grey band over the pattern.
+   * .app-top-bar::before { linear-gradient(var(--background) → transparent) }
+   */
+  .app-top-bar .app-top-bar-capsule {
+    display: flex;
+    height: 3rem;
+    width: 100%;
+    align-items: center;
+    overflow: hidden;
+    border-radius: 9999px;
+    border: 1px solid var(--border);
+    background-color: var(--card);
+    box-shadow: 0 8px 24px rgb(15 27 45 / 0.1);
+  }
+  .app-top-bar .brand-wordmark {
+    color: var(--foreground);
+  }
+  .app-top-bar .app-header-crumb-current {
+    color: var(--foreground);
+  }
+  .app-top-bar .app-header-crumb-trail,
+  .app-top-bar .app-breadcrumb-parent,
+  .app-top-bar .app-header-crumb-sep {
+    color: var(--muted);
+  }
+  .app-header-phone-feature > ol:last-of-type > li:first-child > :is(a, span) {
+    background-image: none;
+    color: var(--foreground);
+    -webkit-text-fill-color: var(--foreground);
+  }
+  .app-header-phone-feature > ol:last-of-type > li:nth-child(2) > .app-header-crumb-sep {
+    background-color: var(--border);
+  }
+  /* ~40px circle; sun nearly fills it; fill is a faint gold wash only. */
+  .app-header-home-btn {
+    display: inline-flex;
+    height: 2.5rem;
+    width: 2.5rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background-color: color-mix(
+      in srgb,
+      var(--header-gold, #d9b87c) 12%,
+      transparent
+    );
   }
 }
 
@@ -1264,10 +1346,10 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
   box-shadow: 0 -10px 28px -6px rgb(0 0 0 / 0.34);
 }
 
-/* SPA mobile sidebar drawer — slide + scrim fade like marketing. */
+/* SPA mobile — floating capsule header height (safe-area + gap + pill + gap). */
 @media (max-width: 767px) {
   :root {
-    --app-header-h: 3rem;
+    --app-header-h: calc(4rem + env(safe-area-inset-top, 0px));
   }
 }
 
@@ -1282,10 +1364,16 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
 }
 @media (max-width: 767px) {
   :root.cap-native {
-    --app-header-h: calc(3rem + env(safe-area-inset-top, 0px));
+    /* Same as web mobile floating capsule — padding is on .app-top-bar itself. */
+    --app-header-h: calc(4rem + env(safe-area-inset-top, 0px));
   }
 }
-:root.cap-native .app-top-bar,
+/* Native safe-area: md+ navy bar + marketing site header. Mobile capsule pads itself. */
+@media (min-width: 768px) {
+  :root.cap-native .app-top-bar {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
 :root.cap-native .site-header,
 :root.cap-native .native-safe-top {
   padding-top: env(safe-area-inset-top, 0px);

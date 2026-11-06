@@ -43,7 +43,12 @@ function formatWhen(iso: string): string {
  * Top-bar notification bell: unread badge + dropdown inbox.
  * Also keeps the pending-meditation job poller alive.
  */
-export function AppNotificationsBell() {
+export function AppNotificationsBell({
+  buttonClassName = "",
+}: {
+  /** Extra classes on the trigger (e.g. `max-md:hidden` for A-lite mobile). */
+  buttonClassName?: string;
+} = {}) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<AppNotification[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -268,7 +273,7 @@ export function AppNotificationsBell() {
         aria-expanded={open}
         aria-haspopup="menu"
         onClick={() => setOpen((v) => !v)}
-        className="relative inline-flex h-9 w-9 max-md:h-8 max-md:w-8 cursor-pointer items-center justify-center rounded-lg text-nav-muted transition-colors hover:bg-nav-active hover:text-nav-foreground"
+        className={`relative inline-flex h-9 w-9 max-md:h-8 max-md:w-8 cursor-pointer items-center justify-center rounded-lg text-nav-muted transition-colors hover:bg-nav-active hover:text-nav-foreground ${buttonClassName}`.trim()}
       >
         <Bell aria-hidden className="size-[18px]" strokeWidth={1.75} />
         {unread > 0 ? (

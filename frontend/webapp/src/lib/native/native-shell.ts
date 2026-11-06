@@ -62,8 +62,16 @@ export function hideNativeSplash(): void {
   void SplashScreen.hide({ fadeOutDuration: 0 }).catch(() => {});
 }
 
-/** Light status-bar content on the navy header; dark content on hybrid cream. */
+/**
+ * Mobile A-lite uses a light header → dark status-bar glyphs.
+ * Otherwise keep the previous theme-color heuristic (navy vs cream).
+ */
 function syncStatusBarWithHeader(): void {
+  const mobile = window.matchMedia("(max-width: 767px)").matches;
+  if (!nativeDarkSurfaceActive() && mobile) {
+    void StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
+    return;
+  }
   const meta = document
     .querySelector('meta[name="theme-color"]')
     ?.getAttribute("content");
