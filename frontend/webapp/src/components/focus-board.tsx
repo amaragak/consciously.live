@@ -744,7 +744,17 @@ export function ManifestPicker({
         return 0;
       });
     }
-    return list;
+    // Doing first (most recently marked), then the rest in Tracker order.
+    const doing = list
+      .filter((item) => item.status === "doing")
+      .sort(
+        (a, b) =>
+          Date.parse(b.lastTouchedAt || b.updatedAt) -
+          Date.parse(a.lastTouchedAt || a.updatedAt),
+      );
+    if (doing.length === 0 || sort !== "tracker") return list;
+    const doingIds = new Set(doing.map((item) => item.id));
+    return [...doing, ...list.filter((item) => !doingIds.has(item.id))];
   }, [ensured, area, query, sort]);
 
   const areaTitle = (id: string) => areas.find((dream) => dream.id === id)?.title?.trim() || "";

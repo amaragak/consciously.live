@@ -87,13 +87,15 @@ import {
   lastActivityMs,
   lifeAreaActivityMeta,
   lifeAreaHref,
-  lifeAreaStepHref,
   newGoalHref,
 } from "@/lib/life-area-summary";
 import {
-  startLifeAreaFocus,
-  startLifeAreaMeditation,
-} from "@/lib/life-area-card-actions";
+  doingItemHref,
+  doingItemsForLifeArea,
+  trackerChooseHref,
+} from "@/lib/life-area-doing";
+import { queueTrackerFocus } from "@/lib/focus-ideate-link";
+import { startLifeAreaMeditation } from "@/lib/life-area-card-actions";
 import { hasMonthStats, manifestMonthStats } from "@/lib/manifest-month-stats";
 import { addVisionBoardImageFromFile } from "@/lib/ideate-vision-upload";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
@@ -473,6 +475,8 @@ export function PlanHomeClient() {
 
   const mobileLifeAreas: ManifestMobileLifeArea[] = orderedDreams.map((d) => {
     const goal = goalSummaryForLifeArea(ideateStore, d.id);
+    const doing = doingItemsForLifeArea(ideateStore, d.id);
+    const topDoing = doing[0] ?? null;
     return {
       dream: d,
       href: lifeAreaHref(d.id),
@@ -483,18 +487,31 @@ export function PlanHomeClient() {
             title: goal.subtask.title,
             done: goal.done,
             total: goal.total,
-            next: goal.nextStep
+            doing: topDoing
               ? {
-                  title: goal.nextStep.title,
-                  href: lifeAreaStepHref(d.id, goal.subtask.id),
+                  title: topDoing.title,
+                  href: doingItemHref(d, topDoing),
                 }
               : null,
+            chooseHref: trackerChooseHref(d.id),
           }
         : null,
       setGoalHref: newGoalHref(d.id),
-      onFocus: goal
-        ? () => navigate(startLifeAreaFocus(goal.subtask.id))
-        : undefined,
+      onFocus: () => {
+        if (doing.length > 0) {
+          navigate(
+            queueTrackerFocus(
+              doing.map((item) => ({
+                id: item.id,
+                title: item.title,
+                lifeAreaId: item.lifeAreaId,
+              })),
+            ),
+          );
+          return;
+        }
+        navigate("/focus");
+      },
       onMeditate: goal
         ? () => {
             const href = startLifeAreaMeditation(d.id, goal.subtask.title);
@@ -651,6 +668,8 @@ export function PlanHomeClient() {
                 ))
               : orderedDreams.map((d) => {
               const goal = goalSummaryForLifeArea(ideateStore, d.id);
+              const doing = doingItemsForLifeArea(ideateStore, d.id);
+              const topDoing = doing[0] ?? null;
               return (
                 <li key={d.id} className="flex min-w-0 flex-col [&>*]:flex-1">
                   <LifeAreaCard
@@ -664,21 +683,32 @@ export function PlanHomeClient() {
                             title: goal.subtask.title,
                             done: goal.done,
                             total: goal.total,
-                            next: goal.nextStep
+                            doing: topDoing
                               ? {
-                                  title: goal.nextStep.title,
-                                  href: lifeAreaStepHref(d.id, goal.subtask.id),
+                                  title: topDoing.title,
+                                  href: doingItemHref(d, topDoing),
                                 }
                               : null,
+                            chooseHref: trackerChooseHref(d.id),
                           }
                         : null
                     }
                     setGoalHref={newGoalHref(d.id)}
-                    onFocus={
-                      goal
-                        ? () => navigate(startLifeAreaFocus(goal.subtask.id))
-                        : undefined
-                    }
+                    onFocus={() => {
+                      if (doing.length > 0) {
+                        navigate(
+                          queueTrackerFocus(
+                            doing.map((item) => ({
+                              id: item.id,
+                              title: item.title,
+                              lifeAreaId: item.lifeAreaId,
+                            })),
+                          ),
+                        );
+                        return;
+                      }
+                      navigate("/focus");
+                    }}
                     onMeditate={
                       goal
                         ? () => {

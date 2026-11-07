@@ -1,11 +1,13 @@
 /**
- * Manifesto Focus card. Starts a session with the existing Focus handoff.
+ * Manifesto Focus card. Starts a session with Doing items when marked;
+ * otherwise opens Focus with nothing preselected.
  */
 
 import { Timer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { SelectChevron } from "@/components/select-chevron";
-import { startLifeAreaFocus } from "@/lib/life-area-card-actions";
+import { queueTrackerFocus } from "@/lib/focus-ideate-link";
+import { doingItemsAcrossLifeAreas } from "@/lib/life-area-doing";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
 import { nextFocusStep, type NextFocusStep } from "@/lib/next-focus-step";
@@ -22,12 +24,20 @@ export function ManifestoFocusCard({ compact = false }: { compact?: boolean }) {
   }, []);
 
   function start() {
-    if (!step) {
+    const store = loadIdeateStore();
+    const doing = doingItemsAcrossLifeAreas(store);
+    if (doing.length === 0) {
       router.push("/focus");
       return;
     }
-    const href = startLifeAreaFocus(step.subtaskId);
-    router.push(`${href}&minutes=25&autoStart=1`);
+    const href = queueTrackerFocus(
+      doing.map(({ item }) => ({
+        id: item.id,
+        title: item.title,
+        lifeAreaId: item.lifeAreaId,
+      })),
+    );
+    router.push(href);
   }
 
   return (
@@ -43,10 +53,11 @@ export function ManifestoFocusCard({ compact = false }: { compact?: boolean }) {
               compact ? "text-[17px]" : "text-[19px]"
             }`}
           >
-            Next: {step.stepTitle}
+            Doing: {step.stepTitle}
           </p>
           <p className="text-[12px] text-muted">
-            {step.lifeAreaTitle} · {step.goalTitle} · {step.done} of {step.total}
+            {step.lifeAreaTitle}
+            {step.total > 1 ? ` · ${step.total} Doing` : ""}
           </p>
           <div className="mt-auto flex items-center gap-2.5 pt-1">
             <button

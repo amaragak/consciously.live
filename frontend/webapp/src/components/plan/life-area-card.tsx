@@ -20,8 +20,13 @@ export type LifeAreaCardGoal = {
   title: string;
   done: number;
   total: number;
-  /** Next unchecked step; opens it. */
-  next: { title: string; href: string } | null;
+  /**
+   * Explicit Tracker Doing item (most recently marked). Never inferred.
+   * When null, show "Choose what you're on" via `chooseHref`.
+   */
+  doing: { title: string; href: string } | null;
+  /** Tracker tab to mark something Doing. */
+  chooseHref: string;
 };
 
 type LifeAreaCardProps =
@@ -45,7 +50,7 @@ type LifeAreaCardProps =
       onMeditate?: () => void;
       creationIndex: number;
       /**
-       * Mobile overview swipe cards: tighter copy, no date / Next line,
+       * Mobile overview swipe cards: tighter copy, no date / Doing line,
        * plain empty goal (no dashed box).
        */
       compact?: boolean;
@@ -164,20 +169,29 @@ export function LifeAreaCard(props: LifeAreaCardProps) {
                 </span>
               </span>
             ) : null}
-            {!compact && goal.next ? (
-              <Link
-                to={goal.next.href}
-                className="relative z-10 flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap text-[13px] font-semibold text-accent-link hover:underline"
-              >
-                <span className="min-w-0 truncate">
-                  Next: {goal.next.title.trim() || "Untitled step"}
-                </span>
-                <ChevronRight
-                  aria-hidden
-                  className="size-4 shrink-0"
-                  strokeWidth={1.8}
-                />
-              </Link>
+            {!compact ? (
+              goal.doing ? (
+                <Link
+                  to={goal.doing.href}
+                  className="relative z-10 flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap text-[13px] font-semibold text-accent-link hover:underline"
+                >
+                  <span className="min-w-0 truncate">
+                    Doing: {goal.doing.title.trim() || "Untitled"}
+                  </span>
+                  <ChevronRight
+                    aria-hidden
+                    className="size-4 shrink-0"
+                    strokeWidth={1.8}
+                  />
+                </Link>
+              ) : (
+                <Link
+                  to={goal.chooseHref}
+                  className="relative z-10 text-[13px] font-semibold text-accent-link hover:underline"
+                >
+                  Choose what you're on
+                </Link>
+              )
             ) : null}
           </div>
 

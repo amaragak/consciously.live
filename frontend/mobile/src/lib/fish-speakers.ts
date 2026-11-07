@@ -44,11 +44,30 @@ export function fishSpeakersForPicker<T extends { modelId: string }>(
   return speakers.filter((s) => !HIDDEN_FISH_SPEAKER_MODEL_IDS.has(s.modelId));
 }
 
-/** Meditation create — Speechify voices only. */
+/**
+ * Speechify-only subset — letter narration and Speechify-specific tools.
+ * Create uses `createSpeakersForPicker` (Standard + Pro).
+ */
 export function speechifySpeakersForPicker<
   T extends { modelId: string; brand?: string | null },
 >(speakers: readonly T[]): T[] {
   return fishSpeakersForPicker(speakers).filter((s) => s.brand === "speechify");
+}
+
+/** Create: Standard (Speechify) then Pro (Fish). */
+export function createSpeakersForPicker<
+  T extends { modelId: string; brand?: string | null; name?: string },
+>(speakers: readonly T[]): T[] {
+  const visible = fishSpeakersForPicker(speakers);
+  const standard = visible.filter((s) => s.brand === "speechify");
+  const pro = visible.filter((s) => s.brand !== "speechify");
+  return [...standard, ...pro];
+}
+
+export function isProVoiceSpeaker(
+  speaker: { brand?: string | null } | null | undefined,
+): boolean {
+  return Boolean(speaker && speaker.brand !== "speechify");
 }
 
 export const DEFAULT_SPEECHIFY_SPEAKER_NAME = "Beatrice";

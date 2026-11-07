@@ -49,9 +49,20 @@ import {
   syncGaplessBed,
 } from "@/lib/gapless-bed-loop";
 import {
+  createSpeakersForPicker,
+  isProVoiceSpeaker,
   pickDefaultSpeechifySpeaker,
   speechifySpeakersForPicker,
 } from "@/lib/fish-speakers";
+import {
+  deliveryDescription,
+  longerBreaksFromDelivery,
+  MEDITATION_DELIVERY_OPTIONS,
+  readMeditationDeliveryPref,
+  writeMeditationDeliveryPref,
+  type MeditationDelivery,
+} from "@/lib/meditation-delivery";
+import { estimateMeditationCredits } from "@/lib/meditation-credits";
 import {
   factoryPresetToMix,
   type MixerFactoryPreset,
@@ -193,6 +204,10 @@ export type CreateSoundStepJobExtras = {
   voiceFxPreset: string | null;
   speed: number;
   longerBreaks?: boolean;
+  /** Casual | Guided | Open sits — drives script + audio pacing. */
+  deliveryStyle?: MeditationDelivery;
+  /** speechify | fish from the selected speaker brand. */
+  ttsProvider?: "speechify" | "fish";
   speakerName: string | null;
   speakerPortraitUrl: string | null;
   /** Bed-only seconds before voice (0 or 20). */
@@ -266,6 +281,10 @@ type CreateSoundStepProps = {
   pickerHost?: "parent" | "viewport";
   /** Hide the main Voice/Sound/Pace card; keep pickers + state (Story Narrate). */
   hideMainUi?: boolean;
+  /** Target length in minutes — drives the credit estimate pill. */
+  lengthMinutes?: number;
+  /** Remaining user credits; omit to hide the "· N left" half of the cost line. */
+  creditBalance?: number | null;
   /**
    * Ignore create-flow sound lock + last-used; start on a random Our Pick
    * (Manifesto Story Narrate).
@@ -568,6 +587,8 @@ export const CreateSoundStep = forwardRef<
     initialPacingPercent,
     pickerHost = "parent",
     hideMainUi = false,
+    lengthMinutes = 10,
+    creditBalance = null,
     freshOurPickSound = false,
     onPickLabelsChange,
   },
@@ -609,7 +630,17 @@ export const CreateSoundStep = forwardRef<
   const [musicLevel, setMusicLevel] = useState(SOUND_VOLUME_RECOMMENDED);
   const [leadInSeconds, setLeadInSeconds] = useState<0 | 20>(20);
   const [fadeOut, setFadeOut] = useState(true);
-  const [longerBreaks, setLongerBreaks] = useState(false);
+  const [delivery, setDelivery] = useState<MeditationDelivery>(() =>
+    readMeditationDeliveryPref("guided"),
+  );
+  const longerBreaks = longerBreaksFromDelivery(delivery);
+  function setLongerBreaks(next: boolean) {
+    setDelivery(next ? "open_sits" : "guided");
+  }
+  function setDeliveryAndRemember(next: MeditationDelivery) {
+    setDelivery(next);
+    writeMeditationDeliveryPref(next);
+  }
   const [voiceCardStopNonce, setVoiceCardStopNonce] = useState(0);
   const [claudeModelChoice, setClaudeModelChoice] = useState(
     CLAUDE_SONNET_45_MODEL_ID,
@@ -826,7 +857,7 @@ export const CreateSoundStep = forwardRef<
     void listFishSpeakers()
       .then((list) => {
         if (cancelled) return;
-        const next = speechifySpeakersForPicker(list);
+        const next = createSpeakersForPicker(list);
         setSpeakers(next);
       })
       .catch(() => {});
@@ -2123,9 +2154,10 @@ export const CreateSoundStep = forwardRef<
     let referenceId = cfg.speakerModelId.trim();
         if (!referenceId) {
           const list = await listFishSpeakers();
-          const pick = pickDefaultSpeechifySpeaker(
-            speechifySpeakersForPicker(list),
-          );
+          const pick =
+            pickDefaultSpeechifySpeaker(speechifySpeakersForPicker(list)) ??
+            createSpeakersForPicker(list)[0] ??
+            null;
           referenceId = pick?.modelId ?? "";
         }
         if (!referenceId) throw new Error("No voice available");
@@ -2143,7 +2175,15 @@ export const CreateSoundStep = forwardRef<
           reference_id: referenceId,
       voiceFxDial: cfg.voiceFxDial,
           voiceFxPreset: voiceFxOn ? VOICE_FX_PRESET_MEDITATION_MIXER : null,
-      speed: speechSpeed,
+      // Casual keeps the voice at its natural rate (no meditation slowing).
+      speed: delivery === "casual" && !cfg.longerBreaks ? 1 : speechSpeed,
+      deliveryStyle: (cfg.longerBreaks
+        ? "open_sits"
+        : delivery === "casual"
+          ? "casual"
+          : "guided") as MeditationDelivery,
+      ttsProvider:
+        speaker?.brand === "speechify" ? ("speechify" as const) : ("fish" as const),
       ...(cfg.longerBreaks ? { longerBreaks: true as const } : {}),
           speakerName: speaker?.name ?? null,
       speakerPortraitUrl: speaker?.portraitImageUrl?.trim() || null,
@@ -2273,6 +2313,21 @@ export const CreateSoundStep = forwardRef<
   const selectedVoiceMeta = selectedVoice
     ? voiceDisplayMeta(selectedVoice)
     : null;
+  const creditEstimate = useMemo(
+    () =>
+      estimateMeditationCredits({
+        lengthMinutes,
+        delivery,
+        isProVoice: isProVoiceSpeaker(selectedVoice),
+      }),
+    [lengthMinutes, delivery, selectedVoice],
+  );
+  const creditsShort =
+    typeof creditBalance === "number" && Number.isFinite(creditBalance)
+      ? Math.max(0, Math.floor(creditBalance))
+      : null;
+  const needsMoreCredits =
+    creditsShort != null && creditEstimate.credits > creditsShort;
   const selectedSound =
     compositions.find((c) => c.key === compositionKey) ?? null;
   const mixLayerBits = [
@@ -2895,39 +2950,61 @@ export const CreateSoundStep = forwardRef<
       */}
       <div className="grid grid-cols-1 items-stretch justify-items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:justify-items-stretch xl:gap-4">
         <section className="flex w-full max-w-[34rem] flex-col gap-3.5 rounded-2xl border border-border bg-card px-5 pb-[18px] pt-4 xl:max-w-none">
-          <div className="flex items-start justify-between gap-2">
+          <div className="flex flex-col gap-2">
             <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-              Voice
+              Delivery
             </p>
-            <div className="flex items-center gap-[10px]">
-              {sessionFocused && !voiceDiffers ? (
-                <span className="text-[12px] text-muted">Same as All</span>
-              ) : null}
             <div
-                className="inline-flex rounded-xl bg-background p-[3px]"
+              className="inline-flex w-full rounded-xl bg-background p-[3px]"
               role="group"
-              aria-label="Meditation pacing"
+              aria-label="Delivery style"
             >
-              {(["guided", "open"] as const).map((id) => {
-                const on = id === "open" ? longerBreaks : !longerBreaks;
+              {MEDITATION_DELIVERY_OPTIONS.map((opt) => {
+                const on = delivery === opt.id;
                 return (
                   <button
-                    key={id}
+                    key={opt.id}
                     type="button"
                     disabled={soundControlsDisabled}
-                    onClick={() => setLongerBreaks(id === "open")}
-                    className={`cursor-pointer rounded-[9px] px-3.5 py-[7px] text-[13px] ${
+                    onClick={() => setDeliveryAndRemember(opt.id)}
+                    className={`min-w-0 flex-1 cursor-pointer rounded-[9px] px-2 py-[7px] text-[13px] ${
                       on
                         ? "border border-border bg-card font-semibold text-foreground"
                         : "border border-transparent text-muted"
                     }`}
                   >
-                    {id === "guided" ? "Guided" : "Open sits"}
+                    {opt.label}
                   </button>
                 );
               })}
             </div>
+            <p className="text-[12.5px] leading-snug text-muted">
+              {deliveryDescription(delivery)}
+            </p>
           </div>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
+              Voice
+              {selectedVoice && isProVoiceSpeaker(selectedVoice) ? (
+                <span className="ml-2 inline-flex rounded-full border border-[#E6D3AE] bg-[#F6EEDD] px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-[#8A6424]">
+                  Pro
+                </span>
+              ) : null}
+            </p>
+            <div className="flex items-center gap-[10px]">
+              {sessionFocused && !voiceDiffers ? (
+                <span className="text-[12px] text-muted">Same as All</span>
+              ) : null}
+              <button
+                ref={changeVoiceBtnRef}
+                type="button"
+                disabled={soundControlsDisabled}
+                onClick={openVoicePanel}
+                className="h-9 shrink-0 cursor-pointer rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold text-foreground"
+              >
+                Change
+              </button>
+            </div>
           </div>
           {sessionFocused && voiceDiffers ? (
             <SessionDiffNote
@@ -2971,15 +3048,6 @@ export const CreateSoundStep = forwardRef<
                 </p>
               ) : null}
             </div>
-                <button
-              ref={changeVoiceBtnRef}
-                  type="button"
-                  disabled={soundControlsDisabled}
-              onClick={openVoicePanel}
-              className="h-9 shrink-0 cursor-pointer rounded-full border border-border bg-card px-3.5 text-[13px] font-semibold text-foreground"
-            >
-              Change
-                </button>
           </div>
           <div className="flex items-center gap-3 rounded-xl bg-background px-3.5 py-3">
             <button
@@ -3471,6 +3539,31 @@ export const CreateSoundStep = forwardRef<
           </div>
         </section>
       </div>
+      <div
+        className={`mt-4 flex flex-wrap items-center justify-between gap-2 rounded-full border px-4 py-2.5 text-[13px] ${
+          needsMoreCredits
+            ? "border-destructive/40 bg-destructive/10 text-destructive"
+            : "border-border bg-card text-foreground"
+        }`}
+      >
+        <span className="font-semibold">
+          {needsMoreCredits
+            ? `Needs ${creditEstimate.credits} credit${creditEstimate.credits === 1 ? "" : "s"}`
+            : `Uses ${creditEstimate.credits} credit${creditEstimate.credits === 1 ? "" : "s"}`}
+          {creditsShort != null ? (
+            <span className="font-normal text-muted">
+              {" "}
+              · {creditsShort} left
+            </span>
+          ) : null}
+          {creditEstimate.isProVoice ? (
+            <span className="font-normal text-muted"> · Pro voice</span>
+          ) : null}
+        </span>
+        <span className="text-[12.5px] font-semibold text-accent-link">
+          {needsMoreCredits ? "Get credits" : "How it's worked out"}
+        </span>
+      </div>
       </>
       ) : null}
 
@@ -3518,7 +3611,24 @@ export const CreateSoundStep = forwardRef<
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="flex flex-col gap-0.5">
-            {filteredVoices.map((v) => {
+            {(
+              [
+                {
+                  label: "Standard",
+                  rows: filteredVoices.filter((v) => v.brand === "speechify"),
+                },
+                {
+                  label: "Pro",
+                  rows: filteredVoices.filter((v) => v.brand !== "speechify"),
+                },
+              ] as const
+            ).map((group) =>
+              group.rows.length === 0 ? null : (
+                <div key={group.label} className="mb-2">
+                  <p className="sticky top-0 z-[1] bg-card px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[1.4px] text-muted">
+                    {group.label}
+                  </p>
+                  {group.rows.map((v) => {
               const meta = voiceDisplayMeta(v);
               const selected = stagedVoiceId === v.modelId;
               const prefIdx = (voicePrefs?.speakers ?? []).indexOf(v.modelId);
@@ -3527,6 +3637,7 @@ export const CreateSoundStep = forwardRef<
                   x.modelId !== programSpeakerId &&
                   !(voicePrefs?.speakers ?? []).includes(x.modelId),
               )?.modelId;
+              const pro = isProVoiceSpeaker(v);
               return (
                 <div
                   key={v.modelId}
@@ -3564,7 +3675,14 @@ export const CreateSoundStep = forwardRef<
                     ) : null}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[14px] font-semibold">{v.name}</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="block text-[14px] font-semibold">{v.name}</span>
+                      {pro ? (
+                        <span className="rounded-full border border-[#E6D3AE] bg-[#F6EEDD] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#8A6424]">
+                          Pro
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="block text-[12px] text-muted">{meta.description}</span>
                   </span>
                   {programSpeakerId && v.modelId === programSpeakerId ? (
@@ -3619,6 +3737,9 @@ export const CreateSoundStep = forwardRef<
                 </div>
               );
             })}
+                </div>
+              ),
+            )}
           </div>
         </div>
       </CreateOneFlowPickerShell>

@@ -17,7 +17,7 @@ import {
   getMedimadeSessionJwt,
   isMedimadeSessionActive,
 } from "@/lib/auth-session";
-import { speechifySpeakersForPicker } from "@/lib/fish-speakers";
+import { createSpeakersForPicker } from "@/lib/fish-speakers";
 import { libraryMeditationDetailHref } from "@/lib/library-meditation-detail";
 import {
   fetchLibraryMeditationsCached,
@@ -307,7 +307,7 @@ export function MeditateOverviewPage() {
         setCreationsCount(visible.length);
         setProgramsCount(programs.length);
         setSoundscapesCount(bg?.compositions?.length ?? 0);
-        setVoicesCount(speechifySpeakersForPicker(speakers).length);
+        setVoicesCount(createSpeakersForPicker(speakers).length);
         setReady(true);
       } catch {
         if (!cancelled) setReady(true);

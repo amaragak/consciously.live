@@ -45,12 +45,48 @@ export function fishSpeakersForPicker<T extends { modelId: string }>(
   return speakers.filter((s) => !HIDDEN_FISH_SPEAKER_MODEL_IDS.has(s.modelId));
 }
 
-/** Meditation create + letter narration UIs — Speechify voices only. */
+/**
+ * Speechify-only subset — letter narration and Speechify-specific tools.
+ * Create / browse use `createSpeakersForPicker` (Standard + Pro).
+ */
 export function speechifySpeakersForPicker<
   T extends { modelId: string; brand?: string | null },
 >(speakers: readonly T[]): T[] {
   return fishSpeakersForPicker(speakers).filter((s) => s.brand === "speechify");
 }
+
+/** Fish Audio Pro voices for the create Sound step (non-hidden). */
+export function fishProSpeakersForPicker<
+  T extends { modelId: string; brand?: string | null },
+>(speakers: readonly T[]): T[] {
+  return fishSpeakersForPicker(speakers).filter(
+    (s) => s.brand === "fish" || !s.brand,
+  );
+}
+
+/**
+ * Create Sound step: Standard (Speechify) then Pro (Fish).
+ * Prefer explicit brand; treat missing brand as Fish (legacy catalog rows).
+ */
+export function createSpeakersForPicker<
+  T extends { modelId: string; brand?: string | null; name?: string },
+>(speakers: readonly T[]): T[] {
+  const visible = fishSpeakersForPicker(speakers);
+  const standard = visible.filter((s) => s.brand === "speechify");
+  const pro = visible.filter((s) => s.brand !== "speechify");
+  return [...standard, ...pro];
+}
+
+export function isProVoiceSpeaker(
+  speaker: { brand?: string | null } | null | undefined,
+): boolean {
+  return Boolean(speaker && speaker.brand !== "speechify");
+}
+
+/** Starting Pro (Fish) set for product review — adjust IDs in admin as needed. */
+export const PRO_VOICE_STARTER_SET = FISH_SPEAKERS.filter(
+  (s) => !HIDDEN_FISH_SPEAKER_MODEL_IDS.has(s.modelId),
+);
 
 /** Default Speechify narrator for insights letters and create when unset. */
 export const DEFAULT_SPEECHIFY_SPEAKER_NAME = "Beatrice";

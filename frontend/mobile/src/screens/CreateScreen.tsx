@@ -29,8 +29,8 @@ import { colors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { FIXED_SPEECH_PREVIEW_SPEED } from "../lib/speaker-sample-speed";
 import {
+  createSpeakersForPicker,
   pickDefaultSpeechifySpeaker,
-  speechifySpeakersForPicker,
 } from "../lib/fish-speakers";
 import {
   type BackgroundAudioItem,
@@ -431,7 +431,7 @@ export default function CreateScreen() {
   useEffect(() => {
     void listFishSpeakers()
       .then((sp) => {
-        const next = speechifySpeakersForPicker(sp ?? []);
+        const next = createSpeakersForPicker(sp ?? []);
         setFishSpeakers(next);
         const preferred = pickDefaultSpeechifySpeaker(next);
         setSpeakerModelId((cur) => {

@@ -37,6 +37,7 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
     const authJwtSecret = props.config.authJwtSecret;
     const algoliaSecret = props.config.algolia;
     const speechifyApiKeySecret = props.config.speechifyApiKey;
+    const fishApiKeySecret = props.config.fishApiKey;
     const mediaBucket = props.media.bucket;
     const mediaDistribution = props.media.distribution;
     const journalTable = props.database.journal;
@@ -65,6 +66,7 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
     claudeApiKeySecret.grantRead(role);
     algoliaSecret.grantRead(role);
     speechifyApiKeySecret.grantRead(role);
+    fishApiKeySecret.grantRead(role);
     meditationAnalyticsTable.grantReadData(role);
     meditationJobsTable.grantReadData(role);
 
@@ -218,6 +220,8 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,
           MEDIA_CLOUDFRONT_DOMAIN: mediaDistribution.domainName,
           SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
+          FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
+          FISH_TTS_MODEL: "s2.1-pro-free",
           AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           SPEECHIFY_TTS_MODEL: "simba-3.2",
         },
@@ -227,6 +231,7 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
     voiceAdminTable.grantReadData(journalLetterNarrate);
     mediaBucket.grantReadWrite(journalLetterNarrate);
     speechifyApiKeySecret.grantRead(journalLetterNarrate);
+    fishApiKeySecret.grantRead(journalLetterNarrate);
     journalLetterNarrate.grantInvoke(role);
 
     const journalWeeklyReflection = new lambda_nodejs.NodejsFunction(

@@ -10,11 +10,15 @@ import {
   type JournalWeeklyPatternsSelection,
 } from "@/lib/medimade-api";
 import {
+  createSpeakersForPicker,
+  isProVoiceSpeaker,
   pickDefaultSpeechifySpeaker,
   speechifySpeakersForPicker,
 } from "@/lib/fish-speakers";
 import {
   speakerLetterIntroSampleKey,
+  speakerPreviewLoudDrySampleKey,
+  speakerSampleSpeedOrRate,
   withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
 import {
@@ -43,9 +47,9 @@ export {
 
 export type InsightsGenerateSelection = {
   letter: boolean;
-  /** Generate Speechify narration after the letter (opt-in). */
+  /** Generate narration after the letter (opt-in; Standard or Pro voice). */
   letterNarration: boolean;
-  /** Speechify voice model id (Beatrice when empty / unavailable). */
+  /** Voice model id (Beatrice / first Standard when empty). */
   letterVoiceId: string;
   patterns: JournalWeeklyPatternsSelection;
   remember: boolean;
@@ -203,6 +207,11 @@ function NarrateSpeakerSelect({
                 }}
               >
                 {s.name}
+                {isProVoiceSpeaker(s) ? (
+                  <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    Pro
+                  </span>
+                ) : null}
               </button>
               <button
                 type="button"
@@ -288,7 +297,7 @@ export function InsightsGenerateDialog({
   const [letter, setLetter] = useState(true);
   const [letterNarration, setLetterNarration] = useState(false);
   const [letterVoiceId, setLetterVoiceId] = useState("");
-  const [speechifySpeakers, setSpeechifySpeakers] = useState<FishSpeaker[]>([]);
+  const [narrationSpeakers, setNarrationSpeakers] = useState<FishSpeaker[]>([]);
   const [mediaBaseUrl, setMediaBaseUrl] = useState<string | null>(null);
   const [patterns, setPatterns] = useState(true);
   const [felt, setFelt] = useState(true);
@@ -460,15 +469,20 @@ export function InsightsGenerateDialog({
     void listFishSpeakers()
       .then((sp) => {
         if (cancelled) return;
-        const next = speechifySpeakersForPicker(sp ?? []);
-        setSpeechifySpeakers(next);
+        const next = createSpeakersForPicker(sp ?? []);
+        setNarrationSpeakers(next);
         setLetterVoiceId((current) => {
           if (current && next.some((s) => s.modelId === current)) return current;
-          return pickDefaultSpeechifySpeaker(next)?.modelId ?? "";
+          return (
+            pickDefaultSpeechifySpeaker(speechifySpeakersForPicker(next))
+              ?.modelId ??
+            next[0]?.modelId ??
+            ""
+          );
         });
       })
       .catch(() => {
-        if (!cancelled) setSpeechifySpeakers([]);
+        if (!cancelled) setNarrationSpeakers([]);
       });
     return () => {
       cancelled = true;
@@ -865,21 +879,29 @@ export function InsightsGenerateDialog({
                   Narrate with
                 </label>
                 <NarrateSpeakerSelect
-                  voices={speechifySpeakers}
+                  voices={narrationSpeakers}
                   value={letterVoiceId}
                   onChange={setLetterVoiceId}
                   disabled={!letterNarration}
                   previewUrlFor={(modelId) => {
                     if (!mediaBaseUrl || !modelId) return null;
-                    const speaker = speechifySpeakers.find(
+                    const speaker = narrationSpeakers.find(
                       (s) => s.modelId === modelId,
                     );
+                    if (!speaker) return null;
+                    const key = isProVoiceSpeaker(speaker)
+                      ? speakerPreviewLoudDrySampleKey(
+                          modelId,
+                          speakerSampleSpeedOrRate(
+                            speaker.brand,
+                            speaker.speechifyRate,
+                          ),
+                          speaker.brand,
+                        )
+                      : speakerLetterIntroSampleKey(modelId);
                     return withSpeakerSampleCacheBust(
-                      mediaFileUrl(
-                        mediaBaseUrl,
-                        speakerLetterIntroSampleKey(modelId),
-                      ),
-                      speaker?.updatedAt,
+                      mediaFileUrl(mediaBaseUrl, key),
+                      speaker.updatedAt,
                     );
                   }}
                 />

@@ -8,7 +8,7 @@ import {
   rankVoicesByPrefs,
   voiceDisplayMeta,
 } from "@/lib/create-sound-picks";
-import { speechifySpeakersForPicker } from "@/lib/fish-speakers";
+import { createSpeakersForPicker, isProVoiceSpeaker } from "@/lib/fish-speakers";
 import {
   getMedimadeMediaBaseUrl,
   listFishSpeakers,
@@ -54,7 +54,7 @@ export function SoundsVoicesBrowse() {
     setLoading(true);
     void listFishSpeakers()
       .then((list) => {
-        if (!cancelled) setSpeakers(speechifySpeakersForPicker(list));
+        if (!cancelled) setSpeakers(createSpeakersForPicker(list));
       })
       .catch(() => {
         if (!cancelled) setSpeakers([]);
@@ -305,8 +305,15 @@ export function SoundsVoicesBrowse() {
                     </span>
                   )}
                   <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
-                    <span className="truncate font-display text-lg text-foreground">
-                      {v.name}
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate font-display text-lg text-foreground">
+                        {v.name}
+                      </span>
+                      {isProVoiceSpeaker(v) ? (
+                        <span className="shrink-0 rounded-full border border-[#E6D3AE] bg-[#F6EEDD] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#8A6424]">
+                          Pro
+                        </span>
+                      ) : null}
                     </span>
                     <span className="truncate text-[13px] text-muted">
                       {meta.description}

@@ -20,19 +20,24 @@ import {
 } from "@/lib/journal-storage";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
-import {
-  focusMyHrefFromIdeate,
-  writeFocusSessionHandoff,
-} from "@/lib/focus-session-handoff";
-import { writeFocusActiveIdeateSubtask } from "@/lib/focus-preflight-link";
+import { queueTrackerFocus } from "@/lib/focus-ideate-link";
 import { useDailyTodoPrefs } from "@/lib/daily-todos";
 import { SectionEyebrow } from "@/components/section-eyebrow";
 import { SelectChevron } from "@/components/select-chevron";
 
+/** @deprecated Inferred next step — replaced by TodayDoingStep. */
 export type TodayGoalStep = {
   stepTitle: string;
   goalTitle: string;
   subtaskId: string;
+};
+
+/** Explicit Tracker Doing item for the Today checklist. */
+export type TodayDoingStep = {
+  title: string;
+  lifeAreaTitle: string;
+  itemId: string;
+  lifeAreaId: string;
 };
 
 type Props = {
@@ -46,7 +51,12 @@ type Props = {
   storyAvailable?: boolean;
   storyMinutes?: number | null;
   onPlayStory?: (() => void) | null;
-  /** Next incomplete goal step; when absent, fall back to life-area wording. */
+  /**
+   * Explicit Doing items (most recent first). When empty, the life-area step
+   * row is omitted — never infer a "Next step".
+   */
+  doingSteps?: TodayDoingStep[];
+  /** @deprecated Prefer doingSteps. */
   goalStep?: TodayGoalStep | null;
   /** Tighter single-column layout for the mobile dashboard. */
   compact?: boolean;
@@ -144,6 +154,7 @@ export function DailyHabitTracker({
   storyAvailable = false,
   storyMinutes = null,
   onPlayStory = null,
+  doingSteps = [],
   goalStep = null,
   compact = false,
   embedded = false,
@@ -227,21 +238,26 @@ export function DailyHabitTracker({
       ? `${streak}-day streak · ${doneCount} of ${totalCount} done`
       : `${doneCount} of ${totalCount} done`;
 
-  const lifeAreaName = goalStep
-    ? "Next step on your goal"
-    : "Make progress on a life area";
-  const lifeAreaHelp = goalStep
-    ? `${goalStep.stepTitle} · ${goalStep.goalTitle}`
-    : "Complete any goal or To Do in Manifest, or add a thought";
+  const shownDoing = doingSteps.slice(0, 2);
+  const doingExtra = Math.max(0, doingSteps.length - shownDoing.length);
+  // Comment out inferred next-step wording:
+  // const lifeAreaName = goalStep ? "Next step on your goal" : "Make progress…";
+  void goalStep;
 
-  function openFocus() {
-    if (goalStep?.subtaskId) {
-      writeFocusSessionHandoff({ v: 1, subtaskId: goalStep.subtaskId });
-      writeFocusActiveIdeateSubtask(goalStep.subtaskId);
-      router.push(focusMyHrefFromIdeate());
+  function openFocus(items: TodayDoingStep[] = doingSteps) {
+    if (items.length === 0) {
+      router.push("/focus");
       return;
     }
-    router.push("/focus");
+    router.push(
+      queueTrackerFocus(
+        items.map((row) => ({
+          id: row.itemId,
+          title: row.title,
+          lifeAreaId: row.lifeAreaId,
+        })),
+      ),
+    );
   }
 
   const allRows: {
@@ -253,6 +269,8 @@ export function DailyHabitTracker({
     actionLabel: string;
     onAction: () => void;
     actionAsLink?: string;
+    /** Extra Doing lines under the life-area row (2nd item + "+N more"). */
+    doingExtraLines?: string[];
   }[] = [
     {
       pillar: "gratitude",
@@ -310,14 +328,32 @@ export function DailyHabitTracker({
       onAction: () => {},
       actionAsLink: "/journal?new=1",
     },
-    {
-      pillar: "lifeArea",
-      name: lifeAreaName,
-      mobileName: goalStep ? `Next step: ${goalStep.stepTitle}` : undefined,
-      help: lifeAreaHelp,
-      actionLabel: "Focus →",
-      onAction: openFocus,
-    },
+    ...(shownDoing.length > 0
+      ? [
+          {
+            pillar: "lifeArea" as const,
+            name: `Doing: ${shownDoing[0]!.title}`,
+            mobileName: `Doing: ${shownDoing[0]!.title}`,
+            help:
+              shownDoing.length === 1
+                ? shownDoing[0]!.lifeAreaTitle
+                : `${shownDoing[0]!.lifeAreaTitle}${
+                    shownDoing[1]
+                      ? ` · also ${shownDoing[1].title}`
+                      : ""
+                  }${doingExtra > 0 ? ` · +${doingExtra} more` : ""}`,
+            actionLabel: "Focus →",
+            onAction: () => openFocus(),
+            doingExtraLines: [
+              ...(shownDoing[1]
+                ? [`Doing: ${shownDoing[1].title}`]
+                : []),
+              ...(doingExtra > 0 ? [`+${doingExtra} more`] : []),
+            ],
+          },
+        ]
+      : // No Doing marked → no step row at all (never infer "Next step").
+        []),
   ];
   // Settings › Daily to-dos. Order follows `allRows`.
   const rows = allRows.filter((row) => todoPrefs[row.pillar]);
@@ -331,7 +367,7 @@ export function DailyHabitTracker({
   if (embedded) {
     return (
       <ul>
-        {rows.map((row) => {
+        {rows.map((row, rowIndex) => {
           const checked = status[row.pillar];
           const action = row.actionLabel.replace(/\s*→\s*$/, "").split(" ")[0] || row.actionLabel;
           const control = (
@@ -349,10 +385,11 @@ export function DailyHabitTracker({
             </>
           );
           const mobileRowClass = "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2 text-left";
+          const borderTop = rowIndex === 0 ? "" : "border-t border-[rgba(243,237,226,0.12)]";
           return (
             <li key={row.pillar}>
             {/* Mobile: one line, whole row opens the step; the circle still toggles on its own. */}
-            <div className={`flex h-[46px] items-center gap-3 md:hidden ${row === rows[0] ? "" : "border-t border-[rgba(243,237,226,0.12)]"}`}>
+            <div className={`flex h-[46px] items-center gap-3 md:hidden ${borderTop}`}>
               <HabitCheckbox
                 checked={checked}
                 onToggle={() => toggle(row.pillar)}
@@ -369,6 +406,19 @@ export function DailyHabitTracker({
                 </button>
               )}
             </div>
+            {(row.doingExtraLines ?? []).map((line) => (
+              <button
+                key={line}
+                type="button"
+                onClick={() => openFocus()}
+                className="flex h-[40px] w-full cursor-pointer items-center gap-3 border-t border-[rgba(243,237,226,0.12)] pl-8 text-left md:hidden"
+              >
+                <span className="min-w-0 flex-1 truncate text-[15px] text-[#F3EDE2]">
+                  {line}
+                </span>
+                <SelectChevron direction="right" className="shrink-0 text-[rgba(243,237,226,0.55)]" />
+              </button>
+            ))}
             <div className="hidden items-center gap-3 py-2 md:flex">
               <HabitCheckbox
                 checked={checked}

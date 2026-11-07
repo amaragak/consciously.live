@@ -4225,6 +4225,8 @@ export async function createMeditationAudioJob(params: {
   speechifyRate?: number | null;
   /** Experienced pacing — cued open sits (~1–2 min); same Length target. */
   longerBreaks?: boolean;
+  /** Casual | Guided | Open sits (Sound step delivery). */
+  deliveryStyle?: "casual" | "guided" | "open_sits";
   /** Program shelf audio — keep off My Creations. */
   excludeFromLibrary?: boolean;
   /** Ideate life-area id when generated from that area / goal path. */
@@ -4310,6 +4312,11 @@ export async function createMeditationAudioJob(params: {
         }
       : {}),
     ...(params.longerBreaks === true ? { longerBreaks: true } : {}),
+    ...(params.deliveryStyle === "casual" ||
+    params.deliveryStyle === "guided" ||
+    params.deliveryStyle === "open_sits"
+      ? { deliveryStyle: params.deliveryStyle }
+      : {}),
     meditationTargetMinutes,
     ...(params.journalMode === true ? { journalMode: true } : {}),
     ...(params.excludeFromLibrary === true ? { excludeFromLibrary: true } : {}),

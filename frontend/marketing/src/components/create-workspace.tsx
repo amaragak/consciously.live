@@ -22,7 +22,7 @@ import * as Switch from "@radix-ui/react-switch";
 import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
 import {
   pickDefaultSpeechifySpeaker,
-  speechifySpeakersForPicker,
+  createSpeakersForPicker,
 } from "@/lib/fish-speakers";
 import {
   CLAUDE_HAIKU_45_MODEL_ID,
@@ -1348,8 +1348,7 @@ export function CreateWorkspace({
             : previewNoiseRef.current;
     setGaplessBedVolume(el, bedElementVolume(gain));
   }
-  // Speakers come from backend `GET /fish/speakers` (single source of truth).
-  // Speakers come from backend `GET /fish/speakers` (Speechify only in Create UI).
+  // Speakers from `GET /fish/speakers` — Standard (Speechify) + Pro (Fish).
   const [fishSpeakers, setFishSpeakers] = useState<FishSpeaker[]>([]);
   const [orpheusSpeakers, setOrpheusSpeakers] = useState<OrpheusSpeaker[]>(
     () => [...ORPHEUS_VOICES],
@@ -2297,7 +2296,7 @@ export function CreateWorkspace({
   useEffect(() => {
     void listFishSpeakers()
       .then((sp) => {
-        const next = speechifySpeakersForPicker(sp ?? []);
+        const next = createSpeakersForPicker(sp ?? []);
         if (next.length === 0) return;
         setFishSpeakers(next);
         const preferred = pickDefaultSpeechifySpeaker(next);

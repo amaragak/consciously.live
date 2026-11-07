@@ -31,6 +31,8 @@ function coerceTargetMinutes(words: number): MeditationTargetMinutes {
 /** Subset of CreateSoundStep job extras used for story jobs. */
 export type StoryNarrationJobExtras = {
   reference_id: string;
+  /** speechify (Standard) or fish (Pro). */
+  ttsProvider?: "speechify" | "fish";
   speakerName?: string | null;
   speakerPortraitUrl?: string | null;
   voiceFxPreset?: string | null;
@@ -84,7 +86,7 @@ export async function startStoryNarrationJob(params: {
     scriptText: script,
     title,
     reference_id: extras.reference_id,
-    ttsProvider: "speechify",
+    ttsProvider: extras.ttsProvider === "fish" ? "fish" : "speechify",
     fishTtsModel: "s2.1-pro-free",
     creationProvenance: provenance,
     voiceFxPreset: extras.voiceFxPreset,
@@ -92,7 +94,8 @@ export async function startStoryNarrationJob(params: {
     leadInSeconds: STORY_LEAD_IN_SECONDS,
     fadeOut: true,
     speed: extras.speed,
-    ...(typeof extras.speechifyRate === "number"
+    ...(extras.ttsProvider !== "fish" &&
+    typeof extras.speechifyRate === "number"
       ? { speechifyRate: extras.speechifyRate }
       : {}),
     ...(extras.longerBreaks ? { longerBreaks: true } : {}),

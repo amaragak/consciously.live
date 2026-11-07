@@ -235,7 +235,13 @@ function ActiveGoalCard({
 }) {
   const navigate = useNavigate();
   const stats = rollup(items, item.id);
-  const doing = descendantsOf(items, item.id).filter((row) => row.status === "doing");
+  const doing = descendantsOf(items, item.id)
+    .filter((row) => row.status === "doing")
+    .sort(
+      (a, b) =>
+        Date.parse(b.lastTouchedAt || b.updatedAt) -
+        Date.parse(a.lastTouchedAt || a.updatedAt),
+    );
   const shown = doing.slice(0, 3);
   const extra = Math.max(0, doing.length - shown.length);
 

@@ -17,6 +17,7 @@ type Voice = {
   description?: string;
   goodFor?: string[];
   gender?: "male" | "female";
+  brand?: "fish" | "speechify" | string | null;
 };
 
 type VoiceCardRowProps = {
@@ -270,11 +271,16 @@ export function VoiceCardRow({
                   <PlayPauseIcon playing={playing} size={10} />
                 </span>
                 <span
-                  className={`whitespace-nowrap text-sm leading-none ${
+                  className={`inline-flex items-center gap-1.5 whitespace-nowrap text-sm leading-none ${
                     selected ? "font-semibold" : "font-normal"
                   } text-foreground`}
                 >
                   {voice.name}
+                  {voice.brand && voice.brand !== "speechify" ? (
+                    <span className="rounded-full border border-[#E6D3AE] bg-[#F6EEDD] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#8A6424]">
+                      Pro
+                    </span>
+                  ) : null}
                 </span>
               </button>
             );

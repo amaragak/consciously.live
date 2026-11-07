@@ -1,14 +1,13 @@
 /**
- * Next Focus step for the Manifesto card: the next incomplete step of the
- * most recently active goal across life areas.
+ * Focus suggestion for Manifesto cards.
+ *
+ * Only explicit Tracker Doing items. The old Ideate-todo inference is kept
+ * commented below so we can restore it if needed — it must not run.
  */
 
-import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
-import {
-  subtasksForProject,
-  todosForSubtask,
-  type IdeateStoreV2,
-} from "@/lib/plan-ideate-store";
+import { doingItemsAcrossLifeAreas } from "@/lib/life-area-doing";
+import type { IdeateStoreV2 } from "@/lib/plan-ideate-store";
+import type { TrackerItem } from "@/lib/tracker-items";
 
 export type NextFocusStep = {
   lifeAreaTitle: string;
@@ -16,8 +15,16 @@ export type NextFocusStep = {
   stepTitle: string;
   done: number;
   total: number;
+  /** Ideate subtask id — empty when suggestion is a Tracker Doing item. */
   subtaskId: string;
+  /** Tracker Doing item when the suggestion is explicit. */
+  trackerItem?: TrackerItem;
+  lifeAreaId?: string;
 };
+
+/*
+import { isDemoIdeateDream } from "@/lib/ideate-demo-seed";
+import { subtasksForProject, todosForSubtask } from "@/lib/plan-ideate-store";
 
 function ts(iso: string | null | undefined): number {
   if (!iso) return 0;
@@ -25,7 +32,8 @@ function ts(iso: string | null | undefined): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
-export function nextFocusStep(store: IdeateStoreV2): NextFocusStep | null {
+/** Legacy: next incomplete step of the most recently active goal. *
+export function nextFocusStepInferred(store: IdeateStoreV2): NextFocusStep | null {
   const dreams = store.dreams.filter((dream) => !isDemoIdeateDream(dream));
   let best: { updatedAt: string; projectId: string; id: string; title: string } | null =
     null;
@@ -54,5 +62,24 @@ export function nextFocusStep(store: IdeateStoreV2): NextFocusStep | null {
     done: todos.length > 0 ? done : 0,
     total: todos.length > 0 ? todos.length : 1,
     subtaskId: best.id,
+  };
+}
+*/
+
+/** Most recently marked Doing item across life areas, or null. */
+export function nextFocusStep(store: IdeateStoreV2): NextFocusStep | null {
+  const doing = doingItemsAcrossLifeAreas(store);
+  const top = doing[0];
+  if (!top) return null;
+  const { item, dream } = top;
+  return {
+    lifeAreaTitle: dream.title.trim() || "Life area",
+    goalTitle: dream.title.trim() || "Life area",
+    stepTitle: item.title.trim() || "Untitled",
+    done: 0,
+    total: doing.length,
+    subtaskId: "",
+    trackerItem: item,
+    lifeAreaId: dream.id,
   };
 }

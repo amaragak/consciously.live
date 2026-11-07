@@ -19,7 +19,7 @@ import {
   listAdminVoice,
   type AdminVoiceSpeaker,
 } from "@/lib/medimade-api";
-import { speechifySpeakersForPicker } from "@/lib/fish-speakers";
+import { createSpeakersForPicker } from "@/lib/fish-speakers";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
   speakerPreviewLoudFxSampleKey,
@@ -159,8 +159,8 @@ export function AdminSoundEqPanel({
     void listAdminVoice()
       .then((state) => {
         if (cancelled) return;
-        // Fish lives only on admin /voice — EQ preview is Speechify only.
-        const list = speechifySpeakersForPicker(state.speakers).filter(
+        // Standard + Pro voices that have a preview sample.
+        const list = createSpeakersForPicker(state.speakers).filter(
           (s) => !s.hidden && (s.hasSample || s.sampleUrl),
         );
         setSpeakers(list);

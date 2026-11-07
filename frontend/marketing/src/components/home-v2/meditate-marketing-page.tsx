@@ -811,7 +811,7 @@ function ProgramsSection({
 }
 
 function SoundSection() {
-  /** Create UI uses Speechify voices only (from Voice Admin). */
+  /** Marketing demo chips — live Create uses Voice Admin Standard + Pro. */
   const voices = ["Beatrice", "Imogen", "Phil"] as const;
   /** Compositions category — full pieces, not looped beds. */
   const beds = ["Pure Serenity", "Quietly Floating", "Astral Secrets"] as const;

@@ -1,7 +1,10 @@
 /**
  * Read-only summaries of a life area for the Manifesto cards and the guide
- * practice picker: current goal, progress, next step, last activity.
+ * practice picker: current goal, progress, last activity.
  * Everything derives from the Ideate store — nothing is persisted here.
+ *
+ * "What you're working on" on cards/dashboard/Focus comes from explicit Tracker
+ * Doing items (`life-area-doing.ts`), not from inferred nextStep below.
  */
 
 import { lifeAreaHrefById } from "@/lib/entity-href";
@@ -20,7 +23,10 @@ export type LifeAreaGoalSummary = {
   subtask: IdeateSubtask;
   done: number;
   total: number;
-  /** First unchecked step, if the goal has steps. */
+  /**
+   * @deprecated Inferred first unchecked step — commented out at call sites.
+   * Prefer `doingItemsForLifeArea` / `doingItemsAcrossLifeAreas`.
+   */
   nextStep: IdeateTodo | null;
 };
 
@@ -62,7 +68,9 @@ export function goalSummaryForLifeArea(
     subtask,
     done,
     total: todos.length,
-    nextStep: todos.find((t) => !t.isChecked) ?? null,
+    // Inferred "next unchecked todo" — kept for reference; UI uses Tracker Doing.
+    // nextStep: todos.find((t) => !t.isChecked) ?? null,
+    nextStep: null,
   };
 }
 

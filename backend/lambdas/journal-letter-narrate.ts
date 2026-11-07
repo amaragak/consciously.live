@@ -1,5 +1,6 @@
 /**
- * Async Speechify TTS for an Insights letter (Beatrice). No FX, no backing music.
+ * Async TTS for an Insights letter. Speechify (Standard) or Fish (Pro).
+ * No FX, no backing music.
  */
 import type { Context } from "aws-lambda";
 import { randomUUID } from "crypto";
@@ -17,11 +18,16 @@ import {
   GetCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
+import {
+  GetSecretValueCommand,
+  SecretsManagerClient,
+} from "@aws-sdk/client-secrets-manager";
 import { loudnormMp3Buffer } from "./_shared/ffmpeg-loudnorm";
 import { htmlToBlogNarrationScript } from "./_shared/blog";
 import { insightSortKey } from "./_shared/insight-period";
 import { stripLetterGreetingForNarration } from "./_shared/letter-markdown";
 import { aacAdtsToMp3Buffer } from "./_shared/audio-aac";
+import { recordFishTtsUsage } from "./_shared/ai-usage";
 import {
   getSpeechifyApiKey,
   speechifyTtsMp3,
@@ -30,20 +36,84 @@ import { listVoiceSpeakers } from "./_shared/voice-admin";
 
 const execFileAsync = promisify(execFile);
 const s3 = new S3Client({});
+const secrets = new SecretsManagerClient({});
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
 });
 
 const TIME_RESERVE_MS = 45_000;
-const PACK_CHARS = 12_000;
+const SPEECHIFY_PACK_CHARS = 12_000;
+const FISH_PACK_CHARS = 4_000;
+const FISH_TTS_URL = "https://api.fish.audio/v1/tts";
 
 export type LetterNarrateEvent = {
   ownerId?: string;
   startDate?: string;
   endDate?: string;
-  /** Speechify voice model id from Insights generate picker (defaults to Beatrice). */
+  /** Voice model id from Insights generate picker (Speechify or Fish). */
   voiceId?: string;
 };
+
+type NarrationBrand = "speechify" | "fish";
+
+let cachedFishApiKey: string | undefined;
+
+async function getFishApiKey(): Promise<string> {
+  if (cachedFishApiKey) return cachedFishApiKey;
+  const arn = process.env.FISH_AUDIO_SECRET_ARN?.trim();
+  if (!arn) throw new Error("FISH_AUDIO_SECRET_ARN is not set");
+  const out = await secrets.send(new GetSecretValueCommand({ SecretId: arn }));
+  const s = out.SecretString?.trim();
+  if (!s) throw new Error("Fish Audio API key secret is empty");
+  cachedFishApiKey = s;
+  return cachedFishApiKey;
+}
+
+function fishTtsModel(): string {
+  return (process.env.FISH_TTS_MODEL || "s2.1-pro-free").trim() || "s2.1-pro-free";
+}
+
+async function fishTtsMp3(params: {
+  apiKey: string;
+  referenceId: string;
+  text: string;
+}): Promise<Buffer> {
+  const text = params.text.trim().slice(0, FISH_PACK_CHARS);
+  if (!text) throw new Error("Narration chunk is empty");
+  let lastErr = "";
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const upstream = await fetch(FISH_TTS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${params.apiKey}`,
+        "Content-Type": "application/json",
+        model: fishTtsModel(),
+      },
+      body: JSON.stringify({
+        text,
+        reference_id: params.referenceId,
+        format: "mp3",
+        latency: "normal",
+        normalize: true,
+        prosody: { speed: 1, normalize_loudness: true },
+      }),
+    });
+    if (upstream.ok) {
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      void recordFishTtsUsage({
+        utf8Bytes: Buffer.byteLength(text, "utf8"),
+        model: fishTtsModel(),
+        feature: "insights-letter-narration",
+      });
+      return buf;
+    }
+    lastErr = await upstream.text();
+    const retryable = [429, 502, 503, 504].includes(upstream.status);
+    if (!retryable || attempt >= 3) break;
+    await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+  }
+  throw new Error(`Fish TTS failed: ${lastErr.slice(0, 500)}`);
+}
 
 function assertTimeLeft(context: Context | undefined, label: string) {
   if (!context) return;
@@ -64,29 +134,40 @@ function insightsTable(): string {
 async function resolveNarrationVoice(requestedVoiceId?: string | null): Promise<{
   voiceId: string;
   name: string;
+  brand: NarrationBrand;
 }> {
   try {
-    const speakers = await listVoiceSpeakers();
-    const speechify = speakers.filter(
-      (s) => !s.hidden && s.brand === "speechify",
+    const speakers = await listVoiceSpeakers().then((rows) =>
+      rows.filter((s) => !s.hidden),
     );
     const requested = requestedVoiceId?.trim() || "";
     if (requested) {
-      const byId = speechify.find((s) => s.modelId === requested);
+      const byId = speakers.find((s) => s.modelId === requested);
       if (byId?.modelId?.trim()) {
         return {
           voiceId: byId.modelId.trim(),
-          name: byId.name.trim() || "Speechify",
+          name: byId.name.trim() || (byId.brand === "fish" ? "Pro voice" : "Voice"),
+          brand: byId.brand === "fish" ? "fish" : "speechify",
         };
       }
     }
+    const speechify = speakers.filter((s) => s.brand === "speechify");
     const exact = speechify.find((s) => /^beatrice$/i.test(s.name.trim()));
     const soft = speechify.find((s) => /beatrice/i.test(s.name));
-    const hit = exact ?? soft;
+    const hit = exact ?? soft ?? speechify[0];
     if (hit?.modelId?.trim()) {
       return {
         voiceId: hit.modelId.trim(),
         name: hit.name.trim() || "Beatrice",
+        brand: "speechify",
+      };
+    }
+    const fish = speakers.find((s) => s.brand === "fish");
+    if (fish?.modelId?.trim()) {
+      return {
+        voiceId: fish.modelId.trim(),
+        name: fish.name.trim() || "Pro voice",
+        brand: "fish",
       };
     }
   } catch (e) {
@@ -95,22 +176,20 @@ async function resolveNarrationVoice(requestedVoiceId?: string | null): Promise<
   const fallback =
     process.env.LETTER_NARRATION_VOICE_ID?.trim() ||
     process.env.SPEECHIFY_VOICE_ID?.trim();
-  if (fallback) return { voiceId: fallback, name: "Beatrice" };
-  throw new Error(
-    'Speechify voice "Beatrice" is not configured in Voice Admin',
-  );
+  if (fallback) return { voiceId: fallback, name: "Beatrice", brand: "speechify" };
+  throw new Error("No narration voice is configured in Voice Admin");
 }
 
-function chunkNarration(text: string): string[] {
+function chunkNarration(text: string, packChars: number): string[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
-  if (trimmed.length <= PACK_CHARS) return [trimmed];
+  if (trimmed.length <= packChars) return [trimmed];
   const paras = trimmed.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
   const chunks: string[] = [];
   let buf = "";
   for (const para of paras) {
     const next = buf ? `${buf}\n\n${para}` : para;
-    if (buf && next.length > PACK_CHARS) {
+    if (buf && next.length > packChars) {
       chunks.push(buf.trim());
       buf = para;
       continue;
@@ -242,41 +321,61 @@ export async function handler(
     if (!script.trim()) {
       throw new Error("Nothing to narrate — letter has no spoken text.");
     }
-    const chunks = chunkNarration(script);
-    if (!chunks.length) throw new Error("Nothing to narrate");
 
     const requested =
       typeof event?.voiceId === "string" ? event.voiceId.trim() : "";
-    const { voiceId, name: voiceName } = await resolveNarrationVoice(
+    const {
+      voiceId,
+      name: voiceName,
+      brand,
+    } = await resolveNarrationVoice(
       requested ||
         (typeof item.letterAudioVoiceId === "string"
           ? item.letterAudioVoiceId
           : null),
     );
-    const apiKey = await getSpeechifyApiKey();
+    const packChars =
+      brand === "fish" ? FISH_PACK_CHARS : SPEECHIFY_PACK_CHARS;
+    const chunks = chunkNarration(script, packChars);
+    if (!chunks.length) throw new Error("Nothing to narrate");
+
+    const providerLabel = brand === "fish" ? "Pro" : "Speechify";
+    const speechifyKey =
+      brand === "speechify" ? await getSpeechifyApiKey() : null;
+    const fishKey = brand === "fish" ? await getFishApiKey() : null;
 
     await patchLetterAudio(ownerId, startDate, endDate, {
       letterAudioStatus: "generating",
-      letterAudioProgress: `Speechify (${voiceName}): preparing ${chunks.length} part${chunks.length === 1 ? "" : "s"}…`,
+      letterAudioProgress: `${providerLabel} (${voiceName}): preparing ${chunks.length} part${chunks.length === 1 ? "" : "s"}…`,
       letterAudioVoiceId: voiceId,
     });
 
     const rawParts: Buffer[] = [];
     for (let i = 0; i < chunks.length; i += 1) {
-      assertTimeLeft(context, `Speechify ${i + 1}/${chunks.length}`);
+      assertTimeLeft(context, `${providerLabel} ${i + 1}/${chunks.length}`);
       await patchLetterAudio(ownerId, startDate, endDate, {
         letterAudioStatus: "generating",
-        letterAudioProgress: `Speechify (${voiceName}): synthesizing ${i + 1} of ${chunks.length}…`,
+        letterAudioProgress: `${providerLabel} (${voiceName}): synthesizing ${i + 1} of ${chunks.length}…`,
       });
-      rawParts.push(
-        await aacAdtsToMp3Buffer(
-          await speechifyTtsMp3({
-            apiKey,
+      if (brand === "fish") {
+        rawParts.push(
+          await fishTtsMp3({
+            apiKey: fishKey!,
+            referenceId: voiceId,
             text: chunks[i]!,
-            voiceId,
           }),
-        ),
-      );
+        );
+      } else {
+        rawParts.push(
+          await aacAdtsToMp3Buffer(
+            await speechifyTtsMp3({
+              apiKey: speechifyKey!,
+              text: chunks[i]!,
+              voiceId,
+            }),
+          ),
+        );
+      }
     }
 
     await patchLetterAudio(ownerId, startDate, endDate, {

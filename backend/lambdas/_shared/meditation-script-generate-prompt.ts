@@ -67,8 +67,16 @@ export function buildMeditationScriptGenerationPrompt(params: {
   segmentTags?: SegmentTagForPrompt[];
   /** Experienced pacing — cued open sits (~1–2 min), same Length target. */
   longerBreaks?: boolean;
+  /** Sound-step delivery: casual skips settling-in; open_sits uses longerBreaks. */
+  deliveryStyle?: "casual" | "guided" | "open_sits";
 }): { system: string; userContent: string; maxTokens: number } {
-  const longerBreaks = params.longerBreaks === true;
+  const deliveryStyle =
+    params.deliveryStyle === "casual" || params.deliveryStyle === "open_sits"
+      ? params.deliveryStyle
+      : "guided";
+  const longerBreaks =
+    params.longerBreaks === true || deliveryStyle === "open_sits";
+  const casual = deliveryStyle === "casual";
   const words = getFleetScriptWordTargets({
     targetMinutes: params.targetMinutes,
     speechSpeed: params.speechSpeed,
@@ -131,7 +139,9 @@ export function buildMeditationScriptGenerationPrompt(params: {
     "### Your task",
     "Write the complete guided meditation script that a human guide would read aloud for recording.",
     spokenBudgetNote,
-    "Use clear sections (e.g. opening/arrival, main practice, gentle closing).",
+    casual
+      ? "Use a **Casual** delivery: go straight into what they asked for. Skip settling-in openings (no “settle into your breath”, body scan framing, or eyes-closed arrival) and skip a long reflective wind-down. Keep pauses short — never invent a single reflective silence longer than about **4 seconds**."
+      : "Use clear sections (e.g. opening/arrival, main practice, gentle closing).",
     "Match the emotional tone, intentions, and imagery from the conversation — and keep concrete personal facts (see PERSONALIZATION rules), not only vague impressions.",
     "Use second person or gentle imperatives; warm, inclusive, non-clinical language.",
     PERSONALIZATION_KEEP_RULES,

@@ -205,12 +205,12 @@ export function AdminVoicePanel() {
           <div>
             <h2 className="text-sm font-semibold">Speakers</h2>
             <p className="mt-1 text-xs text-muted">
-              Fish Audio or Speechify. Hidden speakers stay off the Create picker
-              (Create and letter narration show Speechify only). Generate samples
-              only runs for the selected provider and skips voices that already
-              have dry + FX stems; missing FX-only wet files are bounced without
-              re-synthesizing. Speechify also gets a letter-intro audition clip.
-              Use Generate sample on a speaker to rebuild the clip.
+              Fish Audio (Pro) or Speechify (Standard). Hidden speakers stay off
+              the Create picker. Both brands are portrait candidates. Generate
+              samples only runs for the selected provider and skips voices that
+              already have dry + FX stems; missing FX-only wet files are bounced
+              without re-synthesizing. Speechify also gets a letter-intro audition
+              clip. Use Generate sample on a speaker to rebuild the clip.
             </p>
           </div>
           <div className="flex shrink-0 flex-col gap-2 sm:items-end">
@@ -586,105 +586,104 @@ function SpeakerRow({
             </select>
           </label>
           {brand === "speechify" ? (
-            <>
-              <label className="block text-xs font-medium text-muted">
-                Rate
-                <input
-                  className="mt-1 w-full max-w-xs rounded-xl border border-border bg-card px-3 py-2 font-mono text-base font-normal text-foreground"
-                  type="number"
-                  min={-50}
-                  max={50}
-                  step={1}
-                  value={speechifyRate}
-                  disabled={busy !== null}
-                  onChange={(e) => setSpeechifyRate(e.target.value)}
-                  onBlur={() => {
-                    const next = parseSpeechifyRate(speechifyRate);
-                    if (next !== (speaker.speechifyRate ?? null)) {
-                      void save({ speechifyRate: next });
-                    }
-                  }}
-                  aria-label="Speechify rate"
-                />
-                <span className="mt-1 block text-[11px] font-normal text-muted">
-                  Percent vs Speechify default. Negative is slower (−7 is a light
-                  slowdown). Save, then generate the sample.
-                </span>
-              </label>
-              <label className="block text-xs font-medium text-muted">
-                Appearance
-                <textarea
-                  className="mt-1 w-full resize-y rounded-xl border border-border bg-card px-3 py-2 text-base font-normal text-foreground"
-                  rows={2}
-                  maxLength={600}
-                  placeholder="White woman, blonde shoulder-length hair, warm smile, soft makeup…"
-                  value={appearanceDescription}
-                  disabled={busy !== null}
-                  onChange={(e) => setAppearanceDescription(e.target.value)}
-                  onBlur={() => {
-                    const next = appearanceDescription.trim();
-                    const prev = (speaker.appearanceDescription ?? "").trim();
-                    if (next !== prev) void save({ appearanceDescription: next });
-                  }}
-                  aria-label="Speaker appearance for portrait"
-                />
-              </label>
-              <label className="block text-xs font-medium text-muted">
-                Portrait background
-                <input
-                  className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-base font-normal text-foreground"
-                  maxLength={160}
-                  placeholder="dark blue-to-purple gradient"
-                  value={portraitBgColor}
-                  disabled={busy !== null}
-                  onChange={(e) => setPortraitBgColor(e.target.value)}
-                  onBlur={() => {
-                    const next = portraitBgColor.trim();
-                    const prev = (speaker.portraitBgColor ?? "").trim();
-                    if (next !== prev) void save({ portraitBgColor: next });
-                  }}
-                  aria-label="Portrait background color or gradient"
-                />
-                <span className="mt-1 block text-[11px] font-normal text-muted">
-                  Solid color or soft two-color gradient. Style lock lives in
-                  Admin › Pre-prompts → Speaker portrait style.
-                </span>
-              </label>
-              <div className="flex flex-wrap items-end gap-4">
-                {speaker.portraitImageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={speaker.portraitImageUrl}
-                    alt=""
-                    className="h-40 w-40 rounded-full border border-border object-cover shadow-sm"
-                  />
-                ) : (
-                  <span className="flex h-40 w-40 items-center justify-center rounded-full border border-dashed border-border text-xs text-muted">
-                    No photo
-                  </span>
-                )}
-                <button
-                  type="button"
-                  disabled={busy !== null}
-                  title={
-                    !appearanceDescription.trim() || !portraitBgColor.trim()
-                      ? "Uses placeholder appearance/background if those fields are empty"
-                      : undefined
+            <label className="block text-xs font-medium text-muted">
+              Rate
+              <input
+                className="mt-1 w-full max-w-xs rounded-xl border border-border bg-card px-3 py-2 font-mono text-base font-normal text-foreground"
+                type="number"
+                min={-50}
+                max={50}
+                step={1}
+                value={speechifyRate}
+                disabled={busy !== null}
+                onChange={(e) => setSpeechifyRate(e.target.value)}
+                onBlur={() => {
+                  const next = parseSpeechifyRate(speechifyRate);
+                  if (next !== (speaker.speechifyRate ?? null)) {
+                    void save({ speechifyRate: next });
                   }
-                  onClick={() => void generatePortrait()}
-                  className="rounded-xl accent-fill-gradient px-3 py-2 text-sm font-medium text-on-accent disabled:opacity-60"
-                >
-                  {busy === "portrait"
-                    ? speaker.portraitImageUrl
-                      ? "Regenerating…"
-                      : "Generating…"
-                    : speaker.portraitImageUrl
-                      ? "Regenerate portrait"
-                      : "Generate portrait"}
-                </button>
-              </div>
-            </>
+                }}
+                aria-label="Speechify rate"
+              />
+              <span className="mt-1 block text-[11px] font-normal text-muted">
+                Percent vs Speechify default. Negative is slower (−7 is a light
+                slowdown). Save, then generate the sample.
+              </span>
+            </label>
           ) : null}
+          <label className="block text-xs font-medium text-muted">
+            Appearance
+            <textarea
+              className="mt-1 w-full resize-y rounded-xl border border-border bg-card px-3 py-2 text-base font-normal text-foreground"
+              rows={2}
+              maxLength={600}
+              placeholder="White woman, blonde shoulder-length hair, warm smile, soft makeup…"
+              value={appearanceDescription}
+              disabled={busy !== null}
+              onChange={(e) => setAppearanceDescription(e.target.value)}
+              onBlur={() => {
+                const next = appearanceDescription.trim();
+                const prev = (speaker.appearanceDescription ?? "").trim();
+                if (next !== prev) void save({ appearanceDescription: next });
+              }}
+              aria-label="Speaker appearance for portrait"
+            />
+          </label>
+          <label className="block text-xs font-medium text-muted">
+            Portrait background
+            <input
+              className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-base font-normal text-foreground"
+              maxLength={160}
+              placeholder="dark blue-to-purple gradient"
+              value={portraitBgColor}
+              disabled={busy !== null}
+              onChange={(e) => setPortraitBgColor(e.target.value)}
+              onBlur={() => {
+                const next = portraitBgColor.trim();
+                const prev = (speaker.portraitBgColor ?? "").trim();
+                if (next !== prev) void save({ portraitBgColor: next });
+              }}
+              aria-label="Portrait background color or gradient"
+            />
+            <span className="mt-1 block text-[11px] font-normal text-muted">
+              Solid color or soft two-color gradient. Style lock lives in Admin ›
+              Pre-prompts → Speaker portrait style. Fish and Speechify are both
+              portrait candidates.
+            </span>
+          </label>
+          <div className="flex flex-wrap items-end gap-4">
+            {speaker.portraitImageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={speaker.portraitImageUrl}
+                alt=""
+                className="h-40 w-40 rounded-full border border-border object-cover shadow-sm"
+              />
+            ) : (
+              <span className="flex h-40 w-40 items-center justify-center rounded-full border border-dashed border-border text-xs text-muted">
+                No photo
+              </span>
+            )}
+            <button
+              type="button"
+              disabled={busy !== null}
+              title={
+                !appearanceDescription.trim() || !portraitBgColor.trim()
+                  ? "Uses placeholder appearance/background if those fields are empty"
+                  : undefined
+              }
+              onClick={() => void generatePortrait()}
+              className="rounded-xl accent-fill-gradient px-3 py-2 text-sm font-medium text-on-accent disabled:opacity-60"
+            >
+              {busy === "portrait"
+                ? speaker.portraitImageUrl
+                  ? "Regenerating…"
+                  : "Generating…"
+                : speaker.portraitImageUrl
+                  ? "Regenerate portrait"
+                  : "Generate portrait"}
+            </button>
+          </div>
           <label className="block text-xs font-medium text-muted">
             How this voice sounds
             <textarea

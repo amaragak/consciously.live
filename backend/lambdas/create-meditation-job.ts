@@ -64,6 +64,8 @@ export async function handler(
     fishPauseMode?: string;
     /** Experienced pacing — cued open sits (~1–2 min); same Length target. */
     longerBreaks?: boolean;
+    /** Casual | Guided | Open sits. */
+    deliveryStyle?: string;
     /** When true, do not index the result in the personal library (program shelf audio). */
     excludeFromLibrary?: boolean;
     /** Ideate life-area id when generated from that area / goal path. */
@@ -251,7 +253,14 @@ export async function handler(
         claudeModel,
         fishPauseMode:
           body.fishPauseMode === "native" ? "native" : "segmented",
-        ...(body.longerBreaks === true ? { longerBreaks: true } : {}),
+        ...(body.longerBreaks === true || body.deliveryStyle === "open_sits"
+          ? { longerBreaks: true }
+          : {}),
+        ...(body.deliveryStyle === "casual" ||
+        body.deliveryStyle === "guided" ||
+        body.deliveryStyle === "open_sits"
+          ? { deliveryStyle: body.deliveryStyle }
+          : {}),
         ...(body.speechifyEmotionVariants === true
           ? { speechifyEmotionVariants: true }
           : {}),

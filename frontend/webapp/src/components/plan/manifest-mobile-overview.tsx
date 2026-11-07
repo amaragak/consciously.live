@@ -18,12 +18,13 @@ import {
   MANIFESTO_EYEBROW_CLASS,
 } from "@/components/plan/manifesto-section";
 import { SelectChevron } from "@/components/select-chevron";
-import { startLifeAreaFocus } from "@/lib/life-area-card-actions";
 import {
   boardVisionItems,
   visionPickOrder,
   type VisionBoardItem,
 } from "@/lib/ideate-vision-board";
+import { queueTrackerFocus } from "@/lib/focus-ideate-link";
+import { doingItemsAcrossLifeAreas } from "@/lib/life-area-doing";
 import { nextFocusStep } from "@/lib/next-focus-step";
 import { loadIdeateStore } from "@/lib/plan-ideate-store";
 import { subscribeIdeateCloud } from "@/lib/ideate-cloud";
@@ -350,7 +351,7 @@ export function ManifestMobileVisionBoard({
   );
 }
 
-/** Next-step Focus card for mobile (no Open Focus link). */
+/** Doing Focus card for mobile (no Open Focus link). */
 export function ManifestMobileNextStep() {
   const router = useRouter();
   const [step, setStep] = useState(() => nextFocusStep(loadIdeateStore()));
@@ -362,23 +363,32 @@ export function ManifestMobileNextStep() {
   }, []);
 
   function start() {
-    if (!step) {
+    const store = loadIdeateStore();
+    const doing = doingItemsAcrossLifeAreas(store);
+    if (doing.length === 0) {
       router.push("/focus");
       return;
     }
-    const href = startLifeAreaFocus(step.subtaskId);
-    router.push(`${href}&minutes=25&autoStart=1`);
+    router.push(
+      queueTrackerFocus(
+        doing.map(({ item }) => ({
+          id: item.id,
+          title: item.title,
+          lifeAreaId: item.lifeAreaId,
+        })),
+      ),
+    );
   }
 
   return (
     <section
-      aria-label="Next step"
+      aria-label="Doing"
       className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 shadow-[0_2px_10px_rgb(15_27_45_/_0.04)]"
     >
       <div className="min-w-0 flex-1">
         <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
           <Timer className="size-[13px]" strokeWidth={2} aria-hidden />
-          Next step
+          {step ? "Doing" : "Focus"}
         </span>
         {step ? (
           <>
@@ -386,8 +396,8 @@ export function ManifestMobileNextStep() {
               {step.stepTitle}
             </p>
             <p className="mt-0.5 text-[12px] text-muted">
-              {step.lifeAreaTitle} · {step.goalTitle} · {step.done} of{" "}
-              {step.total}
+              {step.lifeAreaTitle}
+              {step.total > 1 ? ` · ${step.total} Doing` : ""}
             </p>
           </>
         ) : (

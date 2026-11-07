@@ -266,11 +266,13 @@ export function LifeAreaGoals({ dream, goalId, onPatch, onRefresh }: Props) {
                       {p.done} of {p.total}
                     </span>
                   </span>
+                  {/* Inferred next unchecked todo — replaced by Tracker Doing elsewhere.
                   {p.next ? (
                     <span className="mt-0.5 block truncate text-xs text-foreground">
                       Next: {p.next.title}
                     </span>
                   ) : null}
+                  */}
                 </button>
               </li>
             );

@@ -8,7 +8,7 @@ import {
   type BackgroundAudioItem,
   type FishSpeaker,
 } from "@/lib/medimade-api";
-import { speechifySpeakersForPicker } from "@/lib/fish-speakers";
+import { createSpeakersForPicker } from "@/lib/fish-speakers";
 import { factoryPresetToMix } from "@/lib/mixer-factory-presets";
 import type { MixerPresetMix } from "@/lib/mixer-preset-storage";
 import { buildMeditationCreationProvenance } from "@/lib/meditation-creation-provenance";
@@ -55,10 +55,10 @@ function streamKey(item: BackgroundAudioItem | undefined): string {
 export async function loadHomepageFishSpeakers(): Promise<FishSpeaker[]> {
   try {
     const live = await listFishSpeakers();
-    const pool = speechifySpeakersForPicker(live);
+    const pool = createSpeakersForPicker(live);
     if (pool.length) return pool;
   } catch {
-    /* empty until Voice Admin has Speechify speakers */
+    /* empty until Voice Admin has speakers */
   }
   return [];
 }

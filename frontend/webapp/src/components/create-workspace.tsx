@@ -20,7 +20,7 @@ import * as Switch from "@radix-ui/react-switch";
 import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
 import {
   pickDefaultSpeechifySpeaker,
-  speechifySpeakersForPicker,
+  createSpeakersForPicker,
 } from "@/lib/fish-speakers";
 import {
   CLAUDE_HAIKU_45_MODEL_ID,
@@ -1417,10 +1417,10 @@ export function CreateWorkspace({
             : previewNoiseRef.current;
     setGaplessBedVolume(el, bedElementVolume(gain));
   }
-  // Speakers come from backend `GET /fish/speakers` (Speechify only in Create UI).
+  // Speakers from `GET /fish/speakers` — Standard (Speechify) + Pro (Fish).
   const [fishSpeakers, setFishSpeakers] = useState<FishSpeaker[]>(() => {
     const raw = peekFishSpeakersCache();
-    return raw ? speechifySpeakersForPicker(raw) : [];
+    return raw ? createSpeakersForPicker(raw) : [];
   });
   const [orpheusSpeakers, setOrpheusSpeakers] = useState<OrpheusSpeaker[]>(
     () => [...ORPHEUS_VOICES],
@@ -1654,7 +1654,13 @@ export function CreateWorkspace({
       setIntroTypingDone(openingComplete);
     }
     setSpeakerModelId(s.speakerModelId);
-    setTtsProvider(s.ttsProvider === "orpheus" ? "orpheus" : "speechify");
+    setTtsProvider(
+      s.ttsProvider === "orpheus"
+        ? "orpheus"
+        : s.ttsProvider === "fish"
+          ? "fish"
+          : "speechify",
+    );
     setOrpheusVoiceId(s.orpheusVoiceId || DEFAULT_ORPHEUS_VOICE_ID);
     setSpeakerFxPreviewOn(s.speakerFxPreviewOn);
     setVoiceFxDial(s.voiceFxDial ?? VOICE_FX_DIAL_DEFAULT);
@@ -2433,7 +2439,7 @@ export function CreateWorkspace({
   useEffect(() => {
     void listFishSpeakers({ refresh: true })
       .then((sp) => {
-        const next = speechifySpeakersForPicker(sp ?? []);
+        const next = createSpeakersForPicker(sp ?? []);
         if (next.length === 0) return;
         setFishSpeakers(next);
         const preferred = pickDefaultSpeechifySpeaker(next);
@@ -6245,7 +6251,12 @@ export function CreateWorkspace({
             <VoiceCardRow
               voices={fishSpeakers}
                     value={speakerModelId}
-              onChange={setSpeakerModelId}
+              onChange={(id) => {
+                setSpeakerModelId(id);
+                if (ttsProvider === "orpheus") return;
+                const sp = fishSpeakers.find((s) => s.modelId === id);
+                setTtsProvider(ttsProviderForSpeaker(sp));
+              }}
                     disabled={soundControlsDisabled}
               previewDryUrl={speakerPreviewDryUrl}
               previewWetUrl={speakerPreviewWetUrl}

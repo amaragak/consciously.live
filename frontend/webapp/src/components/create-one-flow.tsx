@@ -1891,8 +1891,11 @@ export function CreateOneFlow({
           meditationTargetMinutes: minutes,
           transcript,
           reference_id: soundExtras.reference_id,
-          ttsProvider: "speechify",
+          ttsProvider: soundExtras.ttsProvider ?? "speechify",
           fishTtsModel: "s2.1-pro-free",
+          ...(soundExtras.deliveryStyle
+            ? { deliveryStyle: soundExtras.deliveryStyle }
+            : {}),
           creationProvenance: asHouse ? null : provenance,
           asHouse: asHouse || undefined,
           voiceFxPreset: soundExtras.voiceFxPreset,
@@ -3183,6 +3186,7 @@ export function CreateOneFlow({
               <CreateSoundStep
                 ref={soundStepRef}
                 disabled={audioBusy}
+                lengthMinutes={state.lengthMinutes}
                 meditationStyle={state.style?.id ?? null}
                 programSpeakerModelId={state.program?.speakerModelId ?? null}
                 programTitle={state.program?.title ?? null}

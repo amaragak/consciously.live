@@ -58,8 +58,12 @@ import {
 import type { PlanDream } from "@/lib/plan-dreams";
 import {
   DailyHabitTracker,
-  type TodayGoalStep,
+  type TodayDoingStep,
 } from "@/components/daily-habit-tracker";
+import {
+  doingItemsAcrossLifeAreas,
+  doingItemsForLifeArea,
+} from "@/lib/life-area-doing";
 import { timeOfDayGreeting } from "@/lib/time-of-day-greeting";
 import { loadIdeateManifestoStore } from "@/lib/ideate-manifesto";
 import { loadIdeateValuesStore } from "@/lib/ideate-values";
@@ -124,7 +128,8 @@ type TopSlotKind = "unplayed" | "story" | "create";
 type LifeAreaProgress = {
   dream: PlanDream;
   goalTitle: string | null;
-  nextStep: string | null;
+  /** Explicit Tracker Doing title, if any. */
+  doingTitle: string | null;
   done: number;
   total: number;
   subtaskId: string | null;
@@ -135,7 +140,6 @@ function activeGoalForDream(
   dreamId: string,
 ): {
   goalTitle: string;
-  nextStep: string | null;
   done: number;
   total: number;
   subtaskId: string;
@@ -148,10 +152,10 @@ function activeGoalForDream(
   if (!goal) return null;
   const todos = todosForSubtask(store, goal.id);
   const done = todos.filter((t) => t.isChecked).length;
-  const next = todos.find((t) => !t.isChecked);
+  // Inferred next unchecked todo — not shown on the dashboard anymore:
+  // const next = todos.find((t) => !t.isChecked);
   return {
     goalTitle: goal.title.trim() || "Untitled goal",
-    nextStep: next?.title.trim() || null,
     done,
     total: todos.length,
     subtaskId: goal.id,
@@ -164,10 +168,11 @@ function lifeAreaProgressRows(
 ): LifeAreaProgress[] {
   return dreams.map((dream) => {
     const g = activeGoalForDream(store, dream.id);
+    const doing = doingItemsForLifeArea(store, dream.id)[0] ?? null;
     return {
       dream,
       goalTitle: g?.goalTitle ?? null,
-      nextStep: g?.nextStep ?? null,
+      doingTitle: doing?.title.trim() || null,
       done: g?.done ?? 0,
       total: g?.total ?? 0,
       subtaskId: g?.subtaskId ?? null,
@@ -175,6 +180,7 @@ function lifeAreaProgressRows(
   });
 }
 
+/*
 function focusGoalChip(
   store: IdeateStoreV2,
   dreams: PlanDream[],
@@ -191,6 +197,7 @@ function focusGoalChip(
   }
   return null;
 }
+*/
 
 function Waveform({ compact = false }: { compact?: boolean }) {
   const heights = compact
@@ -380,14 +387,20 @@ export function WelcomeDashboard() {
     };
   }, []);
 
-  const chip = useMemo(
-    () => focusGoalChip(ideateStore, dreams),
-    [ideateStore, dreams],
-  );
-
   const lifeAreas = useMemo(
     () => lifeAreaProgressRows(ideateStore, dreams),
     [ideateStore, dreams],
+  );
+
+  const doingSteps: TodayDoingStep[] = useMemo(
+    () =>
+      doingItemsAcrossLifeAreas(ideateStore).map(({ item, dream }) => ({
+        title: item.title.trim() || "Untitled",
+        lifeAreaTitle: dream.title.trim() || "Life area",
+        itemId: item.id,
+        lifeAreaId: dream.id,
+      })),
+    [ideateStore],
   );
 
   const storyPlacement = useMemo(
@@ -424,23 +437,6 @@ export function WelcomeDashboard() {
     topSlotKind === "unplayed" && ready
       ? ready.title?.trim() || null
       : null;
-
-  const goalStep: TodayGoalStep | null = useMemo(() => {
-    if (!chip) return null;
-    const row = lifeAreas.find((r) => r.subtaskId === chip.subtaskId);
-    if (!row?.nextStep) {
-      return {
-        stepTitle: "Open your goal",
-        goalTitle: chip.title,
-        subtaskId: chip.subtaskId,
-      };
-    }
-    return {
-      stepTitle: row.nextStep,
-      goalTitle: chip.title,
-      subtaskId: chip.subtaskId,
-    };
-  }, [chip, lifeAreas]);
 
   const recentMeditations = meditations
     .filter((m) => !isLibraryStoryItem(m) && m.s3Key !== ready?.s3Key)
@@ -599,7 +595,7 @@ export function WelcomeDashboard() {
             storyAvailable={Boolean(storyPlacement)}
             storyMinutes={storyPlacement?.minutes ?? null}
             onPlayStory={storyPlacement ? playStory : null}
-            goalStep={goalStep}
+            doingSteps={doingSteps}
           />
         </div>
       </section>
@@ -775,12 +771,15 @@ export function WelcomeDashboard() {
                         style={{ background: lifeAreaTint.get(row.dream.id) ?? LIFE_AREA_DASH_TINTS[0] }}
                       >
                         <span className="font-display text-[17px] text-foreground md:text-[18px]">{row.dream.title.trim() || "Untitled"}</span>
-                        {row.nextStep ? (
+                        {row.doingTitle ? (
                           <span className="line-clamp-2 text-[12.5px] text-foreground">
-                            <span className="text-[#4A4652]">Next:</span> <span className="font-semibold">{row.nextStep}</span>
+                            <span className="text-[#4A4652]">Doing:</span>{" "}
+                            <span className="font-semibold">{row.doingTitle}</span>
                           </span>
                         ) : (
-                          <span className="text-[12.5px] text-[#4A4652]">No next step yet</span>
+                          <span className="text-[12.5px] text-[#4A4652]">
+                            Choose what you're on
+                          </span>
                         )}
                         <span className="mt-auto h-1 overflow-hidden rounded-full bg-[rgba(15,27,45,0.1)]">
                           <span className="block h-1 rounded-full bg-[#8A6424]" style={{ width: `${pct}%` }} />

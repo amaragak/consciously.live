@@ -871,6 +871,7 @@ async function generateScriptFromClaude(params: {
   targetMinutes: number;
   /** Experienced pacing — cued open sits (~1–2 min); same Length target. */
   longerBreaks?: boolean;
+  deliveryStyle?: "casual" | "guided" | "open_sits";
 }): Promise<{
   script: string;
   usage: { input_tokens: number; output_tokens: number } | null;
@@ -883,6 +884,7 @@ async function generateScriptFromClaude(params: {
     speechSpeed: params.speechSpeed,
     includeSegmentPlaceholders: false,
     longerBreaks: params.longerBreaks === true,
+    deliveryStyle: params.deliveryStyle,
   });
 
   const upstream = await fetch(ANTHROPIC_URL, {
@@ -1773,7 +1775,16 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   const targetMinutes = coerceMeditationTargetMinutes(
     body.meditationTargetMinutes,
   );
-  const longerBreaks = body.longerBreaks === true;
+  const deliveryStyleRaw =
+    typeof body.deliveryStyle === "string" ? body.deliveryStyle.trim() : "";
+  const deliveryStyle =
+    deliveryStyleRaw === "casual" || deliveryStyleRaw === "open_sits"
+      ? deliveryStyleRaw
+      : deliveryStyleRaw === "guided"
+        ? "guided"
+        : undefined;
+  const longerBreaks =
+    body.longerBreaks === true || deliveryStyle === "open_sits";
   const pauseRenderScale = PAUSE_RENDER_SCALE;
   const styleTrimmed = meditationStyle.trim();
   const isJournalCatalog =
@@ -1900,10 +1911,11 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         model: claudeModel,
         meditationStyle,
         transcript,
-        speechSpeed,
+        speechSpeed: deliveryStyle === "casual" ? 1 : speechSpeed,
         journalMode: journalModeFromJob,
         targetMinutes,
         longerBreaks,
+        deliveryStyle,
       });
       scriptTextUsed = gen.script;
       generationTimings.phases.scriptMs = elapsedMs(scriptStarted);
