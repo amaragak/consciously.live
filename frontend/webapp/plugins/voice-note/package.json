@@ -3,9 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "description": "Single-mic journal VoiceNote: one AVAudioEngine/AudioRecord tap → file + on-device speech + levels",
-  "main": "dist/esm/index.js",
-  "module": "dist/esm/index.js",
-  "types": "dist/esm/index.d.ts",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
   "files": [
     "android/src/main/",
     "android/build.gradle",

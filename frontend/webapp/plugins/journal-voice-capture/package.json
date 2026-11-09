@@ -3,9 +3,9 @@
   "version": "0.0.1",
   "private": true,
   "description": "Single-engine journal voice capture: one mic tap → on-device speech + m4a file",
-  "main": "dist/esm/index.js",
-  "module": "dist/esm/index.js",
-  "types": "dist/esm/index.d.ts",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
   "files": [
     "android/src/main/",
     "android/build.gradle",
