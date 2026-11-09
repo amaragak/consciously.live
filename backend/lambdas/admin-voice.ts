@@ -529,9 +529,6 @@ async function handlePost(event: APIGatewayProxyEventV2) {
     if (!modelId) return json(400, { error: "modelId is required" });
     const existing = (await listVoiceSpeakers()).find((s) => s.modelId === modelId);
     if (!existing) return json(404, { error: "Speaker not found" });
-    if (existing.brand !== "speechify") {
-      return json(400, { error: "Portraits are Speechify-only for now" });
-    }
     // Fall back to the same defaults as buildSpeakerPortraitPrompt so Generate
     // works before admin has filled appearance / background fields.
     const appearance =
@@ -562,6 +559,7 @@ async function handlePost(event: APIGatewayProxyEventV2) {
       appearanceDescription: appearance,
       portraitBgColor: bg,
       gender: existing.gender,
+      gradientBackdrop: existing.brand === "fish",
     });
     const model = coerceAdminImageModel(body.model);
     const { body: imageBody, mime } = await generateAdminImageFromPrompt({

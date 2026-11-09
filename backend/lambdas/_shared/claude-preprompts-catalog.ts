@@ -312,7 +312,7 @@ export function buildClaudePrepromptCatalog(): ClaudePrepromptEntry[] {
     },
     {
       id: "speaker-portrait-style",
-      title: "Speaker portrait style (Speechify card)",
+      title: "Speaker portrait style",
       feature: "Admin › Voice",
       kind: "fragment",
       sourcePath: "backend/lambdas/_shared/speaker-portrait.ts",

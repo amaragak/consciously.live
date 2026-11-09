@@ -638,7 +638,11 @@ function SpeakerRow({
             <input
               className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-base font-normal text-foreground"
               maxLength={160}
-              placeholder="dark blue-to-purple gradient"
+              placeholder={
+                brand === "fish"
+                  ? "navy-to-teal gradient"
+                  : "dark blue-to-purple gradient"
+              }
               value={portraitBgColor}
               disabled={busy !== null}
               onChange={(e) => setPortraitBgColor(e.target.value)}
@@ -650,9 +654,10 @@ function SpeakerRow({
               aria-label="Portrait background color or gradient"
             />
             <span className="mt-1 block text-[11px] font-normal text-muted">
-              Solid color or soft two-color gradient. Style lock lives in Admin ›
-              Pre-prompts → Speaker portrait style. Fish and Speechify are both
-              portrait candidates.
+              {brand === "fish"
+                ? "Pro portraits use a soft two-color gradient, not a flat color fill. Name the two colors (for example “navy to teal”)."
+                : "Solid color or soft two-color gradient."}{" "}
+              Style lock lives in Admin › Pre-prompts → Speaker portrait style.
             </span>
           </label>
           <div className="flex flex-wrap items-end gap-4">
