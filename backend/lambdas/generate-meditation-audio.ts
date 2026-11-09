@@ -68,6 +68,7 @@ import {
   type SpeechifyEmotionTag,
 } from "./_shared/speechify-tts";
 import {
+  synthesizeFishPcmFxOla,
   synthesizeSpeechifyPcmFxOla,
   type SpeechifyDryPcmChunk,
 } from "./_shared/speechify-pcm-fx-ola";
@@ -2150,29 +2151,53 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       body.skipVoiceFx === true ||
       (ttsProvider === "speechify" && body.skipSpeechifyLoudnorm === true);
 
-    // Speechify: pcm_24000 → per-segment FX → OLA → AAC (dial baked).
-    if (ttsProvider === "speechify" && speechifyKey) {
+    // Speechify / Fish: pcm @ 24 kHz → per-segment FX → OLA → AAC (dial baked).
+    if (
+      (ttsProvider === "speechify" && speechifyKey) ||
+      (ttsProvider === "fish" && fishKey)
+    ) {
       speechifyPcmPipeline = true;
-      console.log("calling Speechify PCM + per-segment FX OLA", {
-        reference_id: referenceId,
-        applyFx: !skipVoiceFxEarly,
-        voiceFxDial,
-        pauseRenderScale,
-      });
-      const result = await synthesizeSpeechifyPcmFxOla({
-        s3,
-        bucket: mediaBucketName,
-        apiKey: speechifyKey,
-        script: ttsScript,
-        voiceId: referenceId,
-        speechifyRate,
-        speechifyLoudnessNormalization,
-        emotion: MEDITATION_SPEECHIFY_EMOTION,
-        pauseBands,
-        pauseScale: pauseRenderScale,
-        applyFx: !skipVoiceFxEarly,
-        voiceFxDial,
-      });
+      console.log(
+        ttsProvider === "speechify"
+          ? "calling Speechify PCM + per-segment FX OLA"
+          : "calling Fish PCM + per-segment FX OLA",
+        {
+          reference_id: referenceId,
+          ttsProvider,
+          applyFx: !skipVoiceFxEarly,
+          voiceFxDial,
+          pauseRenderScale,
+        },
+      );
+      const result =
+        ttsProvider === "speechify"
+          ? await synthesizeSpeechifyPcmFxOla({
+              s3,
+              bucket: mediaBucketName,
+              apiKey: speechifyKey!,
+              script: ttsScript,
+              voiceId: referenceId,
+              speechifyRate,
+              speechifyLoudnessNormalization,
+              emotion: MEDITATION_SPEECHIFY_EMOTION,
+              pauseBands,
+              pauseScale: pauseRenderScale,
+              applyFx: !skipVoiceFxEarly,
+              voiceFxDial,
+            })
+          : await synthesizeFishPcmFxOla({
+              s3,
+              bucket: mediaBucketName,
+              apiKey: fishKey!,
+              script: ttsScript,
+              voiceId: referenceId,
+              speed: speechSpeed,
+              fishTtsModel,
+              pauseBands,
+              pauseScale: pauseRenderScale,
+              applyFx: !skipVoiceFxEarly,
+              voiceFxDial,
+            });
       mp3Buf = result.deliveryAac;
       dryPcmChunks = result.dryChunks;
       voiceFxApplied = result.voiceFxApplied;

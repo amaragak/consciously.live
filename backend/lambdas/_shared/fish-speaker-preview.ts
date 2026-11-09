@@ -13,7 +13,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { loudnormMp3Buffer } from "./ffmpeg-loudnorm";
-import { recordFishTtsUsage } from "./ai-usage";
+import { fishTtsMp3 as fishTtsMp3Shared } from "./fish-tts";
 import { voiceStemStreamKeys } from "./voice-stem-stream";
 import { applyCommittedVoiceFx } from "./voice-fx-apply";
 import {
@@ -33,7 +33,6 @@ import {
 
 const execFileAsync = promisify(execFile);
 const cloudfront = new CloudFrontClient({});
-const FISH_TTS_URL = "https://api.fish.audio/v1/tts";
 export const SPEAKER_PREVIEW_TEXT = "Welcome to your personalised meditation.";
 
 /** Letter-narration audition line — Speechify only (`letter-intro.mp3`). */
@@ -60,10 +59,6 @@ async function invalidateSpeakerPreviewKeys(keys: string[]): Promise<void> {
       },
     }),
   );
-}
-
-function fishTtsModel(): string {
-  return (process.env.FISH_TTS_MODEL || "s2.1-pro-free").trim() || "s2.1-pro-free";
 }
 
 function isS3ObjectMissing(e: unknown): boolean {
@@ -114,14 +109,23 @@ async function speakerStemStreamsReady(
 ): Promise<boolean> {
   const streams = voiceStemStreamKeys(wavKey);
   if (!streams) return false;
-  const [wav, aac] = await Promise.all([
-    s3ObjectExists(s3, bucket, wavKey),
-    s3ObjectExists(s3, bucket, streams.aacKey),
-  ]);
-  // Legacy: MP3 sibling counts until AAC backfill lands.
-  const mp3 =
-    aac || (await s3ObjectExists(s3, bucket, streams.mp3Key));
-  return wav && (aac || mp3);
+  // Current upload path writes AAC only (no WAV). Require the stream the
+  // player actually uses; legacy WAV/MP3 siblings still count as ready.
+  if (await s3ObjectExists(s3, bucket, streams.aacKey)) return true;
+  if (await s3ObjectExists(s3, bucket, streams.mp3Key)) return true;
+  return s3ObjectExists(s3, bucket, wavKey);
+}
+
+/** CDN URL for admin Play — prefer AAC (.m4a); catalog keys may still say .wav. */
+export function speakerPreviewPlaybackUrl(
+  baseUrl: string,
+  loudFxWavKey: string,
+  cacheBust?: string,
+): string {
+  const streams = voiceStemStreamKeys(loudFxWavKey);
+  const key = streams?.aacKey ?? loudFxWavKey;
+  const bust = cacheBust ? `?v=${cacheBust}` : "";
+  return `${baseUrl.replace(/\/$/, "")}/${key}${bust}`;
 }
 
 /** Create preview needs locked dry + mixer bounce as WAV + AAC (or legacy MP3). */
@@ -170,7 +174,8 @@ async function trimMp3ForPreview(buf: Buffer): Promise<Buffer> {
       { env: { ...process.env, PATH: `/opt/bin:${process.env.PATH || ""}` } },
     );
     const { wavPathToMp3Buffer } = await import("./audio-mp3");
-    return wavPathToMp3Buffer(wavPath);
+    // Await so finally does not unlink while encode is still running.
+    return await wavPathToMp3Buffer(wavPath);
   } finally {
     for (const p of [inPath, wavPath]) {
       try {
@@ -180,40 +185,6 @@ async function trimMp3ForPreview(buf: Buffer): Promise<Buffer> {
       }
     }
   }
-}
-
-async function fishTtsMp3(
-  apiKey: string,
-  referenceId: string,
-  speed: number,
-): Promise<Buffer> {
-  const upstream = await fetch(FISH_TTS_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      model: fishTtsModel(),
-    },
-    body: JSON.stringify({
-      text: SPEAKER_PREVIEW_TEXT,
-      reference_id: referenceId,
-      format: "mp3",
-      latency: "normal",
-      normalize: true,
-      prosody: { speed, normalize_loudness: true },
-    }),
-  });
-  if (!upstream.ok) {
-    const detail = await upstream.text();
-    throw new Error(`Fish TTS failed (${upstream.status}): ${detail.slice(0, 500)}`);
-  }
-  const buf = Buffer.from(await upstream.arrayBuffer());
-  void recordFishTtsUsage({
-    utf8Bytes: Buffer.byteLength(SPEAKER_PREVIEW_TEXT, "utf8"),
-    model: fishTtsModel(),
-    feature: "speaker-preview-tts",
-  });
-  return buf;
 }
 
 async function voiceFxFfmpegPair(
@@ -649,7 +620,13 @@ export async function generateFishSpeakerPreview(params: {
     }
     const buf = params.synthesize
       ? await params.synthesize(speedOrRate)
-      : await fishTtsMp3(params.apiKey ?? "", params.modelId, speedOrRate);
+      : await fishTtsMp3Shared({
+          apiKey: params.apiKey ?? "",
+          text: SPEAKER_PREVIEW_TEXT,
+          referenceId: params.modelId,
+          speed: speedOrRate,
+          feature: "speaker-preview-tts",
+        });
     const result = await uploadPreviewAtSpeedOrRate({
       s3: params.s3,
       bucket: params.bucket,

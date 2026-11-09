@@ -1,5 +1,6 @@
 /**
- * Speechify pcm_24000 → per-segment ffmpeg IR FX → PCM overlap-add → AAC.
+ * pcm_24000 (s16le mono) → per-segment ffmpeg IR FX → PCM overlap-add → AAC.
+ * Speechify and Fish both feed this path with provider-specific TTS.
  */
 import type { S3Client } from "@aws-sdk/client-s3";
 import {
@@ -13,6 +14,7 @@ import {
   speechifyTtsPcm24k,
   type SpeechifyEmotionTag,
 } from "./speechify-tts";
+import { fishTtsPcm24k } from "./fish-tts";
 import { loadCommittedVoiceFxContext } from "./voice-fx-apply";
 import { voiceFxDialGains } from "./voice-fx-dial";
 import {
@@ -87,20 +89,19 @@ function elapsedMs(started: number): number {
  * Pipelined: TTS segment N+1 overlaps FX on segment N.
  * Pauses are zero samples on the dry/wet buses (tails decay into them).
  */
-export async function synthesizeSpeechifyPcmFxOla(params: {
+export async function synthesizePcmFxOla(params: {
   s3: S3Client;
   bucket: string;
-  apiKey: string;
   script: string;
-  voiceId: string;
-  speechifyRate?: string;
-  emotion?: SpeechifyEmotionTag | null;
-  speechifyLoudnessNormalization?: boolean;
   pauseBands?: Record<ScriptPauseBand, number>;
   pauseScale?: number;
   /** When false, OLA dry only and encode (no FX). */
   applyFx: boolean;
   voiceFxDial: number;
+  /** Provider TTS → raw s16le mono @ 24 kHz. */
+  synthesizePcm24k: (text: string) => Promise<Buffer>;
+  /** Label for empty-pipeline errors. */
+  providerLabel?: string;
 }): Promise<SpeechifyPcmFxOlaResult> {
   const pipelineStarted = Date.now();
   const pauseScale =
@@ -181,18 +182,11 @@ export async function synthesizeSpeechifyPcmFxOla(params: {
       const utf8Bytes = Buffer.byteLength(clean, "utf8");
       totalBytes += utf8Bytes;
       const ttsStarted = Date.now();
-      const pcm = await speechifyTtsPcm24k({
-        apiKey: params.apiKey,
-        text: clean,
-        voiceId: params.voiceId,
-        rate: params.speechifyRate,
-        emotion: params.emotion ?? MEDITATION_SPEECHIFY_EMOTION,
-        loudnessNormalization: params.speechifyLoudnessNormalization,
-        sentenceBreakMs: SPEECHIFY_PERIOD_BREAK_MS,
-        commaBreakMs: SPEECHIFY_COMMA_BREAK_MS,
-      });
+      const pcm = await params.synthesizePcm24k(clean);
       if (pcm.byteLength % 2 !== 0) {
-        throw new Error("Speechify PCM length is not s16le-aligned");
+        throw new Error(
+          `${params.providerLabel ?? "TTS"} PCM length is not s16le-aligned`,
+        );
       }
       const sectionIndex = sectionTimings.length;
       sectionTimings.push({
@@ -229,7 +223,9 @@ export async function synthesizeSpeechifyPcmFxOla(params: {
   const ttsFxLoopMs = elapsedMs(loopStarted);
 
   if (cursor <= 0) {
-    throw new Error("Speechify PCM pipeline produced no samples");
+    throw new Error(
+      `${params.providerLabel ?? "TTS"} PCM pipeline produced no samples`,
+    );
   }
 
   const olaStarted = Date.now();
@@ -281,4 +277,77 @@ export async function synthesizeSpeechifyPcmFxOla(params: {
       },
     },
   };
+}
+
+/** Speechify pcm_24000 → FX OLA → AAC. */
+export async function synthesizeSpeechifyPcmFxOla(params: {
+  s3: S3Client;
+  bucket: string;
+  apiKey: string;
+  script: string;
+  voiceId: string;
+  speechifyRate?: string;
+  emotion?: SpeechifyEmotionTag | null;
+  speechifyLoudnessNormalization?: boolean;
+  pauseBands?: Record<ScriptPauseBand, number>;
+  pauseScale?: number;
+  applyFx: boolean;
+  voiceFxDial: number;
+}): Promise<SpeechifyPcmFxOlaResult> {
+  return synthesizePcmFxOla({
+    s3: params.s3,
+    bucket: params.bucket,
+    script: params.script,
+    pauseBands: params.pauseBands,
+    pauseScale: params.pauseScale,
+    applyFx: params.applyFx,
+    voiceFxDial: params.voiceFxDial,
+    providerLabel: "Speechify",
+    synthesizePcm24k: (text) =>
+      speechifyTtsPcm24k({
+        apiKey: params.apiKey,
+        text,
+        voiceId: params.voiceId,
+        rate: params.speechifyRate,
+        emotion: params.emotion ?? MEDITATION_SPEECHIFY_EMOTION,
+        loudnessNormalization: params.speechifyLoudnessNormalization,
+        sentenceBreakMs: SPEECHIFY_PERIOD_BREAK_MS,
+        commaBreakMs: SPEECHIFY_COMMA_BREAK_MS,
+      }),
+  });
+}
+
+/** Fish pcm @ 24 kHz → same FX OLA → AAC path as Speechify. */
+export async function synthesizeFishPcmFxOla(params: {
+  s3: S3Client;
+  bucket: string;
+  apiKey: string;
+  script: string;
+  voiceId: string;
+  speed: number;
+  fishTtsModel?: string;
+  pauseBands?: Record<ScriptPauseBand, number>;
+  pauseScale?: number;
+  applyFx: boolean;
+  voiceFxDial: number;
+}): Promise<SpeechifyPcmFxOlaResult> {
+  return synthesizePcmFxOla({
+    s3: params.s3,
+    bucket: params.bucket,
+    script: params.script,
+    pauseBands: params.pauseBands,
+    pauseScale: params.pauseScale,
+    applyFx: params.applyFx,
+    voiceFxDial: params.voiceFxDial,
+    providerLabel: "Fish",
+    synthesizePcm24k: (text) =>
+      fishTtsPcm24k({
+        apiKey: params.apiKey,
+        text,
+        referenceId: params.voiceId,
+        speed: params.speed,
+        model: params.fishTtsModel,
+        feature: "meditation-tts",
+      }),
+  });
 }

@@ -13,6 +13,7 @@ import {
   type VoiceGender,
   type VoiceSpeakerBrand,
 } from "@/lib/medimade-api";
+import { voiceStemPlaybackUrl } from "@consciously/common";
 import { SPEECHIFY_RATE_PACING_OFFSETS } from "@/lib/speaker-sample-speed";
 
 const SPEECHIFY_EMOTION_TAGS: readonly SpeechifyEmotionSampleTag[] = [
@@ -533,7 +534,10 @@ function SpeakerRow({
     }
   }
 
-  const canPlay = Boolean(speaker.sampleUrl);
+  const samplePlaybackUrl = speaker.sampleUrl
+    ? voiceStemPlaybackUrl(speaker.sampleUrl)
+    : null;
+  const canPlay = Boolean(samplePlaybackUrl);
 
   return (
     <li className="rounded-2xl border border-border bg-background p-3 sm:p-4">
@@ -785,8 +789,13 @@ function SpeakerRow({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
           <div className="flex items-center gap-2">
-            {speaker.sampleUrl ? (
-              <audio ref={audioRef} src={speaker.sampleUrl} className="hidden" preload="none" />
+            {samplePlaybackUrl ? (
+              <audio
+                ref={audioRef}
+                src={samplePlaybackUrl}
+                className="hidden"
+                preload="none"
+              />
             ) : null}
             <button
               type="button"
@@ -830,7 +839,7 @@ function SpeakerRow({
           >
             {busy === "sample"
               ? "Generating…"
-              : speaker.sampleUrl
+              : samplePlaybackUrl
                 ? "Regenerate sample"
                 : "Generate sample"}
           </button>

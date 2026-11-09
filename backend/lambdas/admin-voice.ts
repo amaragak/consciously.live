@@ -21,10 +21,13 @@ import {
   generateSpeechifyEmotionSample,
   generateSpeechifyLetterIntroSample,
   letterIntroSampleText,
+  speakerPreviewPlaybackUrl,
   speakerPreviewReady,
   speechifyEmotionSampleUrls,
 } from "./_shared/fish-speaker-preview";
 import { aacAdtsToMp3Buffer } from "./_shared/audio-aac";
+import { fishTtsPcm24k } from "./_shared/fish-tts";
+import { pcm24kS16leToAac44100 } from "./_shared/voice-fx-ffmpeg-chain";
 import {
   getSpeechifyApiKey,
   speechifyRateToSsml,
@@ -174,7 +177,9 @@ async function handleGet() {
       );
       const bust = encodeURIComponent(s.updatedAt || String(Date.now()));
       const sampleUrl =
-        hasSample && baseUrl ? `${baseUrl}/${sampleKey}?v=${bust}` : null;
+        hasSample && baseUrl
+          ? speakerPreviewPlaybackUrl(baseUrl, sampleKey, bust)
+          : null;
       let emotionSampleUrls: Partial<
         Record<SpeechifyEmotionSampleTag, string>
       > | null = null;
@@ -369,11 +374,23 @@ async function handlePost(event: APIGatewayProxyEventV2) {
         : await generateFishSpeakerPreview({
             s3,
             bucket,
-            apiKey: await getFishApiKey(),
             modelId,
             brand,
             apiBase,
             force,
+            // Same as Speechify samples: pcm @ 24k → AAC → MP3 for the shared stem path.
+            synthesize: async (speed) =>
+              aacAdtsToMp3Buffer(
+                await pcm24kS16leToAac44100(
+                  await fishTtsPcm24k({
+                    apiKey: await getFishApiKey(),
+                    text: SPEAKER_PREVIEW_TEXT,
+                    referenceId: modelId,
+                    speed,
+                    feature: "speaker-preview-tts",
+                  }),
+                ),
+              ),
           });
     let letterIntroKey: string | null = null;
     let letterIntroWrote = false;
@@ -427,7 +444,9 @@ async function handlePost(event: APIGatewayProxyEventV2) {
       brand,
     );
     const bust = encodeURIComponent(updatedAt || String(Date.now()));
-    const sampleUrl = domain ? `https://${domain}/${sampleKey}?v=${bust}` : null;
+    const sampleUrl = domain
+      ? speakerPreviewPlaybackUrl(`https://${domain}`, sampleKey, bust)
+      : null;
     return json(200, {
       ok: true,
       ...keys,

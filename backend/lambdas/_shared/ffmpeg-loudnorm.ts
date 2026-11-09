@@ -143,7 +143,8 @@ export async function loudnormMp3Buffer(buf: Buffer): Promise<Buffer> {
       ],
       { env: binEnv() },
     );
-    return wavPathToMp3Buffer(wavPath);
+    // Await so finally does not unlink while encode is still running.
+    return await wavPathToMp3Buffer(wavPath);
   } finally {
     for (const p of [inPath, wavPath]) {
       try {
