@@ -11,8 +11,10 @@ import {
 } from "@consciously/common";
 import { LogoMark } from "@/components/logo-mark";
 import {
+  AppMobileHeaderSubPillSlot,
   AppPrimaryTabsSlot,
   AppTopBarTrailingSlot,
+  useMobileHeaderSubPillActive,
 } from "@/components/app-primary-tabs";
 import { AssistantChatHeaderButton } from "@/components/assistant-chat-fab";
 import { AppGlobalSearch } from "@/components/app-global-search";
@@ -44,6 +46,7 @@ import { subscribeGuides } from "@/content/guides";
 import {
   libraryDetailIdFromPathname,
   peekLibraryDetailFromCrumb,
+  peekLibraryDetailTitle,
   subscribeLibraryDetailTitle,
 } from "@/lib/library-meditation-detail";
 import {
@@ -444,6 +447,7 @@ export function AppTopBar({
   const tabsSlotRef = useRef<HTMLDivElement | null>(null);
   const [leftMaxPx, setLeftMaxPx] = useState<number | undefined>(undefined);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const subPillActive = useMobileHeaderSubPillActive();
 
   useEffect(() => {
     const sync = () => {
@@ -575,22 +579,33 @@ export function AppTopBar({
   };
   /**
    * Compact (&lt; lg): mirror desktop’s post-divider crumbs.
-   * Below `md` (no italic verb, no hub tabs): Meditate › My Creations.
-   * From `md` up: italic verb + hub trail (Library) — tabs show the child.
-   * Meditation detail: phone = Meditate › My Creations (clickable back);
-   * md+ = Library (child tab is in the header select; never the title).
+   * Meditation detail (phone): back arrow + truncated title in the crumb slot
+   * (consciously-mobile-header-subtabs-v2). md+ keeps the from-tab leaf.
    */
   const isLibraryDetail = Boolean(libraryDetailIdFromPathname(pathname));
   const detailFromCrumb = peekLibraryDetailFromCrumb();
+  const detailTitle = peekLibraryDetailTitle();
   const phoneDetailTrail: AppBreadcrumbCrumb[] | null = isLibraryDetail
     ? [
-        { label: "Meditate", href: "/meditate" },
         {
-          label: detailFromCrumb?.label || "My Creations",
-          href: detailFromCrumb?.href || "/meditate/library/creations",
+          label:
+            detailTitle?.trim() ||
+            detailFromCrumb?.label ||
+            "Meditation",
+          href: null,
         },
       ]
     : null;
+  const goLibraryDetailBack = () => {
+    const href =
+      detailFromCrumb?.href?.trim() || "/meditate/library/creations";
+    const idx = (window.history.state as { idx?: number } | null)?.idx;
+    if (typeof idx === "number" && idx > 0) {
+      router.back();
+      return;
+    }
+    router.push(href);
+  };
   const isDashboard =
     pathname === "/" || pathname === "" || pathname === "/home";
   const phoneHubLeaf = librarySoundsPhoneLeafLabel(pathname);
@@ -626,7 +641,9 @@ export function AppTopBar({
   return (
     <header
       ref={headerRef}
-      className="app-top-bar relative sticky top-0 z-[130] flex h-[var(--app-header-h)] w-full shrink-0 items-center overflow-x-hidden border-b border-[color:var(--header-border)] bg-nav text-nav-foreground shadow-[var(--header-shadow)] max-md:fixed max-md:left-0 max-md:right-0 max-md:overflow-visible max-md:border-transparent max-md:bg-transparent max-md:text-foreground max-md:shadow-none"
+      className={`app-top-bar relative sticky top-0 z-[130] flex h-[var(--app-header-h)] w-full shrink-0 items-center overflow-x-hidden border-b border-[color:var(--header-border)] bg-nav text-nav-foreground shadow-[var(--header-shadow)] max-md:fixed max-md:left-0 max-md:right-0 max-md:overflow-visible max-md:border-transparent max-md:bg-transparent max-md:text-foreground max-md:shadow-none${
+        subPillActive ? " app-top-bar--with-subpill" : ""
+      }`}
     >
       {/* Floating capsule on phone; md+ is display:contents so children layout as before. */}
       <div className="app-top-bar-capsule md:contents">
@@ -714,6 +731,19 @@ export function AppTopBar({
                 if (window.history.length > 1) router.back();
                 else router.push("/");
               }}
+              className="mr-0.5 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-foreground transition-colors hover:bg-accent-soft md:hidden"
+            >
+              <ChevronLeft className="size-5" strokeWidth={1.85} aria-hidden />
+            </button>
+          ) : isLibraryDetail ? (
+            <button
+              type="button"
+              aria-label={
+                detailFromCrumb?.label
+                  ? `Back to ${detailFromCrumb.label}`
+                  : "Back"
+              }
+              onClick={goLibraryDetailBack}
               className="mr-0.5 flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-foreground transition-colors hover:bg-accent-soft md:hidden"
             >
               <ChevronLeft className="size-5" strokeWidth={1.85} aria-hidden />
@@ -883,6 +913,11 @@ export function AppTopBar({
         </div>
       </div>
       </div>
+      {/*
+        Second floating pill under the capsule (tabs / create stepper).
+        Pages portal into this via MobileHeaderSubPillPortal.
+      */}
+      <AppMobileHeaderSubPillSlot className="app-header-subpill-slot md:hidden" />
     </header>
   );
 }

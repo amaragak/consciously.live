@@ -150,17 +150,10 @@ export function JournalMobileWritingBar({
 
   const chrome = (
     <>
-      {/* Soft fade only — entry text stays visible under / around the pill. */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-x-0 z-[119] md:hidden"
-        style={{
-          bottom: bottomPx,
-          height: APP_MOBILE_TAB_BAR_H_PX + 24,
-          background:
-            "linear-gradient(to top, color-mix(in srgb, var(--background) 42%, transparent), transparent 70%)",
-        }}
-      />
+      {/*
+        Previous soft fade behind the writing pill — removed so page content
+        shows around it (consciously-mobile-header-subtabs-v2).
+      */}
       {aboveBar ? (
         <div
           className="fixed z-[120] md:hidden"

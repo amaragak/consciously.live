@@ -106,7 +106,7 @@ export function JournalGratitudesAll() {
         <div className="journal-mobile-paisley-bg relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-6xl flex-col overflow-hidden border-r-[0.5px] border-border">
           <JournalMobileSectionTabs
             value="gratitude"
-            className="shrink-0 px-4 pb-3 pt-1 md:hidden sm:px-6"
+            className="md:hidden"
           />
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-8">
             {/* Mobile hub switch is the section tabs above; keep in-page back on md+. */}

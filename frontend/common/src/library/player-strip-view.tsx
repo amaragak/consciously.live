@@ -267,7 +267,7 @@ export function PlayerStripView({
         inline
           ? "pointer-events-none relative z-50 mx-auto w-full max-w-6xl px-4 pb-3 pt-2 md:px-6"
           : phoneFloat
-            ? "pointer-events-none fixed z-[121] left-0 right-0"
+            ? "pointer-events-none fixed z-[125] left-0 right-0"
             : `pointer-events-none fixed z-50 left-0 w-full max-w-6xl px-4 pt-3 md:px-6 ${
                 besideSidebar ? "lg:left-[var(--app-sidebar-w,200px)]" : ""
               }`

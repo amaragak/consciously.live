@@ -22,6 +22,10 @@ import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import { CreateOneFlowPickerShell } from "@/components/create-one-flow-picker-shell";
 import { SelectChevron } from "@/components/select-chevron";
 import { CreateOneFlowStepper } from "@/components/create-one-flow-stepper";
+import {
+  MobileHeaderSubPillPortal,
+  MobileHeaderSubPillShell,
+} from "@/components/mobile-header-sub-pill";
 import { CreateProgramPicker } from "@/components/create-program-picker";
 import { DictationMicButton } from "@/components/dictation-mic-button";
 import { JournalReflectPicker } from "@/components/journal-reflect-picker";
@@ -2313,27 +2317,27 @@ export function CreateOneFlow({
   );
 
   /**
-   * Mobile full-bleed step bar (create-start-mobile): card surface, hairline,
-   * sticky under the header with a soft shadow once scrolled.
+   * Previous mobile full-bleed step band (create-start-mobile) — replaced by the
+   * shared header sub-pill (consciously-mobile-header-subtabs-v2).
+   *
+   * const mobileStepBar = (sticky: boolean) => (
+   *   <div className={[ "z-20 border-b border-border bg-card px-4 py-2.5 md:hidden",
+   *     sticky ? "sticky top-0 max-md:top-[var(--app-header-h)]" : "shrink-0",
+   *     sticky && stepBarScrolled ? "shadow-[…]" : "", ].join(" ")}>
+   *     <CreateOneFlowStepper … />
+   *   </div>
+   * );
    */
-  const mobileStepBar = (sticky: boolean) => (
-    <div
-      className={[
-        "z-20 border-b border-border bg-card px-4 py-2.5 md:hidden",
-        sticky ? "sticky top-0 max-md:top-[var(--app-header-h)]" : "shrink-0",
-        sticky && stepBarScrolled
-          ? "shadow-[0_4px_10px_rgb(15_27_45_/_0.06)]"
-          : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <CreateOneFlowStepper
-        step={step}
-        shapeSkipped={shapeSkipped}
-        onStepClick={onStepperStepClick}
-      />
-    </div>
+  const mobileStepBar = (_sticky: boolean) => (
+    <MobileHeaderSubPillPortal>
+      <MobileHeaderSubPillShell aria-label="Steps" className="px-2 py-1.5">
+        <CreateOneFlowStepper
+          step={step}
+          shapeSkipped={shapeSkipped}
+          onStepClick={onStepperStepClick}
+        />
+      </MobileHeaderSubPillShell>
+    </MobileHeaderSubPillPortal>
   );
 
   const renderShapeAddChips = (
@@ -2798,7 +2802,7 @@ export function CreateOneFlow({
         >
           {desktopStepper}
           {mobileStepBar(true)}
-          <div className="mx-auto flex w-full max-w-6xl flex-col gap-3.5 px-4 pb-4 pt-3.5 md:gap-[22px] md:px-6 md:pb-5 md:pt-7">
+          <div className="mx-auto flex w-full max-w-6xl flex-col gap-3.5 px-4 pb-4 pt-0 md:gap-[22px] md:px-6 md:pb-5 md:pt-7">
           {step === "start" ? (
             <div className="flex w-full flex-col gap-4">
               <h1 className="sr-only">Create</h1>
@@ -3217,7 +3221,7 @@ export function CreateOneFlow({
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {desktopStepper}
           {mobileStepBar(false)}
-          <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-3 pt-3 md:gap-3 md:px-6 md:pt-6">
+          <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-3 pt-0 md:gap-3 md:px-6 md:pt-6">
           {yourBriefCard}
           <div className="flex min-h-0 w-full flex-1 flex-col pb-4 xl:flex-row xl:items-stretch xl:gap-5 xl:pb-4">
             <div className="flex min-h-0 min-w-0 w-full max-w-[760px] flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_4px_18px_rgb(0_0_0_/_0.08)] md:rounded-[18px]">

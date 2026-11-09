@@ -18,7 +18,10 @@ import {
 } from "@/components/library-meditation-card";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
-import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
+import {
+  MobileHeaderSubPillPortal,
+  MobileHeaderSubPillTabs,
+} from "@/components/mobile-header-sub-pill";
 import { meditationIdFromLibraryItem } from "@/lib/journal-meditation-reflect";
 import { journalRowsForMeditation, type HealJournalRow } from "@/lib/journal-links";
 import { subscribeJournalStore } from "@/lib/journal-storage";
@@ -29,6 +32,7 @@ import {
   scriptChunksHaveTimings,
   scriptChunksPlainText,
   scriptWordCount,
+  setLibraryDetailTitle,
   type ScriptChunk,
 } from "@/lib/library-meditation-detail";
 
@@ -408,7 +412,7 @@ function DetailMenu({
 /* ------------------------------------------------------------------ */
 
 /** Sticky bar under the app header (title row + tabs + bottom border). */
-const MOBILE_STICKY_BAR_PX = 64;
+/* const MOBILE_STICKY_BAR_PX = 64; — was for the removed sticky title band. */
 
 function ScriptCard({
   chunks,
@@ -826,8 +830,7 @@ export default function MeditationDetail(props: MeditationDetailProps) {
   const location = useLocation();
   const [howMadeOpen, setHowMadeOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<MobileTab>("script");
-  const [stickyBarVisible, setStickyBarVisible] = useState(false);
-  const tabsSentinelRef = useRef<HTMLDivElement | null>(null);
+  /* stickyBarVisible / tabsSentinelRef removed with the old sticky band. */
   const tabPanelRef = useRef<HTMLDivElement | null>(null);
 
   const own = source === "own";
@@ -941,24 +944,19 @@ export default function MeditationDetail(props: MeditationDetailProps) {
 
   useEffect(() => {
     if (!isMobile) {
-      setStickyBarVisible(false);
+      setLibraryDetailTitle(null);
       return;
     }
-    const tabs = tabsSentinelRef.current;
-    const scroller = document.querySelector("main");
-    if (!tabs || !(scroller instanceof HTMLElement)) return;
+    setLibraryDetailTitle(item.title);
+    return () => setLibraryDetailTitle(null);
+  }, [isMobile, item.title]);
 
-    // Tabs fully leave the main viewport → sticky bar. Header sits above main,
-    // so root = main (no extra top margin). Instant show/hide, no fade.
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        setStickyBarVisible(!(entry?.isIntersecting ?? true));
-      },
-      { root: scroller, threshold: 0, rootMargin: "0px" },
-    );
-    io.observe(tabs);
-    return () => io.disconnect();
-  }, [isMobile]);
+  /*
+   * Previous sticky title+tabs band under the header — replaced by header
+   * title crumb + sub-pill tabs (consciously-mobile-header-subtabs-v2).
+   *
+   * useEffect(() => { IntersectionObserver on tabsSentinel → setStickyBarVisible }, …)
+   */
 
   if (isMobile) {
     const meta: ReactNode[] = [];
@@ -1001,94 +999,25 @@ export default function MeditationDetail(props: MeditationDetailProps) {
       },
     ];
 
-    const stickyScrollMargin = stickyBarVisible ? MOBILE_STICKY_BAR_PX : 0;
-
     function selectMobileTab(next: MobileTab) {
       setMobileTab(next);
-      if (!stickyBarVisible) return;
-      requestAnimationFrame(() => {
-        tabPanelRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      });
-    }
-
-    function scrollPageToTop() {
-      document.querySelector("main")?.scrollTo({
-        top: 0,
-        left: 0,
-        behavior: "smooth",
-      });
     }
 
     return (
-      <div className="flex flex-col gap-3 px-3 pt-3" style={stripPad}>
-        {/* Slides down from under the app header (z-130); stays mounted for exit. */}
-        <div
-          className={`fixed inset-x-0 top-[var(--app-header-h)] z-40 border-b border-border bg-card shadow-[0_4px_10px_rgb(15_27_45_/_0.06)] transition-transform duration-200 ease-out md:hidden ${
-            stickyBarVisible
-              ? "translate-y-0"
-              : "pointer-events-none -translate-y-full"
-          }`}
-          role="region"
-          aria-label="Meditation shortcuts"
-          aria-hidden={!stickyBarVisible}
-        >
-          <div className="flex items-center gap-2 py-1.5 pl-4 pr-3">
-            <button
-              type="button"
-              tabIndex={stickyBarVisible ? 0 : -1}
-              onClick={scrollPageToTop}
-              className="min-w-0 flex-1 cursor-pointer truncate text-left font-display text-[15px] leading-snug text-foreground"
-            >
-              {item.title}
-            </button>
-            {!isCurrent ? (
-              <button
-                type="button"
-                tabIndex={stickyBarVisible ? 0 : -1}
-                aria-label="Play"
-                onClick={onPlay}
-                className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full border border-black/10 text-on-accent"
-                style={PRIMARY_ACCENT_FILL_STYLE}
-              >
-                <Play
-                  className="size-2.5 translate-x-px"
-                  fill="currentColor"
-                  strokeWidth={0}
-                  aria-hidden
-                />
-              </button>
-            ) : null}
-          </div>
-          <div
-            className="-mt-0.5 flex px-2"
-            role="tablist"
+      <div className="flex flex-col gap-3 px-3 pt-0" style={stripPad}>
+        <MobileHeaderSubPillPortal>
+          <MobileHeaderSubPillTabs
             aria-label="Meditation sections"
-          >
-            {tabOptions.map((opt) => {
-              const active = mobileTab === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  role="tab"
-                  tabIndex={stickyBarVisible ? 0 : -1}
-                  aria-selected={active}
-                  onClick={() => selectMobileTab(opt.id)}
-                  className={`flex h-7 flex-1 cursor-pointer items-center justify-center text-[13px] ${
-                    active
-                      ? "font-semibold text-foreground shadow-[inset_0_-2px_0_var(--accent)]"
-                      : "font-normal text-foreground/80"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+            value={mobileTab}
+            onChange={selectMobileTab}
+            options={tabOptions}
+          />
+        </MobileHeaderSubPillPortal>
+
+        {/*
+         * Previous fixed sticky title+tabs band (full-width bg-card under header).
+         * Title now lives in the header crumb; tabs in the sub-pill above.
+         */}
 
         <div className={`${CARD} overflow-hidden`}>
           <div className="h-[200px] w-full bg-muted/35">{cover}</div>
@@ -1098,9 +1027,7 @@ export default function MeditationDetail(props: MeditationDetailProps) {
                 .filter(Boolean)
                 .join(" · ")}
             </span>
-            <h1 className="font-display text-2xl font-normal leading-[1.2] text-foreground">
-              {item.title}
-            </h1>
+            {/* Title moved to the floating header crumb; full title on Details. */}
             {meta.length > 0 ? (
               <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
                 {meta.map((m, i) => (
@@ -1131,39 +1058,22 @@ export default function MeditationDetail(props: MeditationDetailProps) {
           </div>
         </div>
 
-        <div ref={tabsSentinelRef}>
-          <SegmentedPillTabs<MobileTab>
-            aria-label="Meditation sections"
-            value={mobileTab}
-            onChange={selectMobileTab}
-            equalWidth
-            className="w-full gap-0.5 rounded-xl border-0 bg-surface-2 p-[3px]"
-            selectedClassName="rounded-[9px] bg-card py-2 text-[13px] font-semibold text-foreground shadow-sm"
-            idleClassName="rounded-[9px] py-2 text-[13px] font-normal text-muted"
-            options={tabOptions}
-          />
-        </div>
-
-        <div
-          ref={tabPanelRef}
-          style={
-            stickyScrollMargin > 0
-              ? { scrollMarginTop: stickyScrollMargin }
-              : undefined
-          }
-        >
+        <div ref={tabPanelRef}>
           {mobileTab === "script" ? (
             <ScriptCard
               chunks={chunks}
               wordCount={wordCount}
               mobile
               activeIndex={activeIndex}
-              scrollMarginTopPx={stickyScrollMargin}
+              scrollMarginTopPx={0}
               onSeekChunk={timed ? handleSeekChunk : undefined}
             />
           ) : null}
           {mobileTab === "details" ? (
             <div className="flex flex-col gap-3">
+              <h2 className="font-display text-2xl font-normal leading-[1.2] text-foreground">
+                {item.title}
+              </h2>
               {own ? <MadeFromCard item={item} /> : null}
               <SoundVoiceCard item={item} soundscapeName={soundscapeName} />
             </div>

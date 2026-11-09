@@ -2,6 +2,10 @@
 
 import { useLocation, useNavigate } from "react-router-dom";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
+import {
+  MobileHeaderSubPillPortal,
+  MobileHeaderSubPillTabs,
+} from "@/components/mobile-header-sub-pill";
 import { SegmentedPillTabs } from "@/components/segmented-pill-tabs";
 import {
   HEADER_SECTION_TABS_IDLE,
@@ -52,9 +56,19 @@ export function FocusSectionTabs() {
     return <AppPrimaryTabsDesktop>{tabs}</AppPrimaryTabsDesktop>;
   }
 
+  /*
+   * Previous in-page SegmentedPillTabs under the header — replaced by the
+   * shared sub-pill (consciously-mobile-header-subtabs-v2).
+   * return <div className="… pt-3">{tabs}</div>;
+   */
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 pt-3 sm:px-6">
-      {tabs}
-    </div>
+    <MobileHeaderSubPillPortal>
+      <MobileHeaderSubPillTabs
+        aria-label="Focus section"
+        value={section}
+        onChange={(id) => navigate(FOCUS_SECTION_HREF[id as FocusSectionId])}
+        options={FOCUS_SECTION_TABS}
+      />
+    </MobileHeaderSubPillPortal>
   );
 }

@@ -11,6 +11,11 @@ import {
   CardSegmentTabs,
   type CardSegmentTabOption,
 } from "@/components/card-segment-tabs";
+import {
+  MobileHeaderSubPillPortal,
+  MobileHeaderSubPillTabs,
+} from "@/components/mobile-header-sub-pill";
+import { useMinWidth } from "@/hooks/use-min-width";
 import { VoiceCheckIn } from "@/components/plan/life-area/checkin";
 import { LifeAreaTracker, trackerOpenCount } from "@/components/plan/life-area/tracker";
 import { LifeAreaInsights } from "@/components/plan/life-area/insights";
@@ -260,7 +265,7 @@ export function LifeAreaShell({
             journalCount={journalCount}
           />
         </div>
-        <div className="pt-[18px]">
+        <div className="pt-3 md:pt-[18px]">
           {mvp.whiteboard && search.get("wb") === "1" && tab !== "whiteboard" ? (
             <WhiteboardBackChip areaId={dream.id} />
           ) : null}
@@ -362,6 +367,7 @@ function LifeAreaTabTrack({
   meditations: number;
   journalCount: number;
 }) {
+  const wide = useMinWidth(768);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [fade, setFade] = useState({ left: false, right: false });
 
@@ -411,6 +417,20 @@ function LifeAreaTabTrack({
       window.removeEventListener("resize", measureFade);
     };
   }, []);
+
+  if (!wide) {
+    return (
+      <MobileHeaderSubPillPortal>
+        <MobileHeaderSubPillTabs
+          aria-label="Life area"
+          options={options}
+          value={tab}
+          onChange={onSelect}
+          activeRef={activeRef}
+        />
+      </MobileHeaderSubPillPortal>
+    );
+  }
 
   return (
     <div className="relative -mx-4 md:mx-0">

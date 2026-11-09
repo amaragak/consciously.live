@@ -1649,9 +1649,18 @@ export async function fetchJournalStoreDelta(opts?: {
   }
   const since = opts?.since?.trim() || "";
   const qs = since ? `?since=${encodeURIComponent(since)}` : "";
-  const res = await medimadeFetch(`${base}/journal/store${qs}`, {
-    headers: medimadeApiAuthHeaders(),
-  });
+  let res: Response;
+  try {
+    res = await medimadeFetch(`${base}/journal/store${qs}`, {
+      headers: medimadeApiAuthHeaders(),
+    });
+  } catch (err) {
+    const tip =
+      err instanceof Error && err.message.trim()
+        ? err.message.trim()
+        : "Network error";
+    throw new Error(`Journal pull failed (network): ${tip}`);
+  }
   let data: Record<string, unknown> = {};
   try {
     data = (await res.json()) as Record<string, unknown>;
@@ -1662,8 +1671,9 @@ export async function fetchJournalStoreDelta(opts?: {
     const msg =
       (typeof data.detail === "string" && data.detail) ||
       (typeof data.error === "string" && data.error) ||
-      res.statusText;
-    throw new Error(msg);
+      res.statusText ||
+      "Pull failed";
+    throw new Error(`Journal pull failed (${res.status}): ${msg}`);
   }
   const serverTime =
     typeof data.serverTime === "string" && data.serverTime.trim()
@@ -1829,11 +1839,20 @@ export async function putJournalStoreRemote(store: JournalStoreV2): Promise<void
   if (!base) {
     throw new Error("VITE_MEDIMADE_API_URL is not set");
   }
-  const res = await medimadeFetch(`${base}/journal/store`, {
-    method: "PUT",
-    headers: medimadeJsonHeaders(),
-    body: JSON.stringify({ store }),
-  });
+  let res: Response;
+  try {
+    res = await medimadeFetch(`${base}/journal/store`, {
+      method: "PUT",
+      headers: medimadeJsonHeaders(),
+      body: JSON.stringify({ store }),
+    });
+  } catch (err) {
+    const tip =
+      err instanceof Error && err.message.trim()
+        ? err.message.trim()
+        : "Network error";
+    throw new Error(`Journal save failed (network): ${tip}`);
+  }
   let data: Record<string, unknown> = {};
   try {
     data = (await res.json()) as Record<string, unknown>;
@@ -1844,8 +1863,9 @@ export async function putJournalStoreRemote(store: JournalStoreV2): Promise<void
     const msg =
       (typeof data.detail === "string" && data.detail) ||
       (typeof data.error === "string" && data.error) ||
-      res.statusText;
-    throw new Error(msg);
+      res.statusText ||
+      "Save failed";
+    throw new Error(`Journal save failed (${res.status}): ${msg}`);
   }
 }
 

@@ -1,7 +1,10 @@
 "use client";
 
 import { useNavigate } from "react-router-dom";
-import { CardSegmentTabs } from "@/components/card-segment-tabs";
+import {
+  MobileHeaderSubPillPortal,
+  MobileHeaderSubPillTabs,
+} from "@/components/mobile-header-sub-pill";
 import { useMvpFlags } from "@/lib/mvp-flags";
 
 export type JournalMobileSectionId = "journal" | "gratitude" | "insights";
@@ -25,7 +28,11 @@ type Props = {
   className?: string;
 };
 
-/** Mobile Journal hub tabs under the header (Entries / Gratitudes / Insights). */
+/**
+ * Mobile Journal hub tabs under the floating header
+ * (consciously-mobile-header-subtabs-v2). Previous in-page CardSegmentTabs
+ * card is commented out in callers.
+ */
 export function JournalMobileSectionTabs({
   value,
   onBeforeNavigate,
@@ -37,10 +44,10 @@ export function JournalMobileSectionTabs({
     (tab) => tab.id !== "insights" || mvp.journalInsights,
   );
   return (
-    <div className={className}>
-      <CardSegmentTabs
+    <MobileHeaderSubPillPortal>
+      <MobileHeaderSubPillTabs
         aria-label="Journal section"
-        equalWidth
+        className={className}
         value={value}
         onChange={(id) => {
           onBeforeNavigate?.();
@@ -48,6 +55,6 @@ export function JournalMobileSectionTabs({
         }}
         options={options}
       />
-    </div>
+    </MobileHeaderSubPillPortal>
   );
 }

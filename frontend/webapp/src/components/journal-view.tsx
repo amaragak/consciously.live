@@ -16,6 +16,7 @@ import {
   installJournalSyncBootHooks,
   journalCloudSaveLabel,
   journalEntryNeedsSyncNote,
+  retryJournalSyncNow,
   scheduleJournalOutboxFlush,
   syncJournal,
   type JournalCloudSaveStatus,
@@ -865,6 +866,8 @@ export function JournalView() {
   const [cloudSaveStatus, setCloudSaveStatus] = useState<JournalCloudSaveStatus>(
     () => getJournalCloudSaveStatus(),
   );
+  /** "Saved" flashes briefly then hides so the date row stays quiet. */
+  const [showSavedFlash, setShowSavedFlash] = useState(false);
   const entriesRef = useRef<JournalEntry[]>([]);
   const foldersRef = useRef<JournalFolder[]>([]);
   const folderMenuRef = useRef<HTMLDivElement | null>(null);
@@ -1157,6 +1160,16 @@ export function JournalView() {
     window.addEventListener(JOURNAL_CLOUD_SAVE_EVENT, onStatus);
     return () => window.removeEventListener(JOURNAL_CLOUD_SAVE_EVENT, onStatus);
   }, []);
+
+  useEffect(() => {
+    if (cloudSaveStatus !== "saved") {
+      setShowSavedFlash(false);
+      return;
+    }
+    setShowSavedFlash(true);
+    const t = window.setTimeout(() => setShowSavedFlash(false), 2000);
+    return () => window.clearTimeout(t);
+  }, [cloudSaveStatus]);
 
   /** Flush draft + outbox on background. */
   useEffect(() => {
@@ -2360,13 +2373,12 @@ export function JournalView() {
           Entries · Gratitudes · Insights. Replaced by CardSegmentTabs below
           the header (consciously-journal-tabs-v2).
         */}
+        {/* Sub-pill under floating header — no in-page card spacing. */}
         {!mobileComposeChrome ? (
           <JournalMobileSectionTabs
             value={section}
             onBeforeNavigate={flushSaveSync}
-            className={`pb-3 pt-1 md:hidden ${
-              journalComposeChrome ? "" : "px-4 sm:px-6"
-            }`}
+            className="md:hidden"
           />
         ) : null}
       </div>
@@ -3186,12 +3198,23 @@ export function JournalView() {
                 updatedAt={activeEntry.updatedAt}
                 onEntryDateChange={(iso) => patchActive({ entryDate: iso })}
                 syncStatusLabel={(() => {
-                  if (
-                    cloudSaveStatus === "saving" ||
-                    cloudSaveStatus === "offline" ||
-                    cloudSaveStatus === "error"
-                  ) {
-                    return journalCloudSaveLabel(cloudSaveStatus);
+                  const emptyStub =
+                    activeEntry &&
+                    !journalEntryHasMeaningfulContent(activeEntry) &&
+                    !journalEntryNeedsSyncNote(activeEntry.id);
+                  // Empty new entries never show save errors.
+                  if (emptyStub) return null;
+                  if (cloudSaveStatus === "saving") {
+                    return journalCloudSaveLabel("saving");
+                  }
+                  if (cloudSaveStatus === "offline") {
+                    return journalCloudSaveLabel("offline");
+                  }
+                  if (cloudSaveStatus === "error") {
+                    return journalCloudSaveLabel("error");
+                  }
+                  if (cloudSaveStatus === "saved" && showSavedFlash) {
+                    return journalCloudSaveLabel("saved");
                   }
                   if (
                     activeEntry &&
@@ -3201,8 +3224,17 @@ export function JournalView() {
                       activeEntry.updatedAt || activeEntry.createdAt,
                     );
                   }
-                  return journalCloudSaveLabel(cloudSaveStatus);
+                  return null;
                 })()}
+                syncStatusCanRetry={
+                  cloudSaveStatus === "error" &&
+                  Boolean(
+                    activeEntry &&
+                      (journalEntryHasMeaningfulContent(activeEntry) ||
+                        journalEntryNeedsSyncNote(activeEntry.id)),
+                  )
+                }
+                onSyncRetry={() => retryJournalSyncNow()}
                 highlightQuote={(() => {
                   try {
                     const q = new URLSearchParams(window.location.search).get(

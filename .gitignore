@@ -71,6 +71,8 @@ docs/design/mobile-header-lite/
 docs/design/meditate-quick-create-v2/
 docs/design/mobile-header-floating/
 docs/design/mobile-header-floating-fix/
+docs/design/mobile-header-subtabs-v2/
+docs/design/mobile-header-subtabs/
 docs/design/journal-list-breadcrumbs/
 docs/design/journal-entry-mobile/
 docs/design/journal-entry-fix/
@@ -99,6 +101,7 @@ docs/design/delivery-and-voice-rates-v6/
 docs/design/journal-voice-fix/
 docs/design/journal-voice-fix-2/
 docs/design/journal-paper/
+docs/design/journal-save-fix/
 frontend/webapp/docs/design/journal-voice-notes-v2/
 frontend/webapp/docs/design/journal-keyboard/
 frontend/webapp/docs/design/journal-keyboard-scroll/

@@ -23,6 +23,7 @@ export type SettingsKey =
   | "account.signInMethods"
   | "account.passkeys"
   | "account.export"
+  | "account.sync"
   | "account.delete"
   | "ai.providers"
   | "ai.trainingClaim"
@@ -82,6 +83,7 @@ export const SETTINGS_STATUS: Record<SettingsKey, SettingsStatus> = {
   "account.signInMethods": "wired",
   "account.passkeys": "wired",
   "account.export": "not_available",
+  "account.sync": "wired",
   "account.delete": "wired",
   "ai.providers": "wired",
   "ai.trainingClaim": "not_available",

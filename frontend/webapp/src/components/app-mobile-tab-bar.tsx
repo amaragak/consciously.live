@@ -578,19 +578,11 @@ export function AppMobileTabBar() {
    */
   const bar = (
     <>
-      {/* Soft veil only — keep page content visible under the floating pill. */}
-      <div
-        aria-hidden
-        className={`pointer-events-none fixed inset-x-0 bottom-0 z-[119] md:hidden ${
-          visible ? "opacity-100" : "opacity-0"
-        }`}
-        style={{
-          height: mobileTabContentClearancePx() + 12,
-          background:
-            "linear-gradient(to top, color-mix(in srgb, var(--background) 42%, transparent), transparent 70%)",
-          transition: "opacity 180ms ease",
-        }}
-      />
+      {/*
+        Previous soft gradient veil behind the tab pill — removed so page
+        content shows around the pill (consciously-mobile-header-subtabs-v2).
+        <div aria-hidden className="… z-[119]" style={{ background: linear-gradient… }} />
+      */}
       <nav
         aria-label="Primary"
         className={`app-mobile-tab-bar fixed z-[120] border border-border bg-card shadow-[0_10px_28px_-12px_rgb(0_0_0_/_0.35)] md:hidden ${

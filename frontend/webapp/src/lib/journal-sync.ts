@@ -150,7 +150,9 @@ export function journalCloudSaveLabel(
   if (status === "saving") return "Saving…";
   if (status === "saved") return "Saved";
   if (status === "offline") return "Offline · will sync";
-  if (status === "error") return "Couldn't save · retrying";
+  // Short label for the date row; "Retry" is a separate control in the editor.
+  if (status === "error") return "Not saved";
+  // Previous: "Couldn't save · retrying" (wrapped / truncated on phones).
   return null;
 }
 
@@ -182,6 +184,7 @@ export function recordJournalPullOk(at = new Date().toISOString()): void {
 }
 
 export function recordJournalSyncOk(): void {
+  clearJournalSyncRetry();
   writeDiag({
     ...readDiag(),
     lastSyncAt: new Date().toISOString(),
@@ -194,10 +197,28 @@ export function recordJournalSyncOk(): void {
   );
 }
 
+/**
+ * Pull-only failure: keep diagnostics for Settings › Sync, but do not paint the
+ * entry header as "Couldn't save" when nothing is waiting in the outbox.
+ */
+export function recordJournalPullError(message: string): void {
+  const msg = message.trim().slice(0, 240) || "Could not pull journal";
+  try {
+    console.error("[journal-sync] pull", msg);
+  } catch {
+    /* */
+  }
+  writeDiag({
+    ...readDiag(),
+    lastSyncError: msg,
+  });
+}
+
+/** Flush / put failure — entry header + automatic retry. */
 export function recordJournalSyncError(message: string): void {
   const msg = message.trim().slice(0, 240) || "Sync failed";
   try {
-    console.error("[journal-sync]", msg);
+    console.error("[journal-sync] save", msg);
   } catch {
     /* */
   }
@@ -208,6 +229,7 @@ export function recordJournalSyncError(message: string): void {
   const offline =
     typeof navigator !== "undefined" && navigator.onLine === false;
   setJournalCloudSaveStatus(offline ? "offline" : "error");
+  if (!offline) scheduleJournalSyncRetry();
 }
 
 /** Enqueue a local edit for cloud flush (does not write the store). */
@@ -438,6 +460,16 @@ async function pullAndMerge(): Promise<JournalStoreV2> {
   return next;
 }
 
+function markOutboxIdleAfterSkip(): void {
+  writeOutbox({ v: 1, upsertIds: [], deleteIds: [] });
+  clearJournalEntriesPendingSync();
+  setJournalCloudSaveStatus(
+    typeof navigator !== "undefined" && navigator.onLine === false
+      ? "offline"
+      : "idle",
+  );
+}
+
 async function flushOutbox(store: JournalStoreV2): Promise<void> {
   const box = readOutbox();
   if (box.upsertIds.length === 0 && box.deleteIds.length === 0) {
@@ -451,14 +483,12 @@ async function flushOutbox(store: JournalStoreV2): Promise<void> {
   const cloudEntries = entriesForCloudPut(promoted.entries);
   if (cloudEntries.length === 0 && promoted.entries.length > 0) {
     // Only empty drafts left — nothing to upload; clear outbox for drafts.
-    writeOutbox({ v: 1, upsertIds: [], deleteIds: [] });
-    clearJournalEntriesPendingSync();
+    markOutboxIdleAfterSkip();
     return;
   }
   if (cloudEntries.length === 0) {
     // Account wipe not supported via empty PUT.
-    writeOutbox({ v: 1, upsertIds: [], deleteIds: [] });
-    clearJournalEntriesPendingSync();
+    markOutboxIdleAfterSkip();
     return;
   }
   setJournalCloudSaveStatus("saving");
@@ -505,7 +535,7 @@ export async function syncJournal(opts?: {
   syncInFlight = (async () => {
     try {
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
-        setJournalCloudSaveStatus("offline");
+        if (!journalOutboxIsEmpty()) setJournalCloudSaveStatus("offline");
         return;
       }
       let store = readLocalStore();
@@ -513,7 +543,7 @@ export async function syncJournal(opts?: {
         try {
           store = await pullAndMerge();
         } catch (err) {
-          recordJournalSyncError(
+          recordJournalPullError(
             err instanceof Error ? err.message : "Could not pull journal",
           );
           // Still try to flush outbox with what we have.
@@ -527,8 +557,11 @@ export async function syncJournal(opts?: {
             err instanceof Error ? err.message : "Could not save journal",
           );
         }
-      } else if (saveStatus === "saving") {
-        setJournalCloudSaveStatus("saved");
+      } else if (saveStatus === "saving" || saveStatus === "error") {
+        // Empty outbox: never leave a pull failure painted as "Couldn't save".
+        setJournalCloudSaveStatus(
+          readDiag().lastSyncAt ? "saved" : "idle",
+        );
       }
     } finally {
       syncInFlight = null;
@@ -540,14 +573,39 @@ export async function syncJournal(opts?: {
 
 /** Debounced outbox flush after typing (~1s). */
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+/** Back-off after a failed put (reconnect / foreground also retry). */
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryAttempt = 0;
+
+function clearJournalSyncRetry(): void {
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+  retryAttempt = 0;
+}
+
+function scheduleJournalSyncRetry(): void {
+  if (typeof window === "undefined") return;
+  if (retryTimer) return;
+  if (journalOutboxIsEmpty()) return;
+  const delayMs = Math.min(30_000, 2_000 * 2 ** Math.min(retryAttempt, 4));
+  retryAttempt += 1;
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void syncJournal({ reason: "outbox-flush", forcePull: false });
+  }, delayMs);
+}
 
 export function scheduleJournalOutboxFlush(delayMs = 1000): void {
   if (flushTimer) clearTimeout(flushTimer);
-  setJournalCloudSaveStatus(
-    typeof navigator !== "undefined" && navigator.onLine === false
-      ? "offline"
-      : "saving",
-  );
+  if (!journalOutboxIsEmpty()) {
+    setJournalCloudSaveStatus(
+      typeof navigator !== "undefined" && navigator.onLine === false
+        ? "offline"
+        : "saving",
+    );
+  }
   flushTimer = setTimeout(() => {
     flushTimer = null;
     void syncJournal({ reason: "outbox-flush", forcePull: false });
@@ -559,7 +617,21 @@ export function flushJournalOutboxNow(): void {
     clearTimeout(flushTimer);
     flushTimer = null;
   }
+  clearJournalSyncRetry();
   void syncJournal({ reason: "outbox-flush", forcePull: false });
+}
+
+/** Manual Retry from the entry header or Settings › Sync. */
+export function retryJournalSyncNow(): void {
+  clearJournalSyncRetry();
+  if (!journalOutboxIsEmpty()) {
+    setJournalCloudSaveStatus(
+      typeof navigator !== "undefined" && navigator.onLine === false
+        ? "offline"
+        : "saving",
+    );
+  }
+  void syncJournal({ reason: "manual", forcePull: true });
 }
 
 /**

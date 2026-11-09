@@ -200,16 +200,24 @@ export function formatJournalEntryCrumbDate(
   }
 }
 
-/** Mobile entry card heading: "Friday 6 November · 11:40pm". */
+/**
+ * Entry header date — short single-line form so save status fits beside it.
+ * e.g. "Sat 7 Nov · 1:59am"
+ */
 export function formatJournalEntryCardDate(iso: string): string {
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "—";
-    const datePart = d.toLocaleDateString("en-GB", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-    });
+    // Previous long form (wrapped on phones): weekday long + month long.
+    // const datePart = d.toLocaleDateString("en-GB", {
+    //   weekday: "long",
+    //   day: "numeric",
+    //   month: "long",
+    // });
+    const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
+    const day = d.getDate();
+    const month = d.toLocaleDateString("en-US", { month: "short" });
+    const datePart = `${weekday} ${day} ${month}`;
     const time = formatJournalEntryTime(iso);
     return time ? `${datePart} · ${time}` : datePart;
   } catch {
@@ -1171,16 +1179,36 @@ export function mergeRemoteJournalKeepingLocalOnly(
 }
 
 /**
+ * Strip inline data: URLs (voice/image) that blow past DynamoDB's ~350KB item
+ * cap. Voice clips should already be CloudFront URLs via uploadJournalVoice;
+ * this is a safety net when a local blob/data URL was persisted before upload.
+ */
+export function stripInlineDataMediaFromHtml(html: string): string {
+  if (!html || !/data:(?:audio|image|video)\//i.test(html)) return html;
+  return html
+    .replace(
+      /\s(?:src|href)\s*=\s*(["'])data:(?:audio|image|video)\/[^"']*\1/gi,
+      ' src=""',
+    )
+    .replace(/data:(?:audio|image|video)\/[a-z0-9+.-]+;base64,[a-z0-9+/=]+/gi, "");
+}
+
+/**
  * Rows that may be uploaded. Skips demos, explicit local-only drafts, and empty
  * stubs so + New never creates a cloud "Nothing written yet" row.
  */
 export function entriesForCloudPut(entries: JournalEntry[]): JournalEntry[] {
-  return entries.filter(
-    (e) =>
-      !e.localOnly &&
-      !isDemoJournalEntry(e) &&
-      journalEntryHasMeaningfulContent(e),
-  );
+  return entries
+    .filter(
+      (e) =>
+        !e.localOnly &&
+        !isDemoJournalEntry(e) &&
+        journalEntryHasMeaningfulContent(e),
+    )
+    .map((e) => {
+      const nextHtml = stripInlineDataMediaFromHtml(e.contentHtml);
+      return nextHtml === e.contentHtml ? e : { ...e, contentHtml: nextHtml };
+    });
 }
 
 /** Consecutive local calendar days with a meaningful entry, ending today or yesterday. */

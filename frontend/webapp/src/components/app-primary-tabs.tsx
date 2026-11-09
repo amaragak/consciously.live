@@ -17,6 +17,11 @@ type PrimaryTabsContextValue = {
   /** Compact (&lt; md) header slot — tabs that replace the breadcrumb's last item. */
   phoneTarget: HTMLElement | null;
   setPhoneTarget: (el: HTMLElement | null) => void;
+  /** Second floating pill under the capsule (mobile subtabs / stepper). */
+  subPillTarget: HTMLElement | null;
+  setSubPillTarget: (el: HTMLElement | null) => void;
+  subPillActive: boolean;
+  setSubPillActive: (active: boolean) => void;
 };
 
 const PrimaryTabsContext = createContext<PrimaryTabsContextValue | null>(null);
@@ -36,6 +41,16 @@ export function AppPrimaryTabsProvider({ children }: { children: ReactNode }) {
   const setPhoneTarget = useCallback((el: HTMLElement | null) => {
     setPhoneTargetState((prev) => (prev === el ? prev : el));
   }, []);
+  const [subPillTarget, setSubPillTargetState] = useState<HTMLElement | null>(
+    null,
+  );
+  const setSubPillTarget = useCallback((el: HTMLElement | null) => {
+    setSubPillTargetState((prev) => (prev === el ? prev : el));
+  }, []);
+  const [subPillActive, setSubPillActiveState] = useState(false);
+  const setSubPillActive = useCallback((active: boolean) => {
+    setSubPillActiveState((prev) => (prev === active ? prev : active));
+  }, []);
   const value = useMemo(
     () => ({
       target,
@@ -44,6 +59,10 @@ export function AppPrimaryTabsProvider({ children }: { children: ReactNode }) {
       setTrailingTarget,
       phoneTarget,
       setPhoneTarget,
+      subPillTarget,
+      setSubPillTarget,
+      subPillActive,
+      setSubPillActive,
     }),
     [
       target,
@@ -52,6 +71,10 @@ export function AppPrimaryTabsProvider({ children }: { children: ReactNode }) {
       setTrailingTarget,
       phoneTarget,
       setPhoneTarget,
+      subPillTarget,
+      setSubPillTarget,
+      subPillActive,
+      setSubPillActive,
     ],
   );
   return (
@@ -110,6 +133,30 @@ export function AppPrimaryTabsPhone({ children }: { children: ReactNode }) {
   const ctx = usePrimaryTabsContext();
   if (!ctx?.phoneTarget) return null;
   return createPortal(children, ctx.phoneTarget);
+}
+
+/** Mount point for the mobile sub-pill under the header capsule. */
+export function AppMobileHeaderSubPillSlot({
+  className,
+}: {
+  className?: string;
+}) {
+  const ctx = usePrimaryTabsContext();
+  if (!ctx) return null;
+  return <div ref={ctx.setSubPillTarget} className={className} />;
+}
+
+export function useMobileHeaderSubPillTarget(): HTMLElement | null {
+  return usePrimaryTabsContext()?.subPillTarget ?? null;
+}
+
+export function useSetMobileHeaderSubPillActive(): (active: boolean) => void {
+  const ctx = usePrimaryTabsContext();
+  return ctx?.setSubPillActive ?? (() => {});
+}
+
+export function useMobileHeaderSubPillActive(): boolean {
+  return usePrimaryTabsContext()?.subPillActive ?? false;
 }
 
 /** Mount point in the top bar trailing cluster (left of marketing CTA). */

@@ -40,22 +40,22 @@ export function CreateOneFlowStepper({
           const active = i === current;
           const clickable =
             Boolean(onStepClick) && (i <= current || skipped);
-          const label = skipped ? "Shape · skipped" : s.label;
+          const ariaLabel = skipped ? `${s.label} · skipped` : s.label;
           return (
             <button
               key={s.id}
               type="button"
               disabled={!clickable}
               onClick={() => onStepClick?.(s.id)}
-              aria-label={label}
+              aria-label={ariaLabel}
               aria-current={active ? "step" : undefined}
-              className={`flex min-w-0 flex-1 flex-col gap-1.5 ${
+              className={`flex min-w-0 flex-1 flex-col gap-1 ${
                 clickable ? "cursor-pointer" : "cursor-default"
               }`}
             >
               <span
                 aria-hidden
-                className={`h-[3px] w-full rounded-full ${
+                className={`mx-auto h-[3px] w-[72%] max-w-[3.25rem] rounded-full ${
                   active
                     ? "bg-accent"
                     : done
@@ -64,13 +64,16 @@ export function CreateOneFlowStepper({
                 }`}
               />
               <span
-                className={`truncate text-[13px] ${
+                className={`truncate text-center text-[13px] ${
                   active
                     ? "font-semibold text-foreground"
                     : "font-normal text-muted"
                 }`}
               >
-                {label}
+                {s.label}
+                {skipped ? (
+                  <span className="font-normal text-muted"> · skipped</span>
+                ) : null}
               </span>
             </button>
           );

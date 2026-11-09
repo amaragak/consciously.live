@@ -164,8 +164,10 @@ export function findLibraryItemByDetailId<T extends LibraryMeditationItem>(
 /* Breadcrumb context (set by the detail page, read by the top bar)    */
 /* ------------------------------------------------------------------ */
 
-/** Tab the user opened detail from — drives Meditate › {leaf} crumb. */
+/** Tab the user opened detail from — drives back target. */
 let detailFromCrumb: { label: string; href: string } | null = null;
+/** Live meditation title for the phone header breadcrumb slot. */
+let detailTitle: string | null = null;
 const detailCrumbListeners = new Set<() => void>();
 
 function notifyDetailCrumbListeners() {
@@ -202,7 +204,19 @@ export function peekLibraryDetailFromCrumb(): {
   return detailFromCrumb;
 }
 
-/** Subscribe to detail-from-crumb changes (top-bar breadcrumb rebuild). */
+/** Meditation title shown in the phone header (truncated). */
+export function setLibraryDetailTitle(title: string | null): void {
+  const next = title?.trim() || null;
+  if (detailTitle === next) return;
+  detailTitle = next;
+  notifyDetailCrumbListeners();
+}
+
+export function peekLibraryDetailTitle(): string | null {
+  return detailTitle;
+}
+
+/** Subscribe to detail-from-crumb / title changes (top-bar breadcrumb rebuild). */
 export function subscribeLibraryDetailTitle(fn: () => void): () => void {
   detailCrumbListeners.add(fn);
   return () => {

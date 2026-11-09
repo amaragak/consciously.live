@@ -39,7 +39,12 @@ import {
   isMedimadeGuestAccount,
   setMedimadeSession,
 } from "@/lib/auth-session";
-import { getJournalSyncDiagnostics } from "@/lib/journal-sync";
+import {
+  getJournalSyncDiagnostics,
+  JOURNAL_SYNC_DIAGNOSTICS_EVENT,
+  retryJournalSyncNow,
+  type JournalSyncDiagnostics,
+} from "@/lib/journal-sync";
 import { readTranscriptionEngineDiag } from "@/lib/journal-on-device-speech";
 import { VoiceNoteDiagnosticsPanel } from "@/components/settings/voice-note-diagnostics";
 import {
@@ -176,6 +181,10 @@ function AccountSection({ settings, onPatch }: SectionProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [syncDiag, setSyncDiag] = useState<JournalSyncDiagnostics>(() =>
+    getJournalSyncDiagnostics(),
+  );
+  const [syncRetrying, setSyncRetrying] = useState(false);
   const [nameDraft, setNameDraft] = useState(
     () => getMedimadeSessionDisplayName()?.trim() ?? "",
   );
@@ -237,6 +246,18 @@ function AccountSection({ settings, onPatch }: SectionProps) {
     };
     window.addEventListener("medimade-session-changed", sync);
     return () => window.removeEventListener("medimade-session-changed", sync);
+  }, []);
+
+  useEffect(() => {
+    const onDiag = (ev: Event) => {
+      const detail = (ev as CustomEvent<JournalSyncDiagnostics>).detail;
+      if (detail) setSyncDiag(detail);
+      else setSyncDiag(getJournalSyncDiagnostics());
+    };
+    window.addEventListener(JOURNAL_SYNC_DIAGNOSTICS_EVENT, onDiag);
+    setSyncDiag(getJournalSyncDiagnostics());
+    return () =>
+      window.removeEventListener(JOURNAL_SYNC_DIAGNOSTICS_EVENT, onDiag);
   }, []);
 
   const commitName = useCallback(async (raw: string) => {
@@ -423,6 +444,45 @@ function AccountSection({ settings, onPatch }: SectionProps) {
           <span className="max-w-[220px] truncate text-sm text-foreground">
             {email || "—"}
           </span>
+        }
+      />,
+    );
+  }
+
+  if (shouldShowSettingsRow("account.sync")) {
+    const lastSyncLabel = syncDiag.lastSyncAt
+      ? new Date(syncDiag.lastSyncAt).toLocaleString(undefined, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        })
+      : "Never";
+    const err = syncDiag.lastSyncError?.trim() || null;
+    rows.push(
+      <SettingsRow
+        key="sync"
+        settingsKey="account.sync"
+        title="Sync"
+        helper={
+          err
+            ? `Last success: ${lastSyncLabel}. Last error: ${err}`
+            : `Last successful sync: ${lastSyncLabel}.`
+        }
+        control={
+          <button
+            type="button"
+            disabled={syncRetrying}
+            className="rounded-full border border-border px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => {
+              setSyncRetrying(true);
+              retryJournalSyncNow();
+              window.setTimeout(() => {
+                setSyncDiag(getJournalSyncDiagnostics());
+                setSyncRetrying(false);
+              }, 1200);
+            }}
+          >
+            {syncRetrying ? "Retrying…" : "Retry now"}
+          </button>
         }
       />,
     );

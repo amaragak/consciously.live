@@ -133,6 +133,12 @@ type Props = {
   fromTheme?: { name: string; onBack: () => void } | null;
   /** Muted autosave line by the date ("Saving…", "Saved", …). */
   syncStatusLabel?: string | null;
+  /**
+   * When true, show a tappable "Retry" after the status (failed save).
+   * Date truncates; status + Retry + ⋮ stay visible.
+   */
+  syncStatusCanRetry?: boolean;
+  onSyncRetry?: () => void;
   /** Optional secondary footer above the bottom bar (e.g. tags). */
   children?: ReactNode;
 };
@@ -167,6 +173,8 @@ export function JournalRichEditor({
   highlightQuote = null,
   fromTheme = null,
   syncStatusLabel = null,
+  syncStatusCanRetry = false,
+  onSyncRetry,
   children,
 }: Props) {
   const titleSeededForEntryRef = useRef<string | null>(null);
@@ -954,13 +962,36 @@ export function JournalRichEditor({
   const menuItemClass =
     "block w-full cursor-pointer px-3 py-2 text-left text-sm text-foreground hover:bg-accent-soft/30";
 
+  const renderSyncStatus = () =>
+    syncStatusLabel || syncStatusCanRetry ? (
+      <span
+        className={`inline-flex shrink-0 items-baseline gap-1 whitespace-nowrap text-[11px] ${
+          syncStatusCanRetry ? "text-danger" : "text-muted"
+        }`}
+      >
+        {syncStatusLabel ? <span>{syncStatusLabel}</span> : null}
+        {syncStatusCanRetry && onSyncRetry ? (
+          <>
+            <span aria-hidden>·</span>
+            <button
+              type="button"
+              className="cursor-pointer font-medium underline-offset-2 hover:underline"
+              onClick={() => onSyncRetry()}
+            >
+              Retry
+            </button>
+          </>
+        ) : null}
+      </span>
+    ) : null;
+
   const entryDateControl = (
-    <span className="inline-flex items-baseline gap-2">
+    <span className="inline-flex min-w-0 max-w-full items-baseline gap-2">
       {onEntryDateChange ? (
-        <span className="relative inline-flex items-center">
+        <span className="relative inline-flex min-w-0 items-center">
           <button
             type="button"
-            className="cursor-pointer text-[12px] text-muted underline-offset-2 hover:text-foreground hover:underline"
+            className="min-w-0 cursor-pointer truncate whitespace-nowrap text-[12px] text-muted underline-offset-2 hover:text-foreground hover:underline"
             onClick={() => {
               const el = dateInputRef.current;
               if (!el) return;
@@ -971,7 +1002,9 @@ export function JournalRichEditor({
               }
             }}
           >
-            <time dateTime={entryDate}>{formatJournalEntryDate(entryDate)}</time>
+            <time dateTime={entryDate}>
+              {formatJournalEntryCardDate(entryDate)}
+            </time>
           </button>
           <input
             ref={dateInputRef}
@@ -987,13 +1020,14 @@ export function JournalRichEditor({
           />
         </span>
       ) : (
-        <time dateTime={entryDate} className="text-[12px] text-muted">
-          {formatJournalEntryDate(entryDate)}
+        <time
+          dateTime={entryDate}
+          className="min-w-0 truncate whitespace-nowrap text-[12px] text-muted"
+        >
+          {formatJournalEntryCardDate(entryDate)}
         </time>
       )}
-      {syncStatusLabel ? (
-        <span className="text-[11px] text-muted">{syncStatusLabel}</span>
-      ) : null}
+      {renderSyncStatus()}
     </span>
   );
 
@@ -1222,11 +1256,11 @@ export function JournalRichEditor({
             }`}
           >
             {mobileCardLayout ? (
-              <div className="hidden w-full items-center justify-between gap-2 max-sm:flex">
-                <div className="relative flex min-w-0 items-baseline gap-2">
+              <div className="hidden w-full items-center gap-2 max-sm:flex">
+                <div className="relative flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                   <button
                     type="button"
-                    className="cursor-pointer text-[11.5px] font-semibold uppercase tracking-[0.14em] text-[#8A6424]"
+                    className="min-w-0 cursor-pointer truncate whitespace-nowrap text-[11.5px] font-semibold uppercase tracking-[0.14em] text-[#8A6424]"
                     onClick={() => {
                       const el = dateInputRef.current;
                       if (!el) return;
@@ -1237,15 +1271,10 @@ export function JournalRichEditor({
                       }
                     }}
                   >
-                    <time dateTime={entryDate}>
+                    <time dateTime={entryDate} className="truncate">
                       {formatJournalEntryCardDate(entryDate)}
                     </time>
                   </button>
-                  {syncStatusLabel ? (
-                    <span className="truncate text-[11px] text-muted">
-                      {syncStatusLabel}
-                    </span>
-                  ) : null}
                   {onEntryDateChange ? (
                     <input
                       ref={dateInputRef}
@@ -1261,6 +1290,7 @@ export function JournalRichEditor({
                     />
                   ) : null}
                 </div>
+                {renderSyncStatus()}
                 {showEntryMenu ? (
                   <div className="relative shrink-0">
                     <button
@@ -1285,14 +1315,12 @@ export function JournalRichEditor({
               {!hideCreatedDate && mobileCardLayout ? (
                 <div className="mb-1 max-sm:hidden">{entryDateControl}</div>
               ) : null}
-              {hideCreatedDate && syncStatusLabel ? (
-                <p
-                  className={`mb-1 text-[11px] text-muted ${
-                    mobileCardLayout ? "max-sm:hidden" : ""
-                  }`}
+              {hideCreatedDate && (syncStatusLabel || syncStatusCanRetry) ? (
+                <div
+                  className={`mb-1 ${mobileCardLayout ? "max-sm:hidden" : ""}`}
                 >
-                  {syncStatusLabel}
-                </p>
+                  {renderSyncStatus()}
+                </div>
               ) : null}
               <label className="block">
                 <span className="sr-only">Title</span>

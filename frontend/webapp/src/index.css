@@ -177,6 +177,23 @@
     align-items: stretch;
     overflow: visible;
   }
+  /**
+   * Sub-pill under the capsule (consciously-mobile-header-subtabs-v2):
+   * 6px gap + ~42px pill + 12px to content (4px more than the lone-header gap).
+   */
+  .app-top-bar.app-top-bar--with-subpill {
+    flex-direction: column;
+    height: calc(4rem + 3.25rem + env(safe-area-inset-top, 0px));
+    padding-bottom: 0.75rem;
+  }
+  .app-top-bar .app-header-subpill-slot {
+    width: 100%;
+    flex-shrink: 0;
+    margin-top: 6px;
+  }
+  .app-top-bar.app-top-bar--with-subpill .app-top-bar-capsule {
+    flex-shrink: 0;
+  }
   /*
    * Previous page-bg ::before fade — looked like a grey band over the pattern.
    * .app-top-bar::before { linear-gradient(var(--background) → transparent) }
@@ -1352,6 +1369,10 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
   :root {
     --app-header-h: calc(4rem + env(safe-area-inset-top, 0px));
   }
+  /* Grow when the second header pill (tabs / create stepper) is mounted. */
+  :root:has(.app-top-bar--with-subpill) {
+    --app-header-h: calc(4rem + 3.25rem + env(safe-area-inset-top, 0px));
+  }
 }
 
 /*
@@ -1367,6 +1388,9 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
   :root.cap-native {
     /* Same as web mobile floating capsule — padding is on .app-top-bar itself. */
     --app-header-h: calc(4rem + env(safe-area-inset-top, 0px));
+  }
+  :root.cap-native:has(.app-top-bar--with-subpill) {
+    --app-header-h: calc(4rem + 3.25rem + env(safe-area-inset-top, 0px));
   }
 }
 /* Native safe-area: md+ navy bar + marketing site header. Mobile capsule pads itself. */
