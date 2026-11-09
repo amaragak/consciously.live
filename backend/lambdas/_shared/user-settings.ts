@@ -17,6 +17,7 @@ export type AccountPronouns = "she_her" | "he_him" | "they_them";
 export type RaiseLevel = "ambitious" | "audacious" | "delusional";
 export type ManifestoPageMode = "paged" | "pageless";
 export type ManifestoPageSize = "a" | "letter" | "tabloid" | "phone";
+export type AccountOnboardingStatus = "completed" | "skipped";
 const RAISE_LEVELS = new Set<RaiseLevel>([
   "ambitious",
   "audacious",
@@ -117,6 +118,12 @@ export type UserSettingsV1 = {
     /** Admin only. When on, this account sees the app as a non-admin does. */
     mvpMode: boolean;
   };
+  /** Once per account. Null until the user finishes or skips onboarding. */
+  onboarding: {
+    status: AccountOnboardingStatus | null;
+    /** ISO time of `status`. */
+    at: string | null;
+  };
 };
 
 export function defaultUserSettings(): UserSettingsV1 {
@@ -196,6 +203,10 @@ export function defaultUserSettings(): UserSettingsV1 {
       reducedMotion: "system",
       captions: false,
       mvpMode: false,
+    },
+    onboarding: {
+      status: null,
+      at: null,
     },
   };
 }
@@ -492,7 +503,20 @@ export function normalizeUserSettings(raw: unknown): UserSettingsV1 {
       captions: asBool(general.captions, d.general.captions),
       mvpMode: asBool(general.mvpMode, d.general.mvpMode),
     },
+    onboarding: asOnboarding(raw.onboarding, d.onboarding),
   };
+}
+
+function asOnboarding(
+  raw: unknown,
+  fallback: UserSettingsV1["onboarding"],
+): UserSettingsV1["onboarding"] {
+  if (!isObject(raw)) return fallback;
+  const status =
+    raw.status === "completed" || raw.status === "skipped" ? raw.status : null;
+  const at = asNullableString(raw.at);
+  if (!status || !at || Number.isNaN(Date.parse(at))) return { status: null, at: null };
+  return { status, at: new Date(at).toISOString() };
 }
 
 /** Deep-merge a partial patch onto current, then normalize. */

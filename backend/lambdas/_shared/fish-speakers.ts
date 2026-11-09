@@ -36,6 +36,8 @@ export type FishSpeaker = {
   portraitImageUrl?: string | null;
   /** When the admin last saved this row — used to bust CDN sample URLs. */
   updatedAt?: string;
+  /** Set once when the speaker row is created. Omitted on rows from before this field. */
+  createdAt?: string;
 };
 
 /**

@@ -134,8 +134,13 @@ export default function NativeLibraryAudioStrip({
   onDismissRef.current = onDismiss;
   const onTimeRef = useRef(onPlaybackTimeChange);
   onTimeRef.current = onPlaybackTimeChange;
+  // Same as the web strip: the mount-time paused report was clearing autoplay
+  // before the native session could start.
+  const skipInitialPauseReport = useRef(Boolean(autoplay));
 
   useLayoutEffect(() => {
+    if (skipInitialPauseReport.current && !playing) return;
+    skipInitialPauseReport.current = false;
     onPlayingChange?.(track.s3Key, playing);
   }, [track.s3Key, playing, onPlayingChange]);
 

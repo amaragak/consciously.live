@@ -399,9 +399,14 @@ export function LibraryAudioStrip({
 
   const onPlayingChangeRef = useRef(onPlayingChange);
   onPlayingChangeRef.current = onPlayingChange;
-  // Keep provider `playingS3Key` in lockstep with local transport (incl. ambient mount).
+  // The strip mounts paused. Reporting that immediately makes the provider
+  // clear `autoplay`, and the transport effect then pauses the click-started
+  // voice — so the card play button only loads the strip.
+  const skipInitialPauseReport = useRef(Boolean(autoplay));
   useLayoutEffect(() => {
     if (!track) return;
+    if (skipInitialPauseReport.current && !playing) return;
+    skipInitialPauseReport.current = false;
     onPlayingChangeRef.current?.(track.s3Key, playing);
   }, [track?.s3Key, playing, track]);
   const reportTime = useCallback(

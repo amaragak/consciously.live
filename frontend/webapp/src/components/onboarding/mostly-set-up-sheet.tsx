@@ -1,16 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import { DomainCoverageBars } from "@/components/onboarding/onboarding-flow";
+import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { useMinWidth } from "@/hooks/use-min-width";
+import {
+  ensureAccountOnboarding,
+  settleAutomaticOnboarding,
+} from "@/lib/onboarding-account";
 import {
   detectOnboardingCoverage,
   markMostlySetUpSeen,
   missingCoveragePlainWords,
   onboardingHref,
-  shouldShowMostlySetUpSheet,
+  type CoverageSnapshot,
 } from "@/lib/onboarding-state";
 import {
   ONB_EASE,
@@ -26,26 +31,44 @@ const SKIP =
 
 export function MostlySetUpSheet() {
   const router = useRouter();
+  const { signedIn, ready, revision } = useIdeateCloud();
   const desktop = useMinWidth(768);
   const reduced = usePrefersReducedMotion();
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [coverage, setCoverage] = useState<CoverageSnapshot | null>(null);
+  const decided = useRef(false);
+
+  useEffect(() => {
+    decided.current = false;
+  }, [signedIn]);
 
   useEffect(() => {
     ensureOnboardingMotionCss();
-    if (!shouldShowMostlySetUpSheet()) return;
-    setMounted(true);
-    const id = window.requestAnimationFrame(() => setVisible(true));
-    return () => window.cancelAnimationFrame(id);
-  }, []);
+    let alive = true;
+    void ensureAccountOnboarding().then(() => {
+      if (!alive || decided.current) return;
+      const next = settleAutomaticOnboarding({ signedIn });
+      if (next === "loading") return;
+      decided.current = true;
+      if (next !== "sheet") return;
+      const cov = detectOnboardingCoverage();
+      if (cov.missing.length === 0 || cov.allCovered) return;
+      setCoverage(cov);
+      setMounted(true);
+      window.requestAnimationFrame(() => {
+        if (alive) setVisible(true);
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [signedIn, ready, revision]);
 
-  const subline = useMemo(() => {
-    const cov = detectOnboardingCoverage();
-    return missingCoveragePlainWords(cov.missing);
-  }, [mounted]);
+  const subline = coverage ? missingCoveragePlainWords(coverage.missing) : "";
 
-  if (!mounted || typeof document === "undefined") return null;
+  if (!mounted || !coverage || typeof document === "undefined") return null;
 
   function dismiss(then?: () => void) {
     setLeaving(true);
@@ -109,7 +132,7 @@ export function MostlySetUpSheet() {
         <p className="mt-2 text-[14.5px] leading-relaxed text-muted">{subline}</p>
       ) : null}
       <div className="mt-4">
-        <DomainCoverageBars />
+        <DomainCoverageBars coverage={coverage} />
       </div>
       <div className="mt-5 flex flex-col items-stretch gap-3">
         <button

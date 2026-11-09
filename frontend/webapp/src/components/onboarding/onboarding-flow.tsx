@@ -1574,8 +1574,12 @@ export function OnboardingFlow({
 }
 
 /** Domain coverage bars for the mostly-set-up sheet. */
-export function DomainCoverageBars() {
-  const cov = detectOnboardingCoverage();
+export function DomainCoverageBars({
+  coverage,
+}: {
+  coverage?: ReturnType<typeof detectOnboardingCoverage>;
+} = {}) {
+  const cov = coverage ?? detectOnboardingCoverage();
   return (
     <CoverageBars
       items={DOMAIN_BAR_DEFS.map((d) => ({

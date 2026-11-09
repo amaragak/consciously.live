@@ -110,6 +110,7 @@ export function defaultVoiceSpeakers(): VoiceSpeakerRow[] {
     portraitBgColor: "",
     portraitImageKey: null,
     updatedAt: now,
+    createdAt: "",
   }));
 }
 
@@ -124,6 +125,13 @@ function coercePauseSeconds(raw: unknown): PauseBandSeconds {
     if (Number.isFinite(n) && n > 0 && n <= max) base[band] = n;
   }
   return base;
+}
+
+function coerceCreatedAt(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  const s = raw.trim();
+  if (!s || Number.isNaN(Date.parse(s))) return "";
+  return s;
 }
 
 function coerceDescription(raw: unknown): string {
@@ -226,6 +234,7 @@ export async function listVoiceSpeakers(): Promise<VoiceSpeakerRow[]> {
         portraitBgColor: coercePortraitBgColor(it.portraitBgColor),
         portraitImageKey: coercePortraitImageKey(it.portraitImageKey),
         updatedAt: typeof it.updatedAt === "string" ? it.updatedAt : "",
+        createdAt: coerceCreatedAt(it.createdAt),
       };
       items.push(row);
       if (!brandWasStored(it.brand)) missingBrand.push(row);
@@ -284,6 +293,7 @@ async function persistVoiceSpeaker(
         portraitBgColor: row.portraitBgColor,
         portraitImageKey: row.portraitImageKey,
         updatedAt: row.updatedAt,
+        ...(row.createdAt ? { createdAt: row.createdAt } : {}),
       },
     }),
   );
@@ -356,6 +366,7 @@ export async function putVoiceSpeaker(row: {
         ? coercePortraitImageKey(row.portraitImageKey)
         : coercePortraitImageKey(prev?.portraitImageKey),
     updatedAt: new Date().toISOString(),
+    createdAt: prev ? coerceCreatedAt(prev.createdAt) : new Date().toISOString(),
   };
   await persistVoiceSpeaker(table, next);
   return next;
@@ -427,6 +438,7 @@ export async function renameVoiceSpeaker(
         ? coercePortraitImageKey(row.portraitImageKey)
         : coercePortraitImageKey(prev.portraitImageKey),
     updatedAt: new Date().toISOString(),
+    createdAt: coerceCreatedAt(prev.createdAt),
   };
   await ddb.send(
     new TransactWriteCommand({
@@ -452,6 +464,7 @@ export async function renameVoiceSpeaker(
               portraitBgColor: next.portraitBgColor,
               portraitImageKey: next.portraitImageKey,
               updatedAt: next.updatedAt,
+              ...(next.createdAt ? { createdAt: next.createdAt } : {}),
             },
             ConditionExpression: "attribute_not_exists(sk)",
           },

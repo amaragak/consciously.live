@@ -39,7 +39,7 @@ export function onboardingGapRows(): OnboardingGapRow[] {
       action: "Talk",
       href: onboardingHref({
         step: "tell_me",
-        mode: store.completedAt ? "merge" : "full",
+        mode: store.completedAt || store.skippedAt ? "merge" : "full",
       }),
       kind: "voice",
     });
@@ -63,7 +63,7 @@ export function onboardingGapRows(): OnboardingGapRow[] {
       action: carryOn ? "Carry on" : "Start",
       href: onboardingHref({
         step: carryOn && store.resumeStep ? store.resumeStep : "tell_me",
-        mode: store.completedAt ? "merge" : "full",
+        mode: store.completedAt || store.skippedAt ? "merge" : "full",
       }),
       kind: "row",
     });

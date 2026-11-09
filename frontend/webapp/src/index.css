@@ -186,7 +186,13 @@
     height: calc(4rem + 3.25rem + env(safe-area-inset-top, 0px));
     padding-bottom: 0.75rem;
   }
+  /* Empty slot must not sit in the row — it is width 100% and cannot shrink,
+     which crushed the capsule down to a vertical sliver on pages with no sub-pill. */
   .app-top-bar .app-header-subpill-slot {
+    display: none;
+  }
+  .app-top-bar.app-top-bar--with-subpill .app-header-subpill-slot {
+    display: block;
     width: 100%;
     flex-shrink: 0;
     margin-top: 6px;
@@ -202,6 +208,7 @@
     display: flex;
     height: 3rem;
     width: 100%;
+    flex-shrink: 0;
     align-items: center;
     /* Equal inset so sun + avatar sit snug in the rounded ends. */
     padding-left: 4px;
@@ -1480,13 +1487,57 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
     pointer-events: auto;
     will-change: width;
     transition: width 200ms ease-out;
-    /* Let the right-edge shadow paint over the page. Inner scroll still clips rows. */
+    /* Let the rail meet the page with no right-edge line. Inner scroll still clips rows.
     overflow-x: visible;
     box-shadow: 10px 0 28px -8px rgb(30 37 48 / 0.13);
+    */
+    overflow-x: visible;
+    box-shadow: none;
   }
 
   :root.dark .app-sidebar-drawer {
     box-shadow: 10px 0 28px -6px rgb(0 0 0 / 0.32);
+  }
+
+  /* Navy rail continues the header. Covers the header's bottom border so the L has no seam. */
+  :root:not(.dark) .app-sidebar-drawer {
+    z-index: 131;
+    top: calc(var(--app-header-h) - 1px);
+    background-color: var(--nav);
+    border-right-color: transparent;
+    box-shadow: none;
+  }
+
+  :root:not(.dark):not(.hybrid) .app-sidebar-drawer {
+    --foreground: var(--nav-foreground);
+    --muted: var(--nav-muted);
+    --border: rgb(255 255 255 / 0.2);
+    --background: rgb(255 255 255 / 0.06);
+    --card: rgb(255 255 255 / 0.2);
+    color: var(--nav-foreground);
+  }
+
+  :root:not(.dark):not(.hybrid) .app-sidebar-drawer .app-sidebar-scroll {
+    scrollbar-color: rgb(255 255 255 / 0.28) transparent;
+  }
+
+  :root:not(.dark):not(.hybrid) .app-sidebar-drawer .app-sidebar-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  :root:not(.dark):not(.hybrid) .app-sidebar-drawer .app-sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  :root:not(.dark):not(.hybrid) .app-sidebar-drawer .app-sidebar-scroll::-webkit-scrollbar-thumb,
+  :root:not(.dark):not(.hybrid) .app-sidebar-drawer .app-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgb(255 255 255 / 0.28);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  :root:not(.dark):not(.hybrid) .app-sidebar-drawer .app-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgb(255 255 255 / 0.42);
   }
 
   .app-sidebar-drawer.is-open {
@@ -1495,6 +1546,13 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
 
   .app-sidebar-mobile-scrim {
     display: none;
+  }
+}
+
+/* Create-flow pill overlays the content; last row scrolls clear of it. */
+@media (min-width: 768px) {
+  :has(> .create-flow-footer-pill) > :not(.create-flow-footer-pill) {
+    padding-bottom: 6.5rem;
   }
 }
 

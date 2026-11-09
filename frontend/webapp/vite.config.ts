@@ -56,12 +56,41 @@ ${BRAND_GLOW_BOOT_CSS}
 <div id="native-boot-splash" aria-hidden="true">
   ${BRAND_GLOW_HTML}
   ${BRAND_LOCKUP_HTML}
-</div>`;
+</div>
+<script>
+  (function () {
+    var cap = window.Capacitor;
+    if (cap && typeof cap.isNativePlatform === "function" && cap.isNativePlatform()) return;
+    var boot = document.getElementById("native-boot-splash");
+    if (boot) boot.remove();
+    var css = document.getElementById("native-boot-css");
+    if (css) css.remove();
+  })();
+</script>`;
   return {
     name: "consciously-native-index-boot",
     transformIndexHtml(html) {
       if (html.includes('id="native-boot-splash"')) return html;
       return html.replace('<div id="root"></div>', `${boot}\n    <div id="root"></div>`);
+    },
+  };
+}
+
+/**
+ * Vite 6 does not apply custom `define` keys while the dev server is serving
+ * the browser, so `__NATIVE_BUILD__` throws and the boot splash never clears.
+ * Replace it in source for both `vite` and `vite build`.
+ */
+function nativeBuildFlag(native: boolean): Plugin {
+  const value = native ? "true" : "false";
+  return {
+    name: "consciously-native-build-flag",
+    enforce: "pre",
+    transform(code, id) {
+      if (!code.includes("__NATIVE_BUILD__")) return null;
+      if (id.includes("node_modules") || id.endsWith(".d.ts")) return null;
+      const next = code.replace(/\b__NATIVE_BUILD__\b/g, value);
+      return next === code ? null : next;
     },
   };
 }
@@ -81,12 +110,14 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
+      nativeBuildFlag(native),
       react(),
       tailwindcss(),
       ...(native ? [nativeRuntimeAssets(), nativeIndexBootSplash()] : []),
     ],
+    // Phone builds must not share the desktop dev server's optimizer cache.
+    cacheDir: native ? "node_modules/.vite-native" : "node_modules/.vite",
     define: {
-      __NATIVE_BUILD__: JSON.stringify(native),
       ...(proxyApi
         ? {
             "import.meta.env.VITE_MEDIMADE_API_URL": JSON.stringify(

@@ -147,11 +147,13 @@ function GuideLine({ x }: { x: number }) {
   );
 }
 
-const NAV_HOVER = "rounded-[10px] transition-colors hover:bg-background";
+const NAV_FOCUS =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60";
+const NAV_HOVER = `rounded-[10px] transition-colors hover:bg-background ${NAV_FOCUS}`;
 const NAV_SELECTED =
   "rounded-[10px] bg-card/70 font-semibold text-foreground hover:bg-card/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground/60";
 const SUB_IDLE =
-  "rounded-[10px] font-normal text-foreground/78 transition-colors hover:bg-background group-hover/row:text-foreground";
+  `rounded-[10px] font-normal text-foreground/78 transition-colors hover:bg-background group-hover/row:text-foreground ${NAV_FOCUS}`;
 const SUB_META =
   "text-foreground/60 group-hover/row:text-foreground hover:text-foreground";
 
@@ -304,19 +306,12 @@ function NavSectionBlock({
           className={`relative flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-[15px] ${
             sectionSelf
               ? NAV_SELECTED
-              : sectionActive
-                ? `font-semibold text-foreground ${NAV_HOVER}`
-                : `font-medium text-foreground ${NAV_HOVER}`
+              : `font-semibold text-foreground ${NAV_HOVER}`
           }`}
         >
           {sectionSelf ? <SelectedAccentBar /> : null}
-          <span
-            className={
-              sectionActive
-                ? "text-foreground"
-                : "text-foreground/70 group-hover/row:text-foreground"
-            }
-          >
+          <span className="text-foreground">
+            {/* sectionActive ? "text-foreground" : "text-foreground/70 group-hover/row:text-foreground" */}
             {icon ?? null}
           </span>
           <span className="min-w-0 truncate whitespace-nowrap">
@@ -620,9 +615,11 @@ export function AppSidebar({
     () =>
       [
         "app-sidebar-drawer flex shrink-0 flex-col overflow-x-hidden border-r-[0.5px] border-sidebar-border bg-surface-2",
+        /* Desktop rail matches the header. Dark keeps the current surface. */
+        "lg:border-r-transparent lg:bg-nav lg:shadow-none dark:lg:border-sidebar-border dark:lg:bg-surface-2 dark:lg:shadow-[var(--sidebar-shadow)]",
         railCollapsed ? "w-14" : "w-[200px]",
         mobileOpen ? "is-open" : "",
-        "shadow-[var(--sidebar-shadow)]",
+        /* "shadow-[var(--sidebar-shadow)]", */
       ]
         .filter(Boolean)
         .join(" "),
@@ -655,12 +652,13 @@ export function AppSidebar({
                     title={section.label}
                     aria-label={section.label}
                     aria-current={sectionActive ? "page" : undefined}
-                    className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${
+                    className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${NAV_FOCUS} ${
                       sectionActive
                         ? "bg-nav-active font-bold text-foreground"
                         : "text-muted hover:bg-background hover:text-foreground"
                     }`}
                   >
+                    {sectionActive ? <SelectedAccentBar /> : null}
                     {icon ?? null}
                   </Link>
                 );
@@ -671,8 +669,9 @@ export function AppSidebar({
                 type="button"
                 onClick={onToggleCollapsed}
                 aria-label="Expand sidebar"
-                className="hidden h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-border bg-background text-muted hover:text-foreground lg:flex"
+                className={`hidden h-9 w-9 cursor-pointer items-center justify-center rounded-xl text-muted hover:bg-background hover:text-foreground lg:flex ${NAV_FOCUS}`}
               >
+                {/* border border-border bg-background */}
                 <svg
                   viewBox="0 0 24 24"
                   width="16"
@@ -794,7 +793,7 @@ export function AppSidebar({
               type="button"
               onClick={onToggleCollapsed}
               aria-label="Collapse sidebar"
-              className="hidden h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-background hover:text-foreground lg:inline-flex"
+              className={`hidden h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-background hover:text-foreground lg:inline-flex ${NAV_FOCUS}`}
             >
               <svg
                 viewBox="0 0 24 24"

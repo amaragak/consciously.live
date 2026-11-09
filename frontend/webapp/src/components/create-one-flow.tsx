@@ -3580,8 +3580,10 @@ export function CreateOneFlow({
           ) : null}
         </div>
 
-        {/* Desktop length-nav chrome (unchanged). */}
+        {/* Desktop length-nav chrome. Full-width 3-column band is now a hugging row inside the pill.
         <div className="hidden h-auto w-full grid-cols-[1fr_auto_1fr] items-center gap-2 px-1 py-2 md:grid md:h-[68px] md:gap-2.5 md:px-1 md:py-0">
+        */}
+        <div className="hidden items-center gap-2 px-1 py-2 md:flex md:gap-2.5 md:px-1 md:py-0">
           <div className="flex justify-start">
             {step !== "start" ? (
               <CreateFlowNavPill

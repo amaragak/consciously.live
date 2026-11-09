@@ -81,9 +81,11 @@ export function AdminVoicePanel() {
   const [sampleBusy, setSampleBusy] = useState(false);
   const [sampleProgress, setSampleProgress] = useState<string | null>(null);
 
-  const visibleSpeakers = speakers.filter((s) =>
-    listBrand === "speechify" ? s.brand === "speechify" : s.brand !== "speechify",
-  );
+  const visibleSpeakers = speakers
+    .filter((s) =>
+      listBrand === "speechify" ? s.brand === "speechify" : s.brand !== "speechify",
+    )
+    .sort(compareAdminVoices);
   const providerLabel = listBrand === "speechify" ? "Speechify" : "Fish";
 
   async function load() {
@@ -314,6 +316,20 @@ export function AdminVoicePanel() {
       </section>
     </div>
   );
+}
+
+function adminVoiceRecency(s: AdminVoiceSpeaker): number {
+  const created = s.createdAt ? Date.parse(s.createdAt) : NaN;
+  if (Number.isFinite(created)) return created;
+  return s.sort;
+}
+
+/** In-use voices first, newest created first. Hidden voices sit at the bottom. */
+function compareAdminVoices(a: AdminVoiceSpeaker, b: AdminVoiceSpeaker): number {
+  if (a.hidden !== b.hidden) return a.hidden ? 1 : -1;
+  const byTime = adminVoiceRecency(b) - adminVoiceRecency(a);
+  if (byTime !== 0) return byTime;
+  return a.name.localeCompare(b.name);
 }
 
 function parseSpeechifyRate(raw: string): number | null {

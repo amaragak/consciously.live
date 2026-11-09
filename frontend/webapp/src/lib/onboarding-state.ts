@@ -19,6 +19,44 @@ import {
 export const ONBOARDING_CHANGED = "mm-onboarding-changed";
 const STORE_KEY = "mm_onboarding_v1";
 
+export type AccountOnboardingStatus = "completed" | "skipped";
+
+type AccountOnboardingSnap = {
+  loaded: boolean;
+  status: AccountOnboardingStatus | null;
+  at: string | null;
+};
+
+let accountSnap: AccountOnboardingSnap = {
+  loaded: false,
+  status: null,
+  at: null,
+};
+
+/** Account value, once settings have loaded. Local storage does not decide this. */
+export function accountOnboardingReady(): boolean {
+  return accountSnap.loaded;
+}
+
+export function accountOnboardingStatus(): AccountOnboardingStatus | null {
+  return accountSnap.loaded ? accountSnap.status : null;
+}
+
+export function setAccountOnboardingSnapshot(next: AccountOnboardingSnap): void {
+  accountSnap = next;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(ONBOARDING_CHANGED));
+  }
+}
+
+function noteAccountDecision(status: AccountOnboardingStatus, at: string): void {
+  accountSnap = { loaded: true, status, at };
+}
+
+function pushAccountOnboarding(): void {
+  void import("@/lib/onboarding-account").then((m) => m.pushOnboardingDecision());
+}
+
 export type OnboardingCoverageKey =
   | "goals"
   | "values"
@@ -206,34 +244,46 @@ export function detectOnboardingCoverage(): CoverageSnapshot {
   };
 }
 
+const COVERAGE_SENTENCE_NAME: Record<OnboardingCoverageKey, string> = {
+  goals: "goals",
+  values: "values",
+  blockers: "blockers",
+  heal: "Heal",
+  manifesto: "manifesto",
+};
+
+function joinCoverageNames(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+}
+
+/** Names only the uncovered rows, in row order. */
 export function missingCoveragePlainWords(
   missing: OnboardingCoverageKey[],
 ): string {
-  if (missing.length === 0) return "";
-  const bits: string[] = [];
-  if (missing.includes("heal") || missing.includes("blockers")) {
-    const hurt = missing.includes("heal");
-    const block = missing.includes("blockers");
-    if (hurt && block) {
-      bits.push("what's hurting or holding you back");
-    } else if (hurt) {
-      bits.push("what's hurting or holding you back");
-    } else {
-      bits.push("what gets in the way");
-    }
+  const order: OnboardingCoverageKey[] = [
+    "goals",
+    "values",
+    "blockers",
+    "heal",
+    "manifesto",
+  ];
+  const present = order.filter((key) => missing.includes(key));
+  if (present.length === 0) return "";
+  const others = present
+    .filter((key) => key !== "manifesto")
+    .map((key) => COVERAGE_SENTENCE_NAME[key]);
+  const manifesto = present.includes("manifesto");
+  if (!manifesto) {
+    return `There's nothing yet on ${joinCoverageNames(others)}.`;
   }
-  if (missing.includes("values")) bits.push("values");
-  if (missing.includes("goals")) bits.push("goals");
-  if (missing.includes("manifesto")) bits.push("a manifesto");
-
-  if (bits.length === 1) {
-    return `There's nothing yet on ${bits[0]}.`;
-  }
-  if (bits.length === 2) {
-    return `There's nothing yet on ${bits[0]}, and no ${bits[1]}.`;
-  }
-  const last = bits[bits.length - 1];
-  return `There's nothing yet on ${bits.slice(0, -1).join(", ")}, and no ${last}.`;
+  if (others.length === 0) return "There's no manifesto.";
+  return `There's nothing yet on ${joinCoverageNames(others)}, and no manifesto.`;
+  // Previous copy grouped heal/blockers into a different phrase and could
+  // disagree with the Covered rows:
+  // if (missing.includes("heal") || missing.includes("blockers")) { ... }
+  // return `There's nothing yet on ${bits.slice(0, -1).join(", ")}, and no ${last}.`;
 }
 
 export type CoverageCheckDetail = {
@@ -329,10 +379,17 @@ export function describeOnboardingCoverageCheck(): {
 export function shouldGateToOnboarding(opts?: {
   /** Require a finished Ideate cloud pull this session (signed-in). */
   ideatePulled?: boolean;
+  signedIn?: boolean;
 }): boolean {
+  if (opts?.signedIn === false) return false;
   const store = loadOnboardingStore();
   if (store.forceRerunAt) return true;
-  if (store.completedAt || store.skippedAt) return false;
+  // Account value wins. A local completed/skipped flag is not enough on its own.
+  // if (store.completedAt || store.skippedAt) return false;
+  if (!accountSnap.loaded) return false;
+  if (accountSnap.status === "completed" || accountSnap.status === "skipped") {
+    return false;
+  }
   // Don't mis-route existing accounts while Ideate memory is still empty.
   if (opts?.ideatePulled === false) return false;
   const cov = detectOnboardingCoverage();
@@ -346,13 +403,16 @@ export function shouldGateToOnboarding(opts?: {
 export function shouldShowMostlySetUpSheet(): boolean {
   const store = loadOnboardingStore();
   if (store.forceRerunAt) return false;
-  if (store.mostlySetUpSeenAt) return false;
-  // Completing full onboarding also settles the sheet.
-  if (store.completedAt) return false;
+  // if (store.mostlySetUpSeenAt) return false;
+  // if (store.completedAt) return false;
+  if (!accountSnap.loaded) return false;
+  if (accountSnap.status === "completed" || accountSnap.status === "skipped") {
+    return false;
+  }
   const cov = detectOnboardingCoverage();
   // Any prior data → not the full Tell me path; show sheet for remaining gaps.
   if (cov.essentiallyEmpty) return false;
-  if (cov.allCovered) return false;
+  if (cov.allCovered || cov.missing.length === 0) return false;
   return true;
 }
 
@@ -365,29 +425,41 @@ export function shouldBounceFromFullOnboarding(): boolean {
 }
 
 export function markOnboardingCompleted(): void {
+  const at = new Date().toISOString();
+  noteAccountDecision("completed", at);
   saveOnboardingStore({
-    completedAt: new Date().toISOString(),
+    completedAt: at,
     skippedAt: null,
+    mostlySetUpSeenAt: at,
     forceRerunAt: null,
     resumeStep: null,
     resumeMode: null,
     gapFocus: null,
   });
+  pushAccountOnboarding();
 }
 
 export function markOnboardingSkipped(): void {
+  const at = new Date().toISOString();
+  noteAccountDecision("skipped", at);
   saveOnboardingStore({
-    skippedAt: new Date().toISOString(),
+    skippedAt: at,
+    mostlySetUpSeenAt: at,
     forceRerunAt: null,
     resumeStep: null,
     resumeMode: null,
   });
+  pushAccountOnboarding();
 }
 
 export function markMostlySetUpSeen(): void {
+  const at = new Date().toISOString();
+  if (accountSnap.status !== "completed") noteAccountDecision("skipped", at);
   saveOnboardingStore({
-    mostlySetUpSeenAt: new Date().toISOString(),
+    mostlySetUpSeenAt: at,
+    skippedAt: loadOnboardingStore().skippedAt ?? at,
   });
+  pushAccountOnboarding();
 }
 
 /** Diagnostics: re-open Tell me in merge mode. */

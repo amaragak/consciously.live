@@ -172,24 +172,62 @@ export function CreateFlowFooterBar({
       : pill;
   }
 
+  if (!mdUp) {
+    return (
+      <div className="relative shrink-0">
+        {/* Floats above the length nav; out of flow so page content shows through. */}
+        <div
+          ref={stripHostRef}
+          className="pointer-events-none absolute inset-x-0 bottom-full z-50"
+        />
+        <div
+          ref={rootRef}
+          className={[
+            "border-t border-border/60 bg-background pt-3 pb-4 sm:pt-4 sm:pb-6",
+            className ?? "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <div className="mx-auto flex min-h-0 w-full max-w-6xl items-center gap-2 px-4 sm:min-h-[2.75rem] sm:gap-3 sm:px-6">
+            {children}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="relative shrink-0">
-      {/* Floats above the length nav; out of flow so page content shows through. */}
+    <div className="create-flow-footer-pill pointer-events-none fixed bottom-0 right-0 z-30 max-lg:left-0 lg:left-[var(--app-sidebar-w,200px)]">
+      {/* Full-width bottom band — fill, top border — replaced by the pill.
+      <div className="relative shrink-0">
+        <div className="border-t border-border/60 bg-background pt-3 pb-4 sm:pt-4 sm:pb-6">
+          <div className="mx-auto flex min-h-0 w-full max-w-6xl items-center gap-2 px-4 sm:px-6">
+            children
+          </div>
+        </div>
+      </div>
+      */}
       <div
         ref={stripHostRef}
         className="pointer-events-none absolute inset-x-0 bottom-full z-50"
       />
-      <div
-        ref={rootRef}
-        className={[
-          "border-t border-border/60 bg-background pt-3 pb-4 sm:pt-4 sm:pb-6",
-          className ?? "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-      >
-        <div className="mx-auto flex min-h-0 w-full max-w-6xl items-center gap-2 px-4 sm:min-h-[2.75rem] sm:gap-3 sm:px-6">
-          {children}
+      <div className="mx-auto flex w-full max-w-6xl justify-end px-4 pb-4 sm:px-6">
+        <div
+          ref={rootRef}
+          className={[
+            "pointer-events-auto w-max max-w-full border border-border bg-card shadow-[0_10px_28px_-12px_rgb(0_0_0_/_0.35)]",
+            className ?? "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          style={{ borderRadius: 9999 }}
+          role="navigation"
+          aria-label="Create steps"
+        >
+          <div className="flex items-center gap-2 px-1.5 py-1.5 [&>*]:!w-auto [&>*]:flex-none">
+            {children}
+          </div>
         </div>
       </div>
     </div>

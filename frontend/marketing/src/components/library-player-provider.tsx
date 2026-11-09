@@ -181,6 +181,10 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
       h > 0 ? h : PLAYER_STRIP_HEIGHT_ESTIMATE_PX,
     );
     setAutoplay(true);
+    // Unlock inside the click. The strip starts <audio> beds in an effect, which
+    // browsers block unless this gesture already opened media playback.
+    unlockHtmlMediaPlayback();
+    unlockLibraryVoicePlayback();
     // Ambient beds/soundscapes are owned by the strip elements — don't also
     // start the library voice singleton (create step plays voice separately).
     if (track.ambientOnly) {
@@ -189,8 +193,6 @@ export function LibraryPlayerProvider({ children }: { children: ReactNode }) {
       track.liveMix &&
       !track.s3Key.startsWith("create:sound:")
     ) {
-      unlockHtmlMediaPlayback();
-      unlockLibraryVoicePlayback();
       stopLibraryVoicePlayback();
     } else {
       startLibraryVoicePlayback(track);

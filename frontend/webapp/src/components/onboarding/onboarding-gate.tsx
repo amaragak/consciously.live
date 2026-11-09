@@ -5,11 +5,15 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
 import { wasIdeateStorePulledThisSession } from "@/lib/ideate-cloud";
 import {
+  ensureAccountOnboarding,
+  settleAutomaticOnboarding,
+} from "@/lib/onboarding-account";
+import {
   describeOnboardingCoverageCheck,
   loadOnboardingStore,
+  ONBOARDING_CHANGED,
   onboardingHref,
   shouldBounceFromFullOnboarding,
-  shouldGateToOnboarding,
 } from "@/lib/onboarding-state";
 
 /**
@@ -18,34 +22,33 @@ import {
  */
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const location = useLocation();
-  const { ready, revision } = useIdeateCloud();
-  const [gate, setGate] = useState(false);
+  const { ready, signedIn, revision } = useIdeateCloud();
+  const [decision, setDecision] = useState<
+    "loading" | "full" | "sheet" | "none"
+  >("loading");
   const loggedRef = useRef(false);
 
   useEffect(() => {
-    if (!ready) return;
-    const pulled = wasIdeateStorePulledThisSession();
-    const next = shouldGateToOnboarding({ ideatePulled: pulled });
-    setGate(next);
-
-    if (!loggedRef.current && pulled) {
-      loggedRef.current = true;
-      const detail = describeOnboardingCoverageCheck();
-      console.info("[onboarding] coverage check", detail);
-    }
-  }, [ready, revision, location.pathname]);
+    let alive = true;
+    void ensureAccountOnboarding().then(() => {
+      if (!alive) return;
+      const next = settleAutomaticOnboarding({ signedIn });
+      setDecision(next);
+      if (!loggedRef.current && wasIdeateStorePulledThisSession()) {
+        loggedRef.current = true;
+        console.info("[onboarding] coverage check", describeOnboardingCoverageCheck());
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [signedIn, ready, revision, location.pathname]);
 
   useEffect(() => {
-    const sync = () => {
-      setGate(
-        shouldGateToOnboarding({
-          ideatePulled: wasIdeateStorePulledThisSession(),
-        }),
-      );
-    };
-    window.addEventListener("mm-onboarding-changed", sync);
-    return () => window.removeEventListener("mm-onboarding-changed", sync);
-  }, []);
+    const sync = () => setDecision(settleAutomaticOnboarding({ signedIn }));
+    window.addEventListener(ONBOARDING_CHANGED, sync);
+    return () => window.removeEventListener(ONBOARDING_CHANGED, sync);
+  }, [signedIn]);
 
   const path = location.pathname.split("?")[0] ?? location.pathname;
   const onOnboarding =
@@ -57,9 +60,12 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const intentional =
     force || mode === "merge" || mode === "gap" || mode === "mostly";
 
+  const pulled = wasIdeateStorePulledThisSession();
+
   // Existing accounts that landed on Tell me (race / old gate): bounce home.
   if (
-    ready &&
+    signedIn &&
+    pulled &&
     onOnboarding &&
     !intentional &&
     shouldBounceFromFullOnboarding()
@@ -67,7 +73,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     return <Navigate to="/" replace />;
   }
 
-  if ((force || (ready && gate)) && !onOnboarding) {
+  if ((force || decision === "full") && !onOnboarding) {
     return (
       <Navigate
         to={onboardingHref({

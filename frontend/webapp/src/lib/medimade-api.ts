@@ -6131,6 +6131,8 @@ export type AdminVoiceSpeaker = {
   portraitBgColor?: string;
   portraitImageKey?: string | null;
   portraitImageUrl?: string | null;
+  /** ISO time set when the speaker was added. Absent on older rows. */
+  createdAt?: string;
   hasSample?: boolean;
   sampleUrl?: string | null;
   /** Speechify emotion audition clips (neutral / warm / calm). */
