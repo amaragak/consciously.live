@@ -2,6 +2,11 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useMvpFlags, mvpFlagsSnapshot } from "@/lib/mvp-flags";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { JournalInsightsView } from "@/components/journal-insights-view";
+import {
+  DelayedPlaceholder,
+  EmptyState,
+  JournalListPlaceholder,
+} from "@/components/loading-placeholder";
 import { InsightsNeedSupportLink } from "@/components/insights-need-support-link";
 import { scheduleJournalInsightsRefreshAfterLeavingEditor } from "@/components/journal-insights-autorefresh";
 import { clearJournalRemoteSessionCache } from "@/lib/journal-remote-cache";
@@ -2869,19 +2874,31 @@ export function JournalView() {
             }}
           >
             {!hydrated ? (
-              <p className="text-sm text-muted">Loading…</p>
+              <DelayedPlaceholder active>
+                {/* <p className="text-sm text-muted">Loading…</p> */}
+                <JournalListPlaceholder />
+              </DelayedPlaceholder>
             ) : sidebarGroups.length === 0 ? (
-              <p className="text-sm text-muted">
-                {jumpDate && !searchQuery.trim()
-                  ? "No entry on this day."
-                  : searchQuery.trim() || jumpDate
-                    ? "No entries match."
-                    : journalTab === "gratitude"
-                    ? "No gratitudes yet."
-                    : selectedFolderId
-                      ? "This folder is empty."
-                      : "No entries yet."}
-              </p>
+              searchQuery.trim() || jumpDate ? (
+                <EmptyState
+                  message="Nothing matches these filters"
+                  actionLabel="Clear filters"
+                  onAction={() => {
+                    setSearchQuery("");
+                    clearJumpDate();
+                  }}
+                />
+              ) : journalTab === "gratitude" ? (
+                <EmptyState message="No gratitudes yet" />
+              ) : selectedFolderId ? (
+                <EmptyState message="This folder is empty." />
+              ) : (
+                <EmptyState
+                  message="No entries yet"
+                  actionLabel="New entry"
+                  onAction={() => createEntry()}
+                />
+              )
             ) : (
               sidebarGroups.map((group) => {
                 const weekMoodDots =

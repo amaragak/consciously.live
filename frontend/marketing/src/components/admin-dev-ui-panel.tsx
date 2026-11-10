@@ -75,7 +75,10 @@ export function AdminDevUiPanel() {
       <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
         <h2 className="font-display text-lg font-medium">Homepage</h2>
         {loading ? (
-          <p className="mt-3 text-sm text-muted">Loading…</p>
+          <>
+          {/* <p className="mt-3 text-sm text-muted">Loading…</p> */}
+          <span className="mm-placeholder mt-3 block h-4 w-48 rounded-md" aria-hidden />
+          </>
         ) : (
           <ul className="mt-4 space-y-4">
             <li className="flex items-start justify-between gap-4">
@@ -114,7 +117,10 @@ export function AdminDevUiPanel() {
       <section className="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
         <h2 className="font-display text-lg font-medium">Controls</h2>
         {loading ? (
-          <p className="mt-3 text-sm text-muted">Loading…</p>
+          <>
+          {/* <p className="mt-3 text-sm text-muted">Loading…</p> */}
+          <span className="mm-placeholder mt-3 block h-4 w-48 rounded-md" aria-hidden />
+          </>
         ) : (
           <ul className="mt-4 space-y-4">
             <li className="flex items-start justify-between gap-4 border-b border-border/60 pb-4">

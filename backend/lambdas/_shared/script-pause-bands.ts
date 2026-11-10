@@ -402,3 +402,14 @@ export function scriptLongerBreaksOpenPracticeRules(
     "**Do not:** replace open sits with many `extra-long` markers; pad with filler talk; change the Length target; put a minute of silence without a self-paced cue first.",
   ].join("\n");
 }
+
+/** Open sits marker syntax and cue pattern, without the per-length budget (the Length line sets that). */
+export function scriptOpenSitsMarkerRules(): string {
+  return [
+    "",
+    "### Open sits — long silence markers",
+    "Place **one** marker for each long silence, straight after the cue that sets it up (not a stack of `extra-long`).",
+    `- \`[[PAUSE open]]\` (~**${SCRIPT_PAUSE_BAND_SECONDS.open}** s of silence), or a timed marker when you need a specific length: \`[[PAUSE 30s]]\`, \`[[PAUSE 60s]]\`, \`[[PAUSE 90s]]\`, \`[[PAUSE 120s]]\` (whole seconds only; max **${SCRIPT_PAUSE_TIMED_MAX_SECONDS}**).`,
+    "- Never use timed seconds for ordinary line spacing inside a cue — only for the silences between cues.",
+  ].join("\n");
+}

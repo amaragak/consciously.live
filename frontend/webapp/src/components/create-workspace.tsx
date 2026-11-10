@@ -5229,8 +5229,10 @@ export function CreateWorkspace({
         initialDraftSk?.trim() &&
         !draftHydrated &&
         !draftLoadError) ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center p-8 text-sm text-muted">
-          {initialDraftSk?.trim() ? "Loading draft…" : "Loading…"}
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8">
+          {/* initialDraftSk?.trim() ? "Loading draft…" : "Loading…" */}
+          <span className="mm-placeholder block h-4 w-48 rounded-md" aria-hidden />
+          <span className="mm-placeholder block h-4 w-64 rounded-md" aria-hidden />
         </div>
       ) : (
       <div className="relative flex min-h-0 flex-1 flex-col">
@@ -5774,9 +5776,11 @@ export function CreateWorkspace({
                 );
                 if (!libraryProgramsListReady) {
                   return (
-                    <p className="py-8 text-center text-sm text-muted">
-                      Loading program…
-                    </p>
+                    <div className="space-y-2 py-8">
+                      {/* Loading program… */}
+                      <span className="mm-placeholder block h-16 w-full rounded-2xl" aria-hidden />
+                      <span className="mm-placeholder block h-16 w-full rounded-2xl" aria-hidden />
+                    </div>
                   );
                 }
                 if (!program) {

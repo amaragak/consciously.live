@@ -270,6 +270,49 @@
   }
 }
 
+/*
+ * Desktop header: hero navy plus the dark paisley duotone at a flat opacity.
+ * The only light on the bar is the small radial glow behind the sun.
+ */
+@media (min-width: 768px) {
+  .app-top-bar {
+    /* background-color: var(--nav); */
+    background-color: #1a1820 !important;
+    isolation: isolate;
+  }
+
+  .app-top-bar-paisley {
+    position: absolute;
+    inset: 0;
+    background-image: url("/patterns/paisley-dark-duotone.webp");
+    background-repeat: repeat;
+    background-size: 640px 640px;
+    background-position: 0 0;
+    /* opacity: 0.72; */
+    opacity: 0.56;
+    /* Side fade that dipped through the centre:
+    -webkit-mask-image: linear-gradient(
+      90deg,
+      rgb(255 255 255 / 1) 0%,
+      rgb(255 255 255 / 0.64) 12%,
+      rgb(255 255 255 / 0.42) 28%,
+      rgb(255 255 255 / 0.42) 72%,
+      rgb(255 255 255 / 0.64) 88%,
+      rgb(255 255 255 / 1) 100%
+    );
+    mask-image: linear-gradient(
+      90deg,
+      rgb(255 255 255 / 1) 0%,
+      rgb(255 255 255 / 0.64) 12%,
+      rgb(255 255 255 / 0.42) 28%,
+      rgb(255 255 255 / 0.42) 72%,
+      rgb(255 255 255 / 0.64) 88%,
+      rgb(255 255 255 / 1) 100%
+    );
+    */
+  }
+}
+
 /**
  * Same sunlit gold wash as a fill (active header tabs, profile chip, badges),
  * slightly subtler than the text verb gradient so solid chips don’t read loud.
@@ -425,6 +468,43 @@ body {
 .mm-skeleton {
   background-color: #e4dfd6;
   animation: vision-board-tile-pulse 1.25s ease-in-out infinite;
+}
+
+/* Faint tint of the primary text colour, with a slow shimmer. */
+.mm-placeholder {
+  background-color: color-mix(in srgb, var(--foreground) 12%, transparent);
+  position: relative;
+  overflow: hidden;
+}
+
+.mm-placeholder::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    color-mix(in srgb, var(--foreground) 14%, transparent) 50%,
+    transparent 80%
+  );
+  transform: translateX(-120%);
+  animation: mm-placeholder-shimmer 2.6s ease-in-out infinite;
+}
+
+@keyframes mm-placeholder-shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mm-placeholder::after {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 .ideate-frosted-overlay {
@@ -1499,11 +1579,12 @@ main[data-app-layout="focus"][data-focus-pattern="astrology"] .page-pattern-tile
     box-shadow: 10px 0 28px -6px rgb(0 0 0 / 0.32);
   }
 
-  /* Navy rail continues the header. Covers the header's bottom border so the L has no seam. */
+  /* Navy rail sits just under the header. Covers the header's bottom border so the L has no seam. */
   :root:not(.dark) .app-sidebar-drawer {
     z-index: 131;
     top: calc(var(--app-header-h) - 1px);
-    background-color: var(--nav);
+    /* background-color: var(--nav); */
+    background-color: var(--nav-sidebar);
     border-right-color: transparent;
     box-shadow: none;
   }

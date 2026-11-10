@@ -7,11 +7,16 @@ export type TextContentMetrics = {
 
 const WORD_RE = /[a-z0-9']+/gi;
 
+/** Spoken words, punctuation-insensitive. Hyphenated forms count as separate words. */
+export function spokenWords(text: string): string[] {
+  return text.match(WORD_RE) ?? [];
+}
+
 /** Count spoken words in prose (punctuation-insensitive). */
 export function countWords(text: string): number {
   const trimmed = text.trim();
   if (!trimmed) return 0;
-  return (trimmed.match(WORD_RE) ?? []).length;
+  return spokenWords(trimmed).length;
 }
 
 /**
@@ -59,6 +64,17 @@ export function averageTextMetrics(
     wordCount: Math.round(wordCount * 10) / 10,
     syllableCount: Math.round(syllableCount * 10) / 10,
   };
+}
+
+/** Drop trailing sentences until the spoken script is within the word cap. */
+export function trimScriptToWordCap(script: string, maxWords: number): string {
+  if (maxWords <= 0 || countWords(script) <= maxWords) return script;
+  const parts = script.split(/(?<=[.!?])\s+/);
+  while (parts.length > 1 && countWords(parts.join(" ")) > maxWords) {
+    parts.pop();
+  }
+  const joined = parts.join(" ").trim();
+  return countWords(joined) > 0 ? joined : script;
 }
 
 /** Active speech seconds from word count at wpm × speechSpeed. */

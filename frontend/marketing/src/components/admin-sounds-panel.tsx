@@ -1333,7 +1333,10 @@ export function AdminSoundsPanel() {
       {error ? (
         <div className="mt-4 rounded-xl border border-border bg-card px-4 py-3 text-sm">{error}</div>
       ) : null}
-      {loading ? <p className="mt-4 text-sm text-muted">Loading…</p> : null}
+      {loading ? (
+        // <p className="mt-4 text-sm text-muted">Loading…</p>
+        <span className="mm-placeholder mt-4 block h-4 w-48 rounded-md" aria-hidden />
+      ) : null}
 
       <ul className="mt-4 space-y-3">
         {visible.map((it) => (

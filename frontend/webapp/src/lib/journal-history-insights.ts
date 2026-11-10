@@ -5,6 +5,7 @@
 
 import {
   journalEntryHrefById,
+  stripHtmlToText,
   type JournalEntry,
 } from "@/lib/journal-storage";
 import {
@@ -13,6 +14,32 @@ import {
 } from "@/lib/journal-moods";
 
 export type InsightsPeriodId = "30d" | "3m" | "year" | "all";
+
+/** An entry needs roughly this much writing before it can feed Insights. */
+export const INSIGHTS_MIN_ENTRY_WORDS = 40;
+/** A standout line has to be a complete thought, not a fragment. */
+export const INSIGHTS_MIN_LINE_WORDS = 8;
+/** A theme has to show up in at least this many substantial entries. */
+export const INSIGHTS_MIN_THEME_ENTRIES = 2;
+/** The mood chart needs moods on this many different days. */
+export const INSIGHTS_MIN_MOOD_DAYS = 3;
+
+const PERIOD_ORDER: InsightsPeriodId[] = ["30d", "3m", "year", "all"];
+
+export function countWords(text: string): number {
+  const t = text.trim();
+  if (!t) return 0;
+  return t.split(/\s+/).filter(Boolean).length;
+}
+
+export function entryWordCount(entry: Pick<JournalEntry, "title" | "contentHtml">): number {
+  const body = stripHtmlToText(entry.contentHtml || "");
+  return countWords(`${entry.title || ""} ${body}`);
+}
+
+export function entryHasSubstance(entry: Pick<JournalEntry, "title" | "contentHtml">): boolean {
+  return entryWordCount(entry) >= INSIGHTS_MIN_ENTRY_WORDS;
+}
 
 export const INSIGHTS_PERIODS: Array<{ id: InsightsPeriodId; label: string }> = [
   { id: "30d", label: "30 days" },
@@ -140,6 +167,55 @@ export function periodStartIso(period: InsightsPeriodId, now = new Date()): stri
   return d.toISOString();
 }
 
+export function moodDaysInPeriod(
+  entries: JournalEntry[],
+  period: InsightsPeriodId,
+  now = new Date(),
+): number {
+  const days = new Set<string>();
+  for (const e of entries) {
+    if (e.kind === "gratitude") continue;
+    if (!entryInPeriod(e, period, now)) continue;
+    if (!isJournalMoodId(e.mood)) continue;
+    const day = (e.entryDate || e.createdAt || "").slice(0, 10);
+    if (day) days.add(day);
+  }
+  return days.size;
+}
+
+/** A line between two points is not a trend. Need moods on 3 days and 3 plotted points. */
+export function moodSeriesIsChartable(
+  points: WeekMoodPoint[],
+  moodDays: number,
+): boolean {
+  return moodDays >= INSIGHTS_MIN_MOOD_DAYS && points.length >= INSIGHTS_MIN_MOOD_DAYS;
+}
+
+export function periodHasInsights(
+  entries: JournalEntry[],
+  analyses: Map<string, JournalEntryAnalysis>,
+  period: InsightsPeriodId,
+): boolean {
+  if (buildStandoutLines(entries, analyses, period, 1).length > 0) return true;
+  if (buildThemeRows(entries, analyses, period).length > 0) return true;
+  const days = moodDaysInPeriod(entries, period);
+  const weeks = buildWeeklyMoodSeries(entries, analyses, period);
+  return moodSeriesIsChartable(weeks, days);
+}
+
+/** Nearest longer range that would show something, if this one would not. */
+export function longerPeriodWithInsights(
+  entries: JournalEntry[],
+  analyses: Map<string, JournalEntryAnalysis>,
+  period: InsightsPeriodId,
+): InsightsPeriodId | null {
+  const start = PERIOD_ORDER.indexOf(period);
+  for (const next of PERIOD_ORDER.slice(start + 1)) {
+    if (periodHasInsights(entries, analyses, next)) return next;
+  }
+  return null;
+}
+
 export function entryInPeriod(
   entry: JournalEntry,
   period: InsightsPeriodId,
@@ -235,8 +311,8 @@ export function buildWeeklyMoodSeries(
     const tone = combinedEntryTone(e, analysis);
     const bucket = byWeek.get(key) ?? { tones: [], lines: [] };
     bucket.tones.push(tone);
-    const notable = analysis?.notableSentences?.[0];
-    if (notable) {
+    const notable = entryHasSubstance(e) ? analysis?.notableSentences?.[0] : null;
+    if (notable && countWords(notable) >= INSIGHTS_MIN_LINE_WORDS) {
       bucket.lines.push({ line: notable, entryId: e.id, abs: Math.abs(tone) });
     }
     byWeek.set(key, bucket);
@@ -304,13 +380,16 @@ export function buildThemeRows(
   const byTheme = new Map<string, Acc>();
 
   for (const e of inPeriod) {
+    if (!entryHasSubstance(e)) continue;
     const a = analyses.get(e.id);
     if (!a?.themes?.length) continue;
     const day = (e.entryDate || e.createdAt || "").slice(0, 10);
     const week = isoDay(startOfWeekMonday(new Date(day + "T12:00:00")));
     for (const t of a.themes) {
       const name = normalizeThemeName(t.theme);
-      if (!name) continue;
+      if (!name || /^(introduction|introductions|greeting|greetings|hello|test|testing)$/i.test(name)) {
+        continue;
+      }
       const key = name.toLowerCase();
       const acc =
         byTheme.get(key) ??
@@ -348,7 +427,16 @@ export function buildThemeRows(
         lifeAreaHint: acc.lifeAreaHint,
       } satisfies ThemeRow;
     })
+    .filter((row) => row.entryCount >= INSIGHTS_MIN_THEME_ENTRIES)
     .sort((a, b) => b.entryCount - a.entryCount);
+}
+
+function meaningfulHighlight(sentence: string, theme: string | null): string {
+  const phrase = theme?.trim() ?? "";
+  if (countWords(phrase) < 2) return "";
+  if (!sentence.toLowerCase().includes(phrase.toLowerCase())) return "";
+  if (countWords(phrase) >= countWords(sentence)) return "";
+  return phrase;
 }
 
 export function buildMoodMovers(themes: ThemeRow[]): {
@@ -377,18 +465,15 @@ export function buildStandoutLines(
   const byId = new Map(inPeriod.map((e) => [e.id, e]));
   const out: StandoutLine[] = [];
   for (const e of inPeriod) {
+    if (!entryHasSubstance(e)) continue;
     const a = analyses.get(e.id);
     if (!a) continue;
     for (const sentence of a.notableSentences ?? []) {
+      if (countWords(sentence) < INSIGHTS_MIN_LINE_WORDS) continue;
       const theme = a.themes[0]?.theme ?? null;
-      const phrase =
-        a.themes[0]?.theme &&
-        sentence.toLowerCase().includes(a.themes[0].theme.toLowerCase())
-          ? a.themes[0].theme
-          : sentence.split(/\s+/).slice(0, 4).join(" ");
       out.push({
         quote: sentence,
-        highlightPhrase: phrase,
+        highlightPhrase: meaningfulHighlight(sentence, theme),
         entryId: e.id,
         dateIso: e.entryDate || e.createdAt,
         theme,

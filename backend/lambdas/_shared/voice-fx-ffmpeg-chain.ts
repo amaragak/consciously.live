@@ -32,6 +32,53 @@ function ffmpegBin(): string {
   return "ffmpeg";
 }
 
+/** Time-stretch raw s16le mono @ 24 kHz with ffmpeg `atempo` (pitch kept). `factor` > 1 is faster. */
+export async function atempoPcm24kS16le(pcm: Buffer, factor: number): Promise<Buffer> {
+  if (!(factor > 0) || Math.abs(factor - 1) < 0.001 || pcm.byteLength === 0) return pcm;
+  const tempo = Math.min(2, Math.max(0.5, factor));
+  const id = randomUUID();
+  const inPath = `/tmp/atempo-in-${id}.s16le`;
+  const outPath = `/tmp/atempo-out-${id}.s16le`;
+  fs.writeFileSync(inPath, pcm);
+  try {
+    await run(
+      ffmpegBin(),
+      [
+        "-hide_banner",
+        "-y",
+        "-f",
+        "s16le",
+        "-ar",
+        String(VOICE_FX_PCM_SR),
+        "-ac",
+        "1",
+        "-i",
+        inPath,
+        "-af",
+        `atempo=${tempo.toFixed(4)}`,
+        "-f",
+        "s16le",
+        "-ar",
+        String(VOICE_FX_PCM_SR),
+        "-ac",
+        "1",
+        outPath,
+      ],
+      "atempo",
+    );
+    const out = fs.readFileSync(outPath);
+    return out.byteLength % 2 === 0 ? out : out.subarray(0, out.byteLength - 1);
+  } finally {
+    for (const p of [inPath, outPath]) {
+      try {
+        fs.unlinkSync(p);
+      } catch {
+        /* */
+      }
+    }
+  }
+}
+
 function clampWetGain(wetGain: number): number {
   return Math.min(1, Math.max(0, wetGain));
 }

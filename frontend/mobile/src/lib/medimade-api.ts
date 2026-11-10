@@ -258,10 +258,12 @@ async function streamChatRequest(
   return full;
 }
 
-export type MeditationTargetMinutes = 2 | 5 | 10 | 20;
+export type MeditationTargetMinutes = 5 | 10 | 20;
+// v9: 2 min removed
 
 export const MEDITATION_TARGET_MINUTES: readonly MeditationTargetMinutes[] = [
-  2, 5, 10, 20,
+  // 2,
+  5, 10, 20,
 ];
 
 export function isMeditationTargetMinutes(

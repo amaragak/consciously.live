@@ -2718,7 +2718,10 @@ export default function LibraryView({
       libraryTab === "meditations" &&
       loading &&
       pagedVisibleItems.length === 0 ? (
-        <p className="mt-6 text-sm text-muted">Loading…</p>
+        <>
+        {/* <p className="mt-6 text-sm text-muted">Loading…</p> */}
+        <span className="mm-placeholder mt-6 block h-16 w-full rounded-2xl" aria-hidden />
+        </>
       ) : libraryTab !== "programs" && pagedVisibleItems.length === 0 ? (
         <p className={`${libraryTab === "community" ? "mt-4" : "mt-6"} w-full min-w-0 text-sm text-muted`}>
           {searchQuery.trim() ? (

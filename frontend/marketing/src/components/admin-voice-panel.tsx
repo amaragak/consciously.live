@@ -201,7 +201,10 @@ export function AdminVoicePanel() {
           {error}
         </div>
       ) : null}
-      {loading ? <p className="text-sm text-muted">Loading…</p> : null}
+      {loading ? (
+        // <p className="text-sm text-muted">Loading…</p>
+        <span className="mm-placeholder mt-3 block h-4 w-48 rounded-md" aria-hidden />
+      ) : null}
 
       <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

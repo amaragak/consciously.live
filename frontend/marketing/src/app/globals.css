@@ -93,6 +93,12 @@ input[type="search"].app-search-input::-webkit-search-cancel-button {
   animation: vision-board-tile-pulse 1.25s ease-in-out infinite;
 }
 
+.mm-placeholder {
+  background-color: color-mix(in srgb, var(--foreground) 12%, transparent);
+  position: relative;
+  overflow: hidden;
+}
+
 @keyframes vision-board-tile-pulse-dark {
   0%,
   100% {

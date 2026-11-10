@@ -489,7 +489,11 @@ export function VisionBoardMosaic({
               ? library.length === 0
                 ? "Your library is empty."
                 : "Nothing in the library matches this filter."
-              : "Loading your images…"}
+              : null}
+            {/* "Loading your images…" */}
+            {!hydrated ? (
+              <span className="mm-placeholder mt-2 block h-4 w-40 rounded-md" aria-hidden />
+            ) : null}
           </p>
         ) : (
           <div className="mt-4 flex flex-col" style={{ gap }}>

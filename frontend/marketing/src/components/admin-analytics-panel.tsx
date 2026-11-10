@@ -983,7 +983,12 @@ export function AdminAnalyticsPanel() {
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div className="text-sm font-semibold">Voice stem vs billable script size</div>
           <div className="text-xs text-muted">
-            {loading ? "Loading…" : `${enriched.length} points`}
+            {/* loading ? "Loading…" : count */}
+            {loading ? (
+              <span className="mm-placeholder inline-block h-3 w-16 rounded-md align-middle" aria-hidden />
+            ) : (
+              `${enriched.length} points`
+            )}
           </div>
         </div>
         <p className="mb-3 text-xs text-muted">

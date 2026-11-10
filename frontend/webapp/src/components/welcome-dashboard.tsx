@@ -627,7 +627,10 @@ export function WelcomeDashboard() {
               </span>
             </button>
           ) : !libraryReady ? (
-            <p className="text-[14px] text-muted">Loading your library…</p>
+            <>
+            {/* <p className="text-[14px] text-muted">Loading your library…</p> */}
+            <span className="mm-placeholder block h-4 w-40 rounded-md" />
+            </>
           ) : meditations.length === 0 ? (
             <p className="text-[14px] text-muted">Your first meditation is one prompt away</p>
           ) : null}

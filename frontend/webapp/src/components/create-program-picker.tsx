@@ -16,7 +16,13 @@ export function CreateProgramPicker({
 }) {
   if (!listReady) {
     return (
-      <p className="py-8 text-center text-sm text-muted">Loading programs…</p>
+      <>
+      {/* <p className="py-8 text-center text-sm text-muted">Loading programs…</p> */}
+      <div className="space-y-2 py-6">
+        <span className="mm-placeholder block h-16 w-full rounded-2xl" aria-hidden />
+        <span className="mm-placeholder block h-16 w-full rounded-2xl" aria-hidden />
+      </div>
+      </>
     );
   }
   if (programs.length === 0) {

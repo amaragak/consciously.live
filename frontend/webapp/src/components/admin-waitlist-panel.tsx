@@ -84,7 +84,12 @@ export function AdminWaitlistPanel() {
             onClick={() => void load()}
             disabled={busy}
           >
-            {busy ? "Loading…" : "Refresh"}
+            {/* busy ? "Loading…" : "Refresh" */}
+            {busy ? (
+              <span className="inline-block size-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />
+            ) : (
+              "Refresh"
+            )}
           </button>
           <button
             type="button"
@@ -110,7 +115,12 @@ export function AdminWaitlistPanel() {
             {signups.length === 0 ? (
               <tr>
                 <td className="px-3 py-6 text-muted" colSpan={4}>
-                  {busy ? "Loading…" : "No sign-ups yet."}
+                  {/* busy ? "Loading…" : "No sign-ups yet." */}
+                  {busy ? (
+                    <span className="mm-placeholder inline-block h-3 w-24 rounded-md" aria-hidden />
+                  ) : (
+                    "No sign-ups yet."
+                  )}
                 </td>
               </tr>
             ) : (

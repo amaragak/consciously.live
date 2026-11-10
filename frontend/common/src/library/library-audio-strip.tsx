@@ -470,10 +470,21 @@ export function LibraryAudioStrip({
     }
   }
 
+  /** Beds start at 0 and the voice waits out the lead-in, as in the server mix. */
+  function bedLeadSeconds(): number {
+    return trackHasLiveBeds() ? voiceIntroSeconds() : 0;
+  }
+
   /** Soundscapes/compositions only — scrub music bed to the voice clock. */
   function syncSoundscapeToVoice(voiceSeconds: number) {
     if (!soundscapeActiveRef.current) return;
-    seekGaplessBed(musicRef.current, voiceSeconds);
+    seekGaplessBed(musicRef.current, voiceSeconds + bedLeadSeconds());
+  }
+
+  /** Back to the top of the lead-in, before the voice starts. */
+  function rewindSoundscapeForLeadIn() {
+    if (!soundscapeActiveRef.current) return;
+    seekGaplessBed(musicRef.current, 0);
   }
 
   function clearBedOutro() {
@@ -529,9 +540,7 @@ export function LibraryAudioStrip({
   ) {
     bedOutroGainRef.current = fadeGainAtOutroOffset(intoOutro);
     applyLiveBedVolumes();
-    if (seekSoundscape && soundscapeActiveRef.current) {
-      seekGaplessBed(musicRef.current, voiceLen + intoOutro);
-    }
+    if (seekSoundscape) syncSoundscapeToVoice(voiceLen + intoOutro);
   }
 
   function parkVoiceAtEnd() {
@@ -715,6 +724,7 @@ export function LibraryAudioStrip({
       setPlaying(true);
       onPlayingChange?.(track.s3Key, true);
       if (shouldDelayVoice(dual.currentTime)) {
+        rewindSoundscapeForLeadIn();
         voiceIntroTimerRef.current = window.setTimeout(() => {
           voiceIntroTimerRef.current = null;
           syncSoundscapeToVoice(0);
@@ -749,12 +759,13 @@ export function LibraryAudioStrip({
     applySpeechElementVolume(el);
     clearVoiceIntro();
     if (shouldDelayVoice(el.currentTime)) {
+      rewindSoundscapeForLeadIn();
       setPlaying(true);
       onPlayingChange?.(track.s3Key, true);
       voiceIntroTimerRef.current = window.setTimeout(() => {
         voiceIntroTimerRef.current = null;
         applySpeechElementVolume(el);
-        // Align composition to voice start after the bed-only intro.
+        // The composition has played through the lead-in; keep it there.
         syncSoundscapeToVoice(0);
         void el.play().catch(() => {});
       }, voiceIntroSeconds() * 1000);

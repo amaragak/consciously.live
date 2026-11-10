@@ -57,6 +57,11 @@ const NAV = "#33465C";
 /** SPA header fill — shared by light + dark (tonal navy). */
 const NAV_HEADER = "#1E232E";
 /**
+ * Desktop sidebar on the light scheme. Same navy as the header, one small
+ * step lighter, so the header reads as the top layer.
+ */
+const NAV_SIDEBAR = mixHex(NAV_HEADER, WHITE, 0.1);
+/**
  * Light marketing page. Near-white with a faint warm tint — lighter than the
  * cream canvas and distinct from pure white `--surface`. Same in dark: the
  * page that uses it has no dark variant.
@@ -349,6 +354,8 @@ type Semantic = {
   onAccent: string;
   overlay: string;
   nav: string;
+  /** Desktop rail when the header is navy. A step lighter than `nav`. */
+  navSidebar: string;
   navForeground: string;
   navMuted: string;
   /** Clickable non-current header trail crumbs (brighter than muted on navy). */
@@ -494,6 +501,7 @@ function assemble(
     accentLink: dark ? DARK_PRIMARY : ACCENT_LINK,
     /** SPA light + dark share the same navy header (`#1E232E`). */
     nav: NAV_HEADER,
+    navSidebar: dark ? SURFACE_2_DARK : NAV_SIDEBAR,
     navForeground: NAV_FOREGROUND,
     navMuted: NAV_MUTED,
     navCrumb: NAV_CRUMB,
@@ -594,6 +602,7 @@ export const hybrid = {
   ...assemble(PAPER_HYBRID, TAB_SELECTED_LIGHT, false),
   /** Header stays on cream canvas; only `--background` uses hybrid paper. */
   nav: NAV_LIGHT,
+  navSidebar: NAV_LIGHT,
   navForeground: NAV_FOREGROUND_LIGHT,
   navMuted: NAV_MUTED_LIGHT,
   navCrumb: NAV_CRUMB_LIGHT,
@@ -701,6 +710,7 @@ function varsFor(s: Semantic, dark: boolean): Record<string, string> {
     "--on-accent": s.onAccent,
     "--overlay": s.overlay,
     "--nav": s.nav,
+    "--nav-sidebar": s.navSidebar,
     "--nav-foreground": s.navForeground,
     "--nav-muted": s.navMuted,
     "--nav-crumb": s.navCrumb,

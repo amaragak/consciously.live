@@ -24,7 +24,7 @@ export function storyLibraryTitle(firstName: string): string {
 function coerceTargetMinutes(words: number): MeditationTargetMinutes {
   const mins = listeningMinutes(words, { fadeOut: true }) || 10;
   return coerceMeditationTargetMinutes(
-    mins <= 3 ? 2 : mins <= 7 ? 5 : mins <= 15 ? 10 : 20,
+    mins <= 3 ? 5 /* was 2 */ : mins <= 7 ? 5 : mins <= 15 ? 10 : 20,
   );
 }
 

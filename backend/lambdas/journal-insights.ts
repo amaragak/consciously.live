@@ -780,9 +780,10 @@ async function analyzeOneEntry(params: {
     "Return ONLY JSON (no markdown fences) with this shape:",
     '{"tone":0,"themes":[{"theme":"The album","sentences":["…"],"tone":0.2}],"notableSentences":["…"],"lifeAreaHint":null}',
     "tone is -1 (negative) to 1 (positive) for the whole entry.",
-    "themes: concrete topics the user actually wrote about (people, projects, places, habits). Reuse knownThemes names when the same topic appears; merge near-duplicates. Never invent topics.",
+    "themes: concrete topics the user actually wrote about (people, projects, places, habits). Reuse knownThemes names when the same topic appears; merge near-duplicates. Never invent topics. Return an empty themes array for greetings, introductions, test text, task lists, or an entry that is only a few words. A theme has to be something they actually spent time on.",
     "For each theme, include the sentence(s) from the entry that mention it, and a tone for those sentences.",
-    "notableSentences: 1–2 of the most telling lines copied from the entry (exact or lightly trimmed).",
+    "notableSentences: a high bar. Copy a line only when it is worth reading back — a realisation, a decision, a clearly stated feeling, or something specific and personal. Skip greetings, introductions, test text, one-word or very short lines, task lists, and neutral statements of fact.",
+    "Returning no notableSentences is a normal, expected answer. Do not aim for a fixed count. At most 3, and only lines that qualify. Each line must be a complete thought.",
     "lifeAreaHint: optional short life-area label if obvious (e.g. Music, Work), else null.",
     "Use only what is in the entry. No diagnosis.",
   ].join("\n");
@@ -840,22 +841,28 @@ async function analyzeOneEntry(params: {
       Boolean(t),
     )
     .slice(0, 8);
-  const notable = Array.isArray(parsed.notableSentences)
+  const entryWords = plain.split(/\s+/).filter(Boolean).length;
+  const substantial = entryWords >= 40;
+  const lineWords = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
+  const notable = substantial && Array.isArray(parsed.notableSentences)
     ? parsed.notableSentences
         .filter((s): s is string => typeof s === "string")
         .map((s) => s.trim())
-        .filter(Boolean)
-        .slice(0, 2)
+        .filter((s) => lineWords(s) >= 8)
+        .slice(0, 3)
     : [];
+  const keptThemes = substantial ? themes : [];
   return {
     entryId,
     contentHash: params.contentHash || "unknown",
     analyzedAt: new Date().toISOString(),
     tone: clampTone(parsed.tone),
-    themes,
+    themes: keptThemes,
     notableSentences: notable,
     lifeAreaHint:
-      typeof parsed.lifeAreaHint === "string" && parsed.lifeAreaHint.trim()
+      substantial &&
+      typeof parsed.lifeAreaHint === "string" &&
+      parsed.lifeAreaHint.trim()
         ? parsed.lifeAreaHint.trim()
         : null,
   };

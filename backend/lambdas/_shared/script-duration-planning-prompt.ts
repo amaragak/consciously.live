@@ -71,9 +71,16 @@ export function getFleetScriptWordTargets(params: {
   speechSpeed: number;
   /** Experienced pacing — cued open sits; spoken band uses spokenBudgetMinutes. */
   longerBreaks?: boolean;
+  /**
+   * Delivery-profile budget. When set, the word band is
+   * minutes × speech share × WPM, and the open-practice reduction is skipped
+   * because that share already includes the sits.
+   */
+  pacing?: { wpm: number; speechShare: number; bandFraction?: number };
 }): FleetScriptWordTargets {
   const speechSpeed = normalizeSpeechSpeed(params.speechSpeed);
-  const longerBreaks = params.longerBreaks === true;
+  const pacing = params.pacing;
+  const longerBreaks = params.longerBreaks === true && !pacing;
   const targetMinutes =
     typeof params.targetMinutes === "number" &&
     Number.isFinite(params.targetMinutes) &&
@@ -86,12 +93,19 @@ export function getFleetScriptWordTargets(params: {
     : null;
   const planningMinutes = openPlan?.spokenBudgetMinutes ?? targetMinutes;
 
-  const impliedWpmActive = parsePositiveFloat(
-    process.env.MEDITATION_IMPLIED_WPM_ACTIVE,
-    DEFAULT_IMPLIED_WPM_ACTIVE,
-  );
-  const pauseShare = effectivePauseShare();
-  const band = wordBandFraction();
+  const impliedWpmActive = pacing
+    ? Math.max(1, pacing.wpm)
+    : parsePositiveFloat(
+        process.env.MEDITATION_IMPLIED_WPM_ACTIVE,
+        DEFAULT_IMPLIED_WPM_ACTIVE,
+      );
+  const pauseShare = pacing
+    ? clamp(1 - pacing.speechShare, 0.02, 0.95)
+    : effectivePauseShare();
+  const band =
+    pacing && typeof pacing.bandFraction === "number"
+      ? clamp(pacing.bandFraction, 0.02, 0.4)
+      : wordBandFraction();
 
   const stemSeconds = Math.round(targetMinutes * 60);
   const planningStemSeconds = Math.round(planningMinutes * 60);
@@ -99,7 +113,7 @@ export function getFleetScriptWordTargets(params: {
   const activeSeconds = Math.max(0, planningStemSeconds - pauseSeconds);
 
   const center = Math.round(
-    (activeSeconds / 60) * impliedWpmActive * speechSpeed,
+    (activeSeconds / 60) * impliedWpmActive * (pacing ? 1 : speechSpeed),
   );
   const min = Math.max(40, Math.round(center * (1 - band)));
   const max = Math.max(min + 1, Math.round(center * (1 + band)));
@@ -132,7 +146,11 @@ export function getFleetScriptWordTargets(params: {
  */
 export function scriptDurationPlanningAppendix(
   targetMinutes: number,
-  opts?: { speechSpeed?: number; longerBreaks?: boolean },
+  opts?: {
+    speechSpeed?: number;
+    longerBreaks?: boolean;
+    pacing?: { wpm: number; speechShare: number; bandFraction?: number };
+  },
 ): string {
   const speechSpeed = normalizeSpeechSpeed(opts?.speechSpeed);
   const longerBreaks = opts?.longerBreaks === true;
@@ -140,6 +158,7 @@ export function scriptDurationPlanningAppendix(
     targetMinutes,
     speechSpeed,
     longerBreaks,
+    pacing: opts?.pacing,
   });
   const wpm = words.impliedWpmActive;
   const Tsec = words.stemSeconds;

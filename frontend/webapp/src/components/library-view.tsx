@@ -13,6 +13,16 @@ import {
 } from "@tabler/icons-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SearchInput } from "@/components/search-input";
+import {
+  DelayedPlaceholder,
+  DetailPlaceholder,
+  EmptyState,
+  LibraryListPlaceholder,
+  LoadError,
+  readLoadCache,
+  useDelayedLoading,
+  writeLoadCache,
+} from "@/components/loading-placeholder";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import { SelectChevron } from "@/components/select-chevron";
 import { ListenShareSheet } from "@/components/listen-share-sheet";
@@ -804,6 +814,7 @@ export default function LibraryView({
   const [pending, setPending] = useState<PendingLibraryGeneration[]>([]);
   const [journalTick, setJournalTick] = useState(0);
   const [loading, setLoading] = useState(!Array.isArray(initialItems));
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(
@@ -1548,8 +1559,13 @@ export default function LibraryView({
         listLibraryMeditations({ community: true }),
       ]);
       const merged = applyLocalMixOverlay(list, localMixByKeyRef.current);
+      const communityMerged = applyLocalMixOverlay(community, localMixByKeyRef.current);
       setItems(merged);
-      setCommunityRemote(applyLocalMixOverlay(community, localMixByKeyRef.current));
+      setCommunityRemote(communityMerged);
+      writeLoadCache(`library:${asHouseLibrary ? "house" : "own"}`, {
+        own: merged,
+        community: communityMerged,
+      });
       setPending((prev) => {
         const stored = loadPendingGenerations();
         const storedIds = new Set(stored.map((p) => p.jobId));
@@ -1568,9 +1584,20 @@ export default function LibraryView({
   }, [asHouseLibrary]);
 
   useEffect(() => {
-    // If we already have SSR-prefetched items, avoid flashing a loading state;
-    // still refresh in the background so the list stays current.
-    void load();
+    const cached = readLoadCache<{
+      own: LibraryMeditationItem[];
+      community: LibraryMeditationItem[];
+    }>(`library:${asHouseLibrary ? "house" : "own"}`);
+    const haveSeed =
+      Array.isArray(initialItems) ||
+      Boolean(cached?.own?.length || cached?.community?.length);
+    if (cached && !Array.isArray(initialItems)) {
+      setItems(cached.own ?? []);
+      setCommunityRemote(cached.community ?? []);
+      setLoading(false);
+    }
+    // Cached or prefetched rows stay on screen; refresh quietly.
+    void load(haveSeed ? { silent: true } : undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2425,7 +2452,10 @@ export default function LibraryView({
             ‹ {LIBRARY_DETAIL_FROM_LABEL[detailFrom]}
           </Link>
           {stillLoading ? (
-            <p className="mt-4 text-sm text-muted">Loading…</p>
+            <DelayedPlaceholder active onRetry={() => void load()}>
+              {/* <p className="mt-4 text-sm text-muted">Loading…</p> */}
+              <DetailPlaceholder />
+            </DelayedPlaceholder>
           ) : (
             <div className="mt-4 rounded-2xl border border-border bg-card px-5 py-10 text-center">
               <h2 className="font-display text-xl font-medium tracking-tight">
@@ -2963,6 +2993,17 @@ export default function LibraryView({
     </div>
   );
 
+  const listAwaitingFirstLoad =
+    libraryTab !== "programs" &&
+    loading &&
+    pagedVisibleItems.length === 0 &&
+    !showLibraryStoryPin;
+  const listGate = useDelayedLoading(listAwaitingFirstLoad, loadAttempt);
+  const retryLibrary = () => {
+    setLoadAttempt((n) => n + 1);
+    void load();
+  };
+
   return (
     <>
     <div
@@ -3177,7 +3218,12 @@ export default function LibraryView({
             {programsError}
           </p>
         ) : programsLoading && programs.length === 0 ? (
-          <p className="mt-3 text-sm text-muted md:mt-2">Loading programs…</p>
+          <div className="mt-3 md:mt-2">
+            {/* <p className="mt-3 text-sm text-muted md:mt-2">Loading programs…</p> */}
+            <DelayedPlaceholder active onRetry={() => window.location.reload()}>
+              <LibraryListPlaceholder mode="list" />
+            </DelayedPlaceholder>
+          </div>
         ) : programsReady && programs.length === 0 ? (
           <div className="mt-3 w-full min-w-0 rounded-2xl border border-border bg-card px-5 py-10 text-center md:mt-2 sm:px-10">
             <h2 className="font-display text-xl font-medium tracking-tight">
@@ -3218,7 +3264,12 @@ export default function LibraryView({
           }
           if (programPathKey && !exploring) {
             return (
-              <p className="mt-10 text-sm text-muted">Loading programs…</p>
+              <>
+                {/* <p className="mt-10 text-sm text-muted">Loading programs…</p> */}
+                <DelayedPlaceholder active onRetry={() => window.location.reload()}>
+                  <LibraryListPlaceholder mode="list" count={3} />
+                </DelayedPlaceholder>
+              </>
             );
           }
           if (exploring) {
@@ -3368,36 +3419,53 @@ export default function LibraryView({
             </ul>
           );
         })()
-      ) : error ? (
-        <p className="mt-6 w-full min-w-0 rounded-xl border border-border bg-card px-4 py-3 text-sm text-danger">
-          {error}
-        </p>
+      ) : error && pagedVisibleItems.length === 0 && !loading ? (
+        <LoadError onRetry={retryLibrary} />
       ) : null}
 
-      {libraryTab !== "programs" &&
-      libraryTab === "meditations" &&
-      loading &&
-      pagedVisibleItems.length === 0 &&
-      !showLibraryStoryPin ? (
-        <p className="mt-6 text-sm text-muted">Loading…</p>
+      {error && pagedVisibleItems.length > 0 ? (
+        <LoadError compact onRetry={retryLibrary} />
+      ) : null}
+
+      {libraryTab !== "programs" && listAwaitingFirstLoad ? (
+        listGate.timedOut ? (
+          <LoadError onRetry={retryLibrary} />
+        ) : listGate.showPlaceholder ? (
+          // <p className="mt-6 text-sm text-muted">Loading…</p>
+          <LibraryListPlaceholder
+            mode={!isMobileLayout && viewMode === "grid" ? "grid" : "list"}
+          />
+        ) : null
       ) : libraryTab !== "programs" &&
         pagedVisibleItems.length === 0 &&
         !showLibraryStoryPin ? (
-        <p className={`${libraryTab === "community" ? "mt-4" : "mt-6"} w-full min-w-0 text-sm text-muted`}>
-          {searchQuery.trim() ? (
-            "No meditations match your search."
-          ) : libraryTab === "community" ? (
-            favouritesOnly
-              ? "No favourite community meditations yet."
-              : categoryFilter === "all"
-                ? "No community meditations yet. Popular sessions will show up here."
-                : `No community meditations in ${categoryFilter} yet.`
-          ) : favouritesOnly ? (
-            "No favourite meditations yet."
-          ) : (
-            "No meditation audio yet. Generate one from Create — it will appear here after upload."
-          )}
-        </p>
+        searchQuery.trim() || (libraryTab === "community" && categoryFilter !== "all") || favouritesOnly ? (
+          <EmptyState
+            message={
+              searchQuery.trim()
+                ? "Nothing matches these filters"
+                : favouritesOnly
+                  ? "Nothing matches these filters"
+                  : "Nothing matches these filters"
+            }
+            actionLabel="Clear filters"
+            onAction={() => {
+              setSearchQuery("");
+              setFavouritesOnly(false);
+              setCategoryFilter("all");
+            }}
+          />
+        ) : (
+          <EmptyState
+            message={
+              libraryTab === "community"
+                ? "No community meditations yet"
+                : "No meditations yet"
+            }
+            actionLabel={libraryTab === "community" ? undefined : "Create"}
+            href={libraryTab === "community" ? undefined : "/meditate/create"}
+          />
+        )
       ) : libraryTab !== "programs" ? (
         <ul
           className={

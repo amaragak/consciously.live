@@ -9,6 +9,7 @@ import {
   type ScriptPauseBand,
   type ScriptSegment,
 } from "./script-pause-bands";
+import { applyLongPauseScale } from "./meditation-length-fit";
 
 export type LibraryScriptChunk = {
   index: number;
@@ -102,8 +103,18 @@ export function buildLibraryScriptChunksFromScript(params: {
   pauseScale: number;
   pauseBands?: Record<ScriptPauseBand, number>;
   meditationTitle?: string | null;
+  /** Long-pause scale from the length fit (pauses of 3 s or more after the title intro). */
+  longPauseScale?: number;
+  fixedSegments?: number;
 }): LibraryScriptChunk[] {
-  const segments = parseScriptIntoSegments(params.ttsScript, params.pauseBands);
+  const segments = applyLongPauseScale(
+    parseScriptIntoSegments(params.ttsScript, params.pauseBands),
+    {
+      scale: params.longPauseScale ?? 1,
+      pauseScale: params.pauseScale,
+      fixedSegments: params.fixedSegments ?? 0,
+    },
+  );
   return buildLibraryScriptChunks({
     segments,
     speechDurationsMs: params.speechDurationsMs,

@@ -20,7 +20,7 @@ export type CreateOneFlowStep = "start" | "shape" | "sound";
 
 export type CreateFlowProgramMode = "one" | "perSession";
 
-export type MeditationLengthMinutes = 2 | 5 | 10 | 20;
+export type MeditationLengthMinutes = 5 | 10 | 20;
 
 export type CreateFlowContextKind =
   | "style"
@@ -115,7 +115,7 @@ export type CreateOneFlowState = {
   chat: CreateFlowChatTurn[];
   /** Style-question answers keyed by question index or id. */
   answers: Record<string, string>;
-  lengthMinutes: 2 | 5 | 10 | 20;
+  lengthMinutes: 5 | 10 | 20;
   /** Set when Surprise me picked a seed script. */
   surpriseScript?: string | null;
 };
@@ -123,7 +123,16 @@ export type CreateOneFlowState = {
 export function coerceMeditationLengthMinutes(
   n: unknown,
 ): MeditationLengthMinutes {
-  if (n === 2 || n === 5 || n === 10 || n === 20) return n;
+  // v9: 2 maps to nearest allowed (5). Was: if (n === 2 || n === 5 || n === 10 || n === 20) return n;
+  if (n === 5 || n === 10 || n === 20) return n;
+  if (n === 2) return 5;
+  const num = typeof n === "number" ? n : Number(n);
+  if (Number.isFinite(num) && num > 0) {
+    const opts: MeditationLengthMinutes[] = [5, 10, 20];
+    return opts.reduce((best, o) =>
+      Math.abs(o - num) < Math.abs(best - num) ? o : best,
+    );
+  }
   return 5;
 }
 
@@ -184,7 +193,7 @@ export function dropStyleIfProgramAttached(
 }
 
 export function emptyCreateOneFlowState(
-  lengthMinutes: 2 | 5 | 10 | 20 = 5,
+  lengthMinutes: 5 | 10 | 20 = 5,
 ): CreateOneFlowState {
   return {
     v: 1,

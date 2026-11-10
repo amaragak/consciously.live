@@ -4,19 +4,33 @@
  */
 
 import type { MeditationDelivery } from "@/lib/meditation-delivery";
+import {
+  defaultDeliveryProfiles,
+  defaultWpmFor,
+  speechShareFromPauseRules as creditSpeechShare,
+} from "@/lib/delivery-profiles";
+
+const SEEDED = defaultDeliveryProfiles();
 
 /** Spoken share of total length by delivery (defaults until measured). */
 export const DEFAULT_SPOKEN_SHARE: Record<MeditationDelivery, number> = {
-  casual: 0.92,
-  guided: 0.55,
-  open_sits: 0.22,
+  casual: creditSpeechShare(SEEDED, "casual"),
+  guided: creditSpeechShare(SEEDED, "guided"),
+  open_sits: creditSpeechShare(SEEDED, "open_sits"),
 };
 
-/** Default WPM until a voice is measured. */
-export const DEFAULT_VOICE_WPM = 140;
+/** Fallback WPM by delivery when a voice has no Live measurement. */
+export const DEFAULT_WPM_BY_DELIVERY: Record<MeditationDelivery, number> = {
+  casual: defaultWpmFor(SEEDED, "casual"),
+  guided: defaultWpmFor(SEEDED, "guided"),
+  open_sits: defaultWpmFor(SEEDED, "open_sits"),
+};
+
+/** Default WPM until a voice is measured. Casual rate, used when delivery is unknown. */
+export const DEFAULT_VOICE_WPM = DEFAULT_WPM_BY_DELIVERY.casual;
 
 /** Average characters per spoken word (estimate). */
-export const AVG_CHARS_PER_WORD = 5.2;
+export const AVG_CHARS_PER_WORD = SEEDED.shared.charsPerWord;
 
 /** Base script-generation cost in credits. */
 export const DEFAULT_SCRIPT_BASE_CREDITS = 1;
@@ -35,6 +49,8 @@ export type MeditationCreditEstimateInput = {
   voiceWpm?: number | null;
   /** Measured spoken share for this delivery; falls back to default. */
   spokenShare?: number | null;
+  /** Characters per spoken word. Falls back to the shared profile default. */
+  charsPerWord?: number | null;
   proMultiplier?: number;
   scriptBaseCredits?: number;
   charsPerCreditStandard?: number;
@@ -64,7 +80,11 @@ export function estimateMeditationCredits(
   const wpm =
     typeof input.voiceWpm === "number" && input.voiceWpm > 0
       ? input.voiceWpm
-      : DEFAULT_VOICE_WPM;
+      : DEFAULT_WPM_BY_DELIVERY[delivery];
+  const charsPerWord =
+    typeof input.charsPerWord === "number" && input.charsPerWord > 0
+      ? input.charsPerWord
+      : AVG_CHARS_PER_WORD;
   const proMultiplier = Math.max(
     1,
     input.proMultiplier ?? DEFAULT_PRO_VOICE_MULTIPLIER,
@@ -80,7 +100,7 @@ export function estimateMeditationCredits(
 
   const spokenMinutes = lengthMinutes * spokenShare;
   const estimatedCharacters = Math.round(
-    spokenMinutes * wpm * AVG_CHARS_PER_WORD,
+    spokenMinutes * wpm * charsPerWord,
   );
   const tierRate = input.isProVoice ? proMultiplier : 1;
   const voiceCreditsRaw = (estimatedCharacters / charsPerCredit) * tierRate;

@@ -925,7 +925,10 @@ export function AdminReadPanel() {
           </button>
         </div>
         {loading ? (
-          <p className="mt-4 text-sm text-muted">Loading…</p>
+          <>
+          {/* <p className="mt-4 text-sm text-muted">Loading…</p> */}
+          <span className="mm-placeholder mt-4 block h-4 w-48 rounded-md" aria-hidden />
+          </>
         ) : error ? (
           <p className="mt-4 text-sm text-danger" role="alert">
             {error}

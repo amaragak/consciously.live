@@ -191,7 +191,8 @@ export function ReadRichEditor({
   if (!editor) {
     return (
       <div className="mt-1 min-h-[16rem] rounded-lg border border-border bg-background px-3 py-3 text-sm text-muted">
-        Loading editor…
+        {/* Loading editor… */}
+        <span className="mm-placeholder block h-4 w-32 rounded-md" aria-hidden />
       </div>
     );
   }

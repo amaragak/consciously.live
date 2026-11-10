@@ -651,6 +651,7 @@ export function AppTopBar({
         aria-hidden
         className="pointer-events-none absolute inset-0 overflow-hidden max-md:hidden"
       >
+        <div className="app-top-bar-paisley" />
         {/* Desktop sun center: icon inset + half of 28px LogoMark. */}
         <span
           className="app-header-sun-glow absolute top-1/2 hidden h-32 w-64 -translate-x-1/2 -translate-y-1/2 blur-md lg:block"

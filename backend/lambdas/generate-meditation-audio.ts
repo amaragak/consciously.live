@@ -42,7 +42,55 @@ import {
   normalizeTtsProvider,
   type TtsProvider,
 } from "./_shared/orpheus-voices";
-import { buildMeditationScriptGenerationPrompt } from "./_shared/meditation-script-generate-prompt";
+import {
+  buildLengthRevisionPrompt,
+  buildMeditationScriptGenerationPrompt,
+} from "./_shared/meditation-script-generate-prompt";
+import {
+  fixFurthestSections,
+  furthestSectionFixes,
+  joinSectionTexts,
+  measurePlannedSections,
+  planScriptSections,
+  sessionTotals,
+  writeScriptSections,
+  type ScriptSectionPlan,
+  type ScriptSectionText,
+  type SectionMeasure,
+  type SessionTotals,
+} from "./_shared/script-section-generate";
+import {
+  countSpokenWords,
+  fitLongPauseScale,
+  fitLongPauseScaleWithPlan,
+  fixedLeadSegments,
+  lengthPlan,
+  lengthRevisionTargets,
+  lengthWithin,
+  loadVoicePaceTable,
+  predictStemLength,
+  PRE_AUDIO_SCALE_MAX,
+  PRE_AUDIO_SCALE_MIN,
+  productionSlowing,
+  resolveVoicePace,
+  type VoicePace,
+} from "./_shared/meditation-length-fit";
+import {
+  applyCorrectionToPauseSeconds,
+  applyCorrectionToWords,
+  factorsFor,
+  // v9 live learn superseded — factors set only by calibration batch.
+  // learnFromSectionMeasures,
+  // learnFromSingleScript,
+  type ScriptTargetCorrection,
+} from "./_shared/script-target-correction";
+import {
+  correctionForModel,
+  defaultScriptGenerationSettings,
+  // markModelCalibrated,
+  resolveScriptModelId,
+  type ScriptGenerationSettings,
+} from "./_shared/script-generation-settings";
 import {
   fishPauseTagStyleForModel,
   parseScriptIntoSegments,
@@ -71,13 +119,31 @@ import {
   synthesizeFishPcmFxOla,
   synthesizeSpeechifyPcmFxOla,
   type SpeechifyDryPcmChunk,
+  type PcmLengthFitResult,
 } from "./_shared/speechify-pcm-fx-ola";
 import {
   buildLibraryScriptChunksFromScript,
   type LibraryScriptChunk,
 } from "./_shared/library-script-chunks";
-import { VOICE_FX_PCM_SR } from "./_shared/voice-fx-ffmpeg-chain";
-import { getVoiceSpeaker, loadPauseBandSeconds } from "./_shared/voice-admin";
+import { pcm24kS16leToAac44100, VOICE_FX_PCM_SR } from "./_shared/voice-fx-ffmpeg-chain";
+import { getVoiceSpeaker, loadPauseBandSeconds, loadStyleVoicePrefs } from "./_shared/voice-admin";
+import {
+  defaultWpmFor,
+  pauseRulesForPrompt,
+  pauseRulesForSectionPrompt,
+  defaultDeliveryProfiles,
+  sentenceBreakMs as deliverySentenceBreakMs,
+  silenceShareFor,
+  speechShareFor,
+  type DeliveryId,
+} from "./_shared/delivery-profiles";
+import {
+  loadDeliveryProfileRecord,
+  logMeditationLength,
+  saveTargetCorrection,
+} from "./_shared/voice-calibration-store";
+import { countWords /* , trimScriptToWordCap */ } from "./_shared/script-text-metrics";
+// import { getFleetScriptWordTargets } from "./_shared/script-duration-planning-prompt";
 import {
   VOICE_FX_WET_PRESET,
   clampVoiceFxDial,
@@ -149,6 +215,12 @@ export type GenerationPhaseTimings = {
   /** Handler entry → library row written (or worker finish). */
   workerMs?: number;
   scriptMs?: number;
+  /** Wall for the plan call. */
+  planMs?: number;
+  /** Wall for writing all sections. */
+  sectionsWriteMs?: number;
+  /** Wall for parallel per-section TTS + stitch. */
+  sectionTtsMs?: number;
   metadataMs?: number;
   /** Sum of per-section TTS API waits (not wall when pipelined with FX). */
   ttsTotalMs?: number;
@@ -873,6 +945,9 @@ async function generateScriptFromClaude(params: {
   /** Experienced pacing — cued open sits (~1–2 min); same Length target. */
   longerBreaks?: boolean;
   deliveryStyle?: "casual" | "guided" | "open_sits";
+  pacing?: { wpm: number; speechShare: number; bandFraction?: number };
+  pauseRules?: string;
+  lengthFit?: Parameters<typeof buildMeditationScriptGenerationPrompt>[0]["lengthFit"];
 }): Promise<{
   script: string;
   usage: { input_tokens: number; output_tokens: number } | null;
@@ -886,6 +961,9 @@ async function generateScriptFromClaude(params: {
     includeSegmentPlaceholders: false,
     longerBreaks: params.longerBreaks === true,
     deliveryStyle: params.deliveryStyle,
+    pacing: params.pacing,
+    pauseRules: params.pauseRules,
+    lengthFit: params.lengthFit,
   });
 
   const upstream = await fetch(ANTHROPIC_URL, {
@@ -926,6 +1004,55 @@ async function generateScriptFromClaude(params: {
   if (!text) {
     return Promise.reject(new Error("Empty script returned by Anthropic"));
   }
+  const usage = parseAnthropicMessageUsage(responseText);
+  if (usage) {
+    void recordClaudeUsage({
+      model: params.model,
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      feature: "meditation-script",
+    });
+  }
+  return { script: text, usage };
+}
+
+/** One length revision: shorten or extend the spoken words, keeping details, structure and pause markers. */
+async function reviseScriptLengthFromClaude(params: {
+  apiKey: string;
+  model: string;
+  script: string;
+  words: number;
+  targetWords: number;
+  /** Set when the silences also need to change (pre-render seconds as written). */
+  pauses?: { seconds: number; targetSeconds: number };
+}): Promise<{
+  script: string;
+  usage: { input_tokens: number; output_tokens: number } | null;
+}> {
+  const { system, userContent } = buildLengthRevisionPrompt(params);
+  const upstream = await fetch(ANTHROPIC_URL, {
+    method: "POST",
+    headers: {
+      "x-api-key": params.apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(withClaudeThinkingOff({
+      model: params.model,
+      max_tokens: 8192,
+      system,
+      messages: [{ role: "user", content: userContent } satisfies ChatTurn],
+    })),
+  });
+  const responseText = await upstream.text();
+  if (!upstream.ok) {
+    throw new Error(`Anthropic length revision failed: ${responseText.slice(0, 2000)}`);
+  }
+  const parsed = JSON.parse(responseText) as {
+    content?: Array<{ type?: string; text?: string }>;
+  };
+  const text = parsed.content?.find((c) => c?.type === "text")?.text?.trim() ?? "";
+  if (!text) throw new Error("Empty length revision returned by Anthropic");
   const usage = parseAnthropicMessageUsage(responseText);
   if (usage) {
     void recordClaudeUsage({
@@ -1033,6 +1160,8 @@ async function synthesizeSegmentMp3(params: {
   voiceId: string;
   speed: number;
   fishTtsModel?: string;
+  /** Speechify sentence `<break>` cap. Longer silences stay `[[PAUSE]]` audio. */
+  sentenceBreakMs?: number;
 }): Promise<Buffer> {
   if (params.provider === "fish") {
     if (!params.fishApiKey) throw new Error("Fish API key is not configured");
@@ -1056,7 +1185,9 @@ async function synthesizeSegmentMp3(params: {
       emotion: params.emotion ?? MEDITATION_SPEECHIFY_EMOTION,
       loudnessNormalization: params.speechifyLoudnessNormalization,
       // Chunk first (caller); Speechify `<break>` after , / . ; [[PAUSE]] → ffmpeg.
-      sentenceBreakMs: SPEECHIFY_PERIOD_BREAK_MS,
+      // sentenceBreakMs: SPEECHIFY_PERIOD_BREAK_MS,
+      sentenceBreakMs: params.sentenceBreakMs ?? SPEECHIFY_PERIOD_BREAK_MS,
+      breakAllSentenceEnds: true,
       commaBreakMs: SPEECHIFY_COMMA_BREAK_MS,
     });
   }
@@ -1088,6 +1219,8 @@ async function synthesizeScriptWithPauses(params: {
   pauseBands?: Awaited<ReturnType<typeof loadPauseBandSeconds>>;
   /** Multiply band seconds at render (default PAUSE_RENDER_SCALE). */
   pauseScale?: number;
+  /** Speechify sentence break, already capped at the TTS break limit. */
+  sentenceBreakMs?: number;
   /** When set, loudnorm + ffmpeg IR FX run once over the assembled track. */
   voiceFx?: { preset: string; bucket: string; jobId: string };
 }): Promise<{
@@ -1112,6 +1245,7 @@ async function synthesizeScriptWithPauses(params: {
     speechifyRate: params.speechifyRate,
     emotion: params.emotion,
     speechifyLoudnessNormalization: params.speechifyLoudnessNormalization,
+    sentenceBreakMs: params.sentenceBreakMs,
   };
   const voiceFx = params.voiceFx;
   const sectionTimings: GenerationSectionTiming[] = [];
@@ -1771,8 +1905,12 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   const creationProvenance = sanitizeMeditationCreationProvenance(
     jobItem.creationProvenance,
   );
-  /** Dev A/B from the create flow; unsupported ids fall back to Haiku. */
-  const claudeModel = coerceClaudeModel(body.claudeModel);
+  /** Finalized after delivery profiles load (admin script model + per-model factors). */
+  let claudeModel = resolveScriptModelId({
+    settings: defaultScriptGenerationSettings(),
+    bodyModel: body.claudeModel,
+    preferBody: typeof body.claudeModel === "string" && body.claudeModel.trim().length > 0,
+  });
   const targetMinutes = coerceMeditationTargetMinutes(
     body.meditationTargetMinutes,
   );
@@ -1787,6 +1925,74 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   const longerBreaks =
     body.longerBreaks === true || deliveryStyle === "open_sits";
   const pauseRenderScale = PAUSE_RENDER_SCALE;
+  const pacingDelivery: DeliveryId = deliveryStyle ?? "guided";
+  let scriptPacing:
+    | { wpm: number; speechShare: number; bandFraction: number }
+    | undefined;
+  let scriptPauseRules: string | undefined;
+  let speechifySentenceBreakMs = SPEECHIFY_PERIOD_BREAK_MS;
+  let lengthTolerancePct = 10;
+  let silenceShare = 0.5;
+  const sharedDefaults = defaultDeliveryProfiles().shared;
+  let sectionWordCap = sharedDefaults.sectionWordCap;
+  let sectionWordMin = sharedDefaults.sectionWordMin;
+  let planMinWords = sharedDefaults.planMinWords;
+  let scriptGeneration: ScriptGenerationSettings = defaultScriptGenerationSettings();
+  let targetCorrection: ScriptTargetCorrection =
+    scriptGeneration.targetCorrectionByModel[scriptGeneration.scriptModelId]!;
+  // Measured WPM is not used for scripts yet.
+  // let calibratedSpeechRate: number | null = null;
+  try {
+    const profileRecord = await loadDeliveryProfileRecord();
+    const bandFraction = profileRecord.profiles.shared.lengthTolerancePct / 100;
+    const wpm = defaultWpmFor(profileRecord.profiles, pacingDelivery);
+    const speechShare = speechShareFor(profileRecord.profiles, pacingDelivery);
+    scriptPacing = {
+      wpm,
+      speechShare,
+      bandFraction,
+    };
+    scriptPauseRules = pauseRulesForPrompt(profileRecord.profiles, pacingDelivery);
+    speechifySentenceBreakMs = deliverySentenceBreakMs(profileRecord.profiles);
+    lengthTolerancePct = profileRecord.profiles.shared.lengthTolerancePct;
+    silenceShare = silenceShareFor(profileRecord.profiles, pacingDelivery);
+    sectionWordCap = profileRecord.profiles.shared.sectionWordCap;
+    sectionWordMin = profileRecord.profiles.shared.sectionWordMin;
+    planMinWords = profileRecord.profiles.shared.planMinWords;
+    scriptGeneration = profileRecord.scriptGeneration;
+    targetCorrection = profileRecord.targetCorrection;
+  } catch (e) {
+    console.warn("delivery profile unavailable; using fleet word defaults", e);
+  }
+  claudeModel = resolveScriptModelId({
+    settings: scriptGeneration,
+    bodyModel: body.claudeModel,
+    preferBody: typeof body.claudeModel === "string" && body.claudeModel.trim().length > 0,
+  });
+  {
+    const seeded = correctionForModel(
+      scriptGeneration,
+      claudeModel,
+      scriptGeneration.scriptModelId,
+    );
+    scriptGeneration = seeded.settings;
+    targetCorrection = seeded.correction;
+    if (seeded.isNew) {
+      console.log("seeded target correction for new script model", {
+        claudeModel,
+        from: scriptGeneration.scriptModelId,
+      });
+      try {
+        await saveTargetCorrection({
+          targetCorrection,
+          claudeModelId: claudeModel,
+          by: "script-model-seed",
+        });
+      } catch (e) {
+        console.warn("could not persist seeded correction", e);
+      }
+    }
+  }
   const styleTrimmed = meditationStyle.trim();
   const isJournalCatalog =
     journalModeFromJob ||
@@ -1876,6 +2082,94 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   });
 
 
+  const speechifyRatePct =
+    typeof body.speechifyRate === "number" && Number.isFinite(body.speechifyRate)
+      ? body.speechifyRate
+      : speaker?.speechifyRate ?? null;
+  const fallbackWpm = scriptPacing?.wpm ?? 100;
+  let voicePace: VoicePace = resolveVoicePace({
+    entry: undefined,
+    slowing: 1,
+    fallbackWpm,
+  });
+  try {
+    const paceTable = await loadVoicePaceTable();
+    voicePace = resolveVoicePace({
+      entry: paceTable.get(referenceId),
+      slowing: productionSlowing({
+        brand: ttsProvider === "speechify" ? "speechify" : "fish",
+        speechifyRatePct,
+        fishSpeed: speechSpeed,
+      }),
+      fallbackWpm,
+    });
+  } catch (e) {
+    console.warn("voice pace unavailable; using delivery default WPM", e);
+  }
+  if (scriptPacing) {
+    scriptPacing = {
+      ...scriptPacing,
+      wpm: voicePace.effectiveWpm,
+      speechShare: 1 - silenceShare,
+    };
+  }
+  console.log("voice pace", { ...voicePace, silenceShare, lengthTolerancePct });
+
+  // Requested length is the whole session: lead-in, voice stem, then the bed tail.
+  const sessionLeadInSeconds =
+    typeof body.leadInSeconds === "number" &&
+    Number.isFinite(body.leadInSeconds) &&
+    body.leadInSeconds >= 0
+      ? body.leadInSeconds
+      : 1.5;
+  const sessionTailSeconds =
+    backgroundLayers.length > 0 && body.fadeOut !== false ? 20 : 0;
+  const lengthTargetSeconds = Math.max(
+    60,
+    targetMinutes * 60 - sessionLeadInSeconds - sessionTailSeconds,
+  );
+  const commaBreakSeconds =
+    ttsProvider === "speechify" ? SPEECHIFY_COMMA_BREAK_MS / 1000 : 0;
+  const fitPauseBands = await loadPauseBandSeconds().catch(() => undefined);
+  const plan = lengthPlan({
+    targetSeconds: lengthTargetSeconds,
+    silenceShare,
+    effectiveWpm: voicePace.effectiveWpm,
+    pauseScale: pauseRenderScale,
+    commaBreakSeconds,
+    titleIntro: true,
+  });
+  const totals: SessionTotals = sessionTotals({
+    stemSeconds: lengthTargetSeconds,
+    silenceShare,
+    medianWpm:
+      voicePace.medianWpm != null
+        ? voicePace.medianWpm * voicePace.slowing
+        : voicePace.effectiveWpm,
+    voiceWpm: voicePace.effectiveWpm,
+    pauseScale: pauseRenderScale,
+    commaBreakSeconds,
+    titleIntro: true,
+  });
+  console.log("length plan", {
+    targetMinutes,
+    sessionLeadInSeconds,
+    sessionTailSeconds,
+    stemTargetSeconds: lengthTargetSeconds,
+    ...plan,
+    totals,
+    sectionWordCap,
+    sectionWordMin,
+    planMinWords,
+  });
+  let sectionsUsed = false;
+  let sectionPlan: ScriptSectionPlan | null = null;
+  let sectionTexts: ScriptSectionText[] = [];
+  let sectionFirstDraft: SectionMeasure[] | null = null;
+  let sectionFixIds: string[] = [];
+  let planMs = 0;
+  let sectionsWriteMs = 0;
+
   let scriptTextUsed = scriptText;
   const shouldGenerateScript = !scriptTextUsed;
   let claudeWorkerInputTokens = 0;
@@ -1900,36 +2194,172 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   }
   try {
     if (shouldGenerateScript) {
-      console.log("generating script from Claude", {
-        meditationStylePresent: Boolean(meditationStyle?.trim()),
-        targetMinutes,
-        longerBreaks,
-      });
       const scriptStarted = Date.now();
       const claudeKey = await getClaudeApiKey();
-      const gen = await generateScriptFromClaude({
-        apiKey: claudeKey,
-        model: claudeModel,
-        meditationStyle,
-        transcript,
-        speechSpeed: deliveryStyle === "casual" ? 1 : speechSpeed,
-        journalMode: journalModeFromJob,
-        targetMinutes,
-        longerBreaks,
-        deliveryStyle,
-      });
-      scriptTextUsed = gen.script;
-      generationTimings.phases.scriptMs = elapsedMs(scriptStarted);
-      if (gen.usage) {
-        claudeWorkerInputTokens += gen.usage.input_tokens;
-        claudeWorkerOutputTokens += gen.usage.output_tokens;
+      const lengthFit = {
+        effectiveWpm: voicePace.effectiveWpm,
+        silenceSharePct: silenceShare * 100,
+        words: totals.totalWords,
+        pauseSecondsWritten: totals.totalPauseSeconds,
+        ...(fitPauseBands ? { pauseBands: fitPauseBands } : {}),
+      };
+      const useSections = totals.totalWords >= planMinWords;
+      if (!useSections) {
+        // v5: short sessions skip plan/split — one call with the v7 Length paragraph.
+        console.log("generating script from Claude (single call; under planMinWords)", {
+          meditationStylePresent: Boolean(meditationStyle?.trim()),
+          targetMinutes,
+          longerBreaks,
+          totalWords: totals.totalWords,
+          planMinWords,
+        });
+        const cellFactors = factorsFor(
+          targetCorrection,
+          pacingDelivery,
+          targetMinutes,
+        );
+        const singleLengthFit = {
+          ...lengthFit,
+          words: applyCorrectionToWords(
+            lengthFit.words ?? totals.totalWords,
+            cellFactors.words,
+          ),
+          pauseSecondsWritten: applyCorrectionToPauseSeconds(
+            lengthFit.pauseSecondsWritten ?? totals.totalPauseSeconds,
+            cellFactors.pauses,
+          ),
+        };
+        const generated = await generateScriptFromClaude({
+          apiKey: claudeKey,
+          model: claudeModel,
+          meditationStyle,
+          transcript,
+          speechSpeed: deliveryStyle === "casual" ? 1 : speechSpeed,
+          journalMode: journalModeFromJob,
+          targetMinutes,
+          longerBreaks,
+          deliveryStyle,
+          pacing: scriptPacing,
+          pauseRules: scriptPauseRules,
+          lengthFit: singleLengthFit,
+        });
+        if (generated.usage) {
+          claudeWorkerInputTokens += generated.usage.input_tokens;
+          claudeWorkerOutputTokens += generated.usage.output_tokens;
+        }
+        scriptTextUsed = generated.script;
+        generationTimings.phases.scriptMs = elapsedMs(scriptStarted);
+        console.log("generated script", {
+          chars: scriptTextUsed.length,
+          targetMinutes,
+          longerBreaks,
+          scriptMs: generationTimings.phases.scriptMs,
+          path: "single",
+          correction: cellFactors,
+        });
+        // Live learn commented out — factors set only by calibration batch.
+      } else {
+        console.log("generating script from Claude (plan + sections)", {
+          meditationStylePresent: Boolean(meditationStyle?.trim()),
+          targetMinutes,
+          longerBreaks,
+          totalWords: totals.totalWords,
+          planMinWords,
+        });
+        const sharedPrompt = {
+          transcript,
+          meditationStyle,
+          journalMode: journalModeFromJob,
+          targetMinutes,
+          speechSpeed: deliveryStyle === "casual" ? 1 : speechSpeed,
+          longerBreaks,
+          deliveryStyle,
+          pacing: scriptPacing,
+          pauseRules: pauseRulesForSectionPrompt(pacingDelivery),
+          lengthFit,
+        };
+        let styleInOrder = false;
+        try {
+          const prefs = await loadStyleVoicePrefs();
+          const key = styleTrimmed || "general";
+          styleInOrder = prefs[key]?.writeSectionsInOrder === true
+            || prefs[styleTrimmed]?.writeSectionsInOrder === true;
+        } catch {
+          /* */
+        }
+        const planned = await planScriptSections({
+          apiKey: claudeKey,
+          model: claudeModel,
+          shared: sharedPrompt,
+          totals,
+          wordCap: sectionWordCap,
+          wordMin: sectionWordMin,
+        });
+        planMs = planned.ms;
+        if (planned.usage) {
+          claudeWorkerInputTokens += planned.usage.input_tokens;
+          claudeWorkerOutputTokens += planned.usage.output_tokens;
+        }
+        sectionPlan = planned.plan;
+        const written = await writeScriptSections({
+          apiKey: claudeKey,
+          model: claudeModel,
+          shared: sharedPrompt,
+          plan: sectionPlan,
+          inOrder: styleInOrder,
+          correction: targetCorrection,
+          delivery: pacingDelivery,
+          minutes: targetMinutes,
+        });
+        sectionsWriteMs = written.ms;
+        if (written.usage) {
+          claudeWorkerInputTokens += written.usage.input_tokens;
+          claudeWorkerOutputTokens += written.usage.output_tokens;
+        }
+        sectionsUsed = true;
+        sectionTexts = written.sections;
+        sectionFirstDraft = measurePlannedSections(sectionTexts, sectionPlan, fitPauseBands);
+        // v9: section fix runs later only if pause scaling cannot save length.
+        console.log("script sections", {
+          plan: sectionPlan.sections.map((x) => ({ name: x.name, words: x.words, pause: x.pauseSeconds })),
+          firstDraft: sectionFirstDraft,
+          planMs,
+          sectionsWriteMs,
+          inOrder: styleInOrder,
+          planRetried: planned.retried,
+          correction: factorsFor(targetCorrection, pacingDelivery, targetMinutes),
+        });
+        scriptTextUsed = joinSectionTexts(sectionTexts);
+        // Live learn commented out — factors set only by calibration batch.
+        // Superseded by the length check before audio (pause scaling, then one revision).
+        /* if (scriptPacing) {
+          const band = getFleetScriptWordTargets({
+            targetMinutes,
+            speechSpeed: 1,
+            pacing: scriptPacing,
+          });
+          const before = countWords(scriptTextUsed);
+          if (before > band.max) {
+            scriptTextUsed = trimScriptToWordCap(scriptTextUsed, band.max);
+            console.log("trimmed script to delivery word cap", {
+              before,
+              after: countWords(scriptTextUsed),
+              max: band.max,
+            });
+          }
+        } */
+        generationTimings.phases.scriptMs = elapsedMs(scriptStarted);
+        console.log("generated script", {
+          chars: scriptTextUsed.length,
+          targetMinutes,
+          longerBreaks,
+          scriptMs: generationTimings.phases.scriptMs,
+          planMs,
+          sectionsWriteMs,
+          sections: sectionTexts.length,
+          path: "sections",
+        });
       }
-      console.log("generated script", {
-        chars: scriptTextUsed.length,
-        targetMinutes,
-        longerBreaks,
-        scriptMs: generationTimings.phases.scriptMs,
-      });
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Script generation failed";
@@ -2085,6 +2515,181 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     }
   };
 
+  // Length check before audio: speech vs the speech share, then total length.
+  let preAudioPauseScale = 1;
+  let lengthRevised = false;
+  let predictedSeconds: number | null = null;
+  let fitLeadSegments = 0;
+  /** Set when the script is > 10% short on words: pauses may not cover missing words. */
+  let maxLongPauseScale: number | undefined;
+  let scriptShort = false;
+  const predictBody = (bodyScript: string) => {
+    const tts = withSpokenMeditationTitleIntro(bodyScript, libraryTitle);
+    const lead = fixedLeadSegments(tts, bodyScript, fitPauseBands);
+    return {
+      lead,
+      pred: predictStemLength({
+        ttsScript: tts,
+        effectiveWpm: voicePace.effectiveWpm,
+        pauseBands: fitPauseBands,
+        pauseScale: pauseRenderScale,
+        fixedSegments: lead,
+        commaBreakSeconds,
+      }),
+    };
+  };
+  const plannedLongPauseSeconds = () =>
+    Math.max(0, (sectionPlan?.totalPauseSeconds ?? totals.totalPauseSeconds) * pauseRenderScale);
+  const scaleFor = (pred: ReturnType<typeof predictStemLength>) => {
+    const bandMax = Math.min(PRE_AUDIO_SCALE_MAX, maxLongPauseScale ?? PRE_AUDIO_SCALE_MAX);
+    const fitted = fitLongPauseScaleWithPlan({
+      speechSeconds: pred.speechSeconds,
+      fixedPauseSeconds: pred.fixedPauseSeconds,
+      longPauseSeconds: pred.longPauseSeconds,
+      plannedLongPauseSeconds: plannedLongPauseSeconds(),
+      targetSeconds: lengthTargetSeconds,
+      bandMin: PRE_AUDIO_SCALE_MIN,
+      bandMax,
+    });
+    return fitted.scale;
+  };
+  const atScale = (pred: ReturnType<typeof predictStemLength>, scale: number) =>
+    pred.speechSeconds + pred.fixedPauseSeconds + pred.longPauseSeconds * scale;
+  try {
+    let { lead, pred } = predictBody(scriptTextUsed);
+    const firstPredicted = pred.predictedSeconds;
+    const firstSpeech = pred.speechSeconds;
+    if (sectionsUsed && sectionPlan && pred.words < sectionPlan.totalWords * 0.9) {
+      scriptShort = true;
+      // v9: pause scaling toward the plan has no floor; 60–160% only beyond the plan.
+    }
+    // v9: fix sections only when pause scaling cannot bring length inside ±tolerance.
+    if (sectionsUsed && sectionPlan && sectionFirstDraft && shouldGenerateScript) {
+      const bandMax = Math.min(PRE_AUDIO_SCALE_MAX, maxLongPauseScale ?? PRE_AUDIO_SCALE_MAX);
+      const salvage = fitLongPauseScaleWithPlan({
+        speechSeconds: pred.speechSeconds,
+        fixedPauseSeconds: pred.fixedPauseSeconds,
+        longPauseSeconds: pred.longPauseSeconds,
+        plannedLongPauseSeconds: plannedLongPauseSeconds(),
+        targetSeconds: lengthTargetSeconds,
+        bandMin: PRE_AUDIO_SCALE_MIN,
+        bandMax,
+      });
+      const salvagedOk = lengthWithin(
+        atScale(pred, salvage.scale),
+        lengthTargetSeconds,
+        lengthTolerancePct,
+      );
+      if (!salvagedOk) {
+        const fixes = furthestSectionFixes(sectionFirstDraft, {
+          totalTargetWords: sectionPlan.totalWords,
+          force: true,
+        });
+        if (fixes.length) {
+          try {
+            const fixed = await fixFurthestSections({
+              apiKey: await getClaudeApiKey(),
+              model: claudeModel,
+              sections: sectionTexts,
+              fixes,
+            });
+            if (fixed.usage) {
+              claudeWorkerInputTokens += fixed.usage.input_tokens;
+              claudeWorkerOutputTokens += fixed.usage.output_tokens;
+            }
+            sectionTexts = fixed.sections;
+            sectionFixIds = fixes.map((f) => f.id);
+            scriptTextUsed = joinSectionTexts(sectionTexts);
+            ({ lead, pred } = predictBody(scriptTextUsed));
+            console.log("section fix (length unsavable by pause scale)", {
+              fixes,
+              salvage,
+              after: measurePlannedSections(sectionTexts, sectionPlan, fitPauseBands),
+            });
+          } catch (e) {
+            console.warn("section fix failed; keeping first draft", e);
+          }
+        }
+      } else {
+        console.log("section fix skipped; pause scale can save length", {
+          salvage,
+          firstDraftWords: sectionFirstDraft.reduce((a, m) => a + m.words, 0),
+          targetWords: sectionPlan.totalWords,
+        });
+      }
+    }
+    const speechOff = !lengthWithin(pred.speechSeconds, plan.speechSeconds, lengthTolerancePct);
+    if (!lengthWithin(pred.predictedSeconds, lengthTargetSeconds, lengthTolerancePct)) {
+      preAudioPauseScale = scaleFor(pred);
+    }
+    const totalOff = !lengthWithin(
+      atScale(pred, preAudioPauseScale),
+      lengthTargetSeconds,
+      lengthTolerancePct,
+    );
+    // Whole-script revision only when the section markers were missing (the section fix replaces it).
+    if (!sectionsUsed && (speechOff || totalOff) && shouldGenerateScript && pred.words > 0) {
+      const revisionTargets = lengthRevisionTargets({
+        pred,
+        plan,
+        pauseScale: pauseRenderScale,
+        tolerancePct: lengthTolerancePct,
+      });
+      const wordsBefore = pred.words;
+      try {
+        const revision = await reviseScriptLengthFromClaude({
+          apiKey: await getClaudeApiKey(),
+          model: claudeModel,
+          script: scriptTextUsed,
+          words: pred.words,
+          targetWords: revisionTargets.targetWords,
+          ...(revisionTargets.pauses ? { pauses: revisionTargets.pauses } : {}),
+        });
+        if (revision.usage) {
+          claudeWorkerInputTokens += revision.usage.input_tokens;
+          claudeWorkerOutputTokens += revision.usage.output_tokens;
+        }
+        scriptTextUsed = revision.script;
+        lengthRevised = true;
+        ({ lead, pred } = predictBody(scriptTextUsed));
+        preAudioPauseScale = lengthWithin(
+          pred.predictedSeconds,
+          lengthTargetSeconds,
+          lengthTolerancePct,
+        )
+          ? 1
+          : scaleFor(pred);
+        console.log("length revision", {
+          fromWords: wordsBefore,
+          targetWords: revisionTargets.targetWords,
+          pauses: revisionTargets.pauses,
+          words: pred.words,
+        });
+      } catch (e) {
+        console.warn("length revision failed; keeping script", e);
+      }
+    }
+    fitLeadSegments = lead;
+    predictedSeconds = atScale(pred, preAudioPauseScale);
+    console.log("length check before audio", {
+      stemTargetSeconds: lengthTargetSeconds,
+      firstPredicted: Math.round(firstPredicted),
+      firstSpeech: Math.round(firstSpeech),
+      speechTarget: Math.round(plan.speechSeconds),
+      predicted: Math.round(predictedSeconds),
+      speech: Math.round(pred.speechSeconds),
+      words: pred.words,
+      effectiveWpm: Math.round(voicePace.effectiveWpm),
+      preAudioPauseScale,
+      lengthRevised,
+      sectionsUsed,
+      targetWords: sectionPlan?.totalWords ?? totals.totalWords,
+      scriptShort,
+    });
+  } catch (e) {
+    console.warn("length check before audio failed", e);
+  }
+
   let fishKey: string | undefined;
   let speechifyKey: string | undefined;
   const speechifyLoudnessNormalization = body.skipSpeechifyLoudnorm !== true;
@@ -2129,6 +2734,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   /** Speechify PCM pipeline: dry chunks archived async (not served). */
   let dryPcmChunks: SpeechifyDryPcmChunk[] = [];
   let speechifyPcmPipeline = false;
+  let olaLengthFit: PcmLengthFitResult | null = null;
   /** Timed body chunks for Library follow-along (absolute stem ms). */
   let scriptChunks: LibraryScriptChunk[] = [];
   try {
@@ -2169,36 +2775,135 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           pauseRenderScale,
         },
       );
-      const result =
-        ttsProvider === "speechify"
-          ? await synthesizeSpeechifyPcmFxOla({
-              s3,
-              bucket: mediaBucketName,
+      const olaFit = {
+        speechTempo: voicePace.paceAdjust,
+        longPauseScale: preAudioPauseScale,
+        lengthFit: {
+          targetSeconds: lengthTargetSeconds,
+          tolerancePct: lengthTolerancePct,
+          fixedSegments: fitLeadSegments,
+          ...(maxLongPauseScale != null ? { maxScale: maxLongPauseScale } : {}),
+        },
+      };
+      const runOla = async (script: string, opts?: { encodeAac?: boolean; lengthFit?: typeof olaFit.lengthFit | null; fixedLead?: number }) => {
+        const fit =
+          opts && "lengthFit" in opts
+            ? opts.lengthFit === null
+              ? undefined
+              : opts.lengthFit
+            : olaFit.lengthFit;
+        const common = {
+          s3,
+          bucket: mediaBucketName,
+          script,
+          pauseBands,
+          pauseScale: pauseRenderScale,
+          applyFx: !skipVoiceFxEarly,
+          voiceFxDial,
+          speechTempo: olaFit.speechTempo,
+          longPauseScale: olaFit.longPauseScale,
+          ...(fit
+            ? {
+                lengthFit: {
+                  ...fit,
+                  fixedSegments: opts?.fixedLead ?? fit.fixedSegments,
+                },
+              }
+            : {}),
+          encodeAac: opts?.encodeAac !== false,
+        };
+        return ttsProvider === "speechify"
+          ? synthesizeSpeechifyPcmFxOla({
+              ...common,
               apiKey: speechifyKey!,
-              script: ttsScript,
               voiceId: referenceId,
               speechifyRate,
               speechifyLoudnessNormalization,
               emotion: MEDITATION_SPEECHIFY_EMOTION,
-              pauseBands,
-              pauseScale: pauseRenderScale,
-              applyFx: !skipVoiceFxEarly,
-              voiceFxDial,
+              sentenceBreakMs: speechifySentenceBreakMs,
             })
-          : await synthesizeFishPcmFxOla({
-              s3,
-              bucket: mediaBucketName,
+          : synthesizeFishPcmFxOla({
+              ...common,
               apiKey: fishKey!,
-              script: ttsScript,
               voiceId: referenceId,
               speed: speechSpeed,
               fishTtsModel,
-              pauseBands,
-              pauseScale: pauseRenderScale,
-              applyFx: !skipVoiceFxEarly,
-              voiceFxDial,
             });
+      };
+
+      let result: Awaited<ReturnType<typeof runOla>>;
+      const ttsSectionsStarted = Date.now();
+      if (sectionsUsed && sectionTexts.length > 1) {
+        // Per-section TTS in parallel, then stitch PCM and encode once.
+        const sectionScripts = sectionTexts.map((sec, i) =>
+          i === 0
+            ? withSpokenMeditationTitleIntro(sec.text, libraryTitle)
+            : sec.text,
+        );
+        const parts = await Promise.all(
+          sectionScripts.map((script, i) =>
+            runOla(script, {
+              encodeAac: false,
+              lengthFit: null,
+              fixedLead: i === 0 ? fitLeadSegments : 0,
+            }),
+          ),
+        );
+        const mixedPcm = Buffer.concat(parts.map((p) => p.mixedPcm ?? Buffer.alloc(0)));
+        let sampleOffset = 0;
+        const dryChunks = parts.flatMap((p) => {
+          const chunks = p.dryChunks.map((c) => ({
+            ...c,
+            startSample: c.startSample + sampleOffset,
+          }));
+          sampleOffset += (p.mixedPcm?.byteLength ?? 0) / 2;
+          return chunks;
+        });
+        const speechSeconds = parts.reduce((a, p) => a + p.lengthFit.speechSeconds, 0);
+        const pauseSeconds = parts.reduce((a, p) => a + p.lengthFit.pauseSeconds, 0);
+        const stemSeconds = parts.reduce((a, p) => a + p.lengthFit.stemSeconds, 0);
+        let longPauseScale = preAudioPauseScale;
+        let postScaled = false;
+        // Post-audio ±10%: if the stitch misses, re-run the joined script once with lengthFit.
+        if (!lengthWithin(stemSeconds, lengthTargetSeconds, lengthTolerancePct)) {
+          result = await runOla(ttsScript);
+          generationTimings.phases.sectionTtsMs = elapsedMs(ttsSectionsStarted);
+        } else {
+          const aacStarted = Date.now();
+          const deliveryAac = await pcm24kS16leToAac44100(mixedPcm);
+          generationTimings.phases.sectionTtsMs = elapsedMs(ttsSectionsStarted);
+          generationTimings.phases.aacEncodeMs = elapsedMs(aacStarted);
+          result = {
+            deliveryAac,
+            mixedPcm,
+            dryChunks,
+            voiceFxApplied: parts.some((p) => p.voiceFxApplied),
+            utf8Bytes: parts.reduce((a, p) => a + p.utf8Bytes, 0),
+            lengthFit: {
+              speechSeconds,
+              pauseSeconds,
+              stemSeconds,
+              longPauseScale,
+              postScaled,
+            },
+            timings: {
+              sections: parts.flatMap((p) => p.timings.sections),
+              phases: {
+                ttsPipelineMs: elapsedMs(ttsSectionsStarted),
+                ttsFxLoopMs: Math.max(...parts.map((p) => p.timings.phases.ttsFxLoopMs ?? 0)),
+                olaMs: parts.reduce((a, p) => a + (p.timings.phases.olaMs ?? 0), 0),
+                aacEncodeMs: generationTimings.phases.aacEncodeMs,
+                fxMs: parts.reduce((a, p) => a + (p.timings.phases.fxMs ?? 0), 0),
+              },
+            },
+          };
+        }
+      } else {
+        result = await runOla(ttsScript);
+      }
       mp3Buf = result.deliveryAac;
+      olaLengthFit = result.lengthFit;
+      pauseSecondsTotal = result.lengthFit.pauseSeconds;
       dryPcmChunks = result.dryChunks;
       voiceFxApplied = result.voiceFxApplied;
       scriptUtf8Bytes = result.utf8Bytes;
@@ -2216,8 +2921,11 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         pauseScale: pauseRenderScale,
         pauseBands,
         meditationTitle: libraryTitle,
+        longPauseScale: result.lengthFit.longPauseScale,
+        fixedSegments: fitLeadSegments,
       });
       console.log("TTS+FX PCM OLA success", {
+        lengthFit: result.lengthFit,
         bytes: mp3Buf.byteLength,
         dryChunks: dryPcmChunks.length,
         scriptChunks: scriptChunks.length,
@@ -2293,6 +3001,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           fishTtsModel,
           pauseBands,
           pauseScale: pauseRenderScale,
+          sentenceBreakMs: speechifySentenceBreakMs,
         });
         audio = result.audio;
         utf8Bytes = result.utf8Bytes;
@@ -2527,6 +3236,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           speed: speechSpeed,
           pauseBands: pauseBandsForVariants,
           pauseScale: pauseRenderScale,
+          sentenceBreakMs: speechifySentenceBreakMs,
         });
         // Bake dial into one file — no dry/wet stems (same as main generate).
         let variantMp3 = variantSynth.audio;
@@ -2606,6 +3316,55 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   }
 
   const durationSeconds = await getAudioDurationSeconds(mp3Buf);
+  if (durationSeconds != null && durationSeconds > 0 && referenceId) {
+    try {
+      const spoken = scriptTextUsed.replace(/\[\[PAUSE[^\]]*\]\]/gi, " ");
+      await logMeditationLength({
+        at: new Date().toISOString(),
+        modelId: referenceId,
+        claudeModel,
+        jobId: event.jobId,
+        delivery: pacingDelivery,
+        requestedMinutes: targetMinutes,
+        actualSeconds: durationSeconds,
+        characters: scriptUtf8Bytes > 0 ? scriptUtf8Bytes : spoken.length,
+        words: countWords(spoken),
+        pauseSeconds: Math.round(Math.max(0, pauseSecondsTotal) * 10) / 10,
+        ...(predictedSeconds != null ? { predictedSeconds: Math.round(predictedSeconds) } : {}),
+        effectiveWpm: Math.round(voicePace.effectiveWpm * 10) / 10,
+        paceAdjust: Math.round(voicePace.paceAdjust * 1000) / 1000,
+        style: styleTrimmed || "general",
+        preAudioPauseScale: Math.round(preAudioPauseScale * 1000) / 1000,
+        ...(olaLengthFit
+          ? {
+              postAudioPauseScale:
+                Math.round((olaLengthFit.longPauseScale / Math.max(1e-6, preAudioPauseScale)) * 1000) / 1000,
+              postAudioScaled: olaLengthFit.postScaled,
+              stemSeconds: Math.round(olaLengthFit.stemSeconds * 10) / 10,
+            }
+          : {}),
+        revised: lengthRevised,
+        overheadSeconds: sessionLeadInSeconds + sessionTailSeconds,
+        targetWords: sectionPlan?.totalWords ?? totals.totalWords,
+        scriptShort,
+        planMs,
+        sectionsWriteMs,
+        ...(sectionsUsed && sectionPlan
+          ? {
+              sectionPlan: sectionPlan.sections.map((x) => ({
+                id: x.name,
+                words: x.words,
+                pauseSeconds: x.pauseSeconds,
+              })),
+              sectionsFirstDraft: sectionFirstDraft ?? [],
+              sectionFix: sectionFixIds,
+            }
+          : {}),
+      });
+    } catch (e) {
+      console.warn("length log failed", e);
+    }
+  }
 
   try {
     const uploadStarted = Date.now();

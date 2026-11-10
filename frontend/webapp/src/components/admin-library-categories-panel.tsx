@@ -236,7 +236,10 @@ export function AdminLibraryCategoriesPanel() {
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-muted">Loading…</p>
+        <>
+        {/* <p className="text-sm text-muted">Loading…</p> */}
+        <span className="mm-placeholder block h-4 w-48 rounded-md" aria-hidden />
+        </>
       ) : (
         <ul className="space-y-4">
           {CATEGORY_IMAGE_SLOTS.map((category) => {

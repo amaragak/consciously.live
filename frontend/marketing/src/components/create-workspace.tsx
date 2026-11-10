@@ -4721,7 +4721,8 @@ export function CreateWorkspace({
         !draftHydrated &&
         !draftLoadError) ? (
         <div className="flex min-h-0 flex-1 items-center justify-center p-8 text-sm text-muted">
-          {initialDraftSk?.trim() ? "Loading draft…" : "Loading…"}
+          {/* initialDraftSk?.trim() ? "Loading draft…" : "Loading…" */}
+          <span className="mm-placeholder block h-4 w-40 rounded-md" aria-hidden />
         </div>
       ) : (
       <div className="relative flex min-h-0 flex-1 flex-col">

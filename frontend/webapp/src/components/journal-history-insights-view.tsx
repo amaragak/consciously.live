@@ -8,6 +8,9 @@ import {
   buildWeeklyMoodSeries,
   entryHrefWithHighlight,
   INSIGHTS_PERIODS,
+  longerPeriodWithInsights,
+  moodDaysInPeriod,
+  moodSeriesIsChartable,
   listEntryAnalyses,
   toneDotClass,
   type InsightsPeriodId,
@@ -119,13 +122,7 @@ function MoodChart({
   selected: WeekMoodPoint | null;
   onSelect: (p: WeekMoodPoint) => void;
 }) {
-  if (points.length < 2) {
-    return (
-      <p className="text-sm text-muted">
-        Write a few more entries and this fills in.
-      </p>
-    );
-  }
+  if (points.length < 3) return null;
   const w = 320;
   const h = 120;
   const padX = 12;
@@ -338,43 +335,31 @@ function MainInsights({
     return map;
   }, [entries, period]);
 
-  const inPeriod = useMemo(
-    () =>
-      entries.filter((e) => {
-        const start =
-          period === "all"
-            ? null
-            : (() => {
-                const d = new Date();
-                if (period === "30d") d.setDate(d.getDate() - 30);
-                else if (period === "3m") d.setMonth(d.getMonth() - 3);
-                else d.setFullYear(d.getFullYear() - 1);
-                return d.toISOString();
-              })();
-        if (!start) return e.kind !== "gratitude";
-        const t = Date.parse(e.entryDate || e.createdAt);
-        return (
-          e.kind !== "gratitude" &&
-          Number.isFinite(t) &&
-          t >= Date.parse(start)
-        );
-      }),
-    [entries, period],
-  );
-
-  const enough = inPeriod.length >= 5;
   const weeks = useMemo(
     () => buildWeeklyMoodSeries(entries, analyses, period),
     [entries, analyses, period],
   );
+  const moodDays = useMemo(
+    () => moodDaysInPeriod(entries, period),
+    [entries, period],
+  );
+  const showMood = moodSeriesIsChartable(weeks, moodDays);
   const themes = useMemo(
     () => buildThemeRows(entries, analyses, period),
     [entries, analyses, period],
   );
   const movers = useMemo(() => buildMoodMovers(themes), [themes]);
+  const showMovers = movers.lifts.length > 0 || movers.weighs.length > 0;
   const quotes = useMemo(
-    () => buildStandoutLines(entries, analyses, period, 4),
+    () => buildStandoutLines(entries, analyses, period, 3),
     [entries, analyses, period],
+  );
+  const longer = useMemo(
+    () =>
+      quotes.length === 0 && !showMood && themes.length === 0
+        ? longerPeriodWithInsights(entries, analyses, period)
+        : null,
+    [quotes.length, showMood, themes.length, entries, analyses, period],
   );
   const [selectedWeek, setSelectedWeek] = useState<WeekMoodPoint | null>(null);
   useEffect(() => {
@@ -383,13 +368,8 @@ function MainInsights({
 
   const topThemes = themes.slice(0, 6);
   const mobileThemes = themes.slice(0, 4);
-  const quoteLimitMobile = 3;
-
-  const emptyLine = (
-    <p className="text-sm text-muted">
-      Write a few more entries and this fills in.
-    </p>
-  );
+  const nothing =
+    quotes.length === 0 && !showMood && themes.length === 0 && !showMovers;
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-4 px-4 pb-28 pt-3 sm:px-6 lg:pb-10">
@@ -397,12 +377,35 @@ function MainInsights({
         <PeriodChips value={period} onChange={setPeriod} />
       </div>
 
+      {nothing ? (
+        <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+          <p className="text-[15px] leading-relaxed text-foreground">
+            Not enough yet. Insights appear once you've written a few entries
+            with some detail.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              to="/journal/entries?new=1"
+              className="inline-flex h-9 items-center rounded-full bg-foreground px-4 text-[13px] font-semibold text-background"
+            >
+              Write an entry
+            </Link>
+            {longer ? (
+              <button
+                type="button"
+                onClick={() => setPeriod(longer)}
+                className="inline-flex h-9 items-center rounded-full border border-border bg-card px-4 text-[13px] font-semibold text-foreground"
+              >
+                Try a longer range
+              </button>
+            ) : null}
+          </div>
+        </section>
+      ) : (
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          {showMood ? (
           <Card title="How you've felt">
-            {!enough ? (
-              emptyLine
-            ) : (
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
                 <div className="min-w-0 flex-1">
                   <MoodChart
@@ -441,49 +444,36 @@ function MainInsights({
                   </div>
                 ) : null}
               </div>
-            )}
           </Card>
+          ) : null}
 
+          {quotes.length > 0 ? (
           <Card
             title="Lines that stood out"
-            action={
-              quotes.length > quoteLimitMobile ? (
-                <span className="text-[12px] text-muted lg:hidden">See all</span>
-              ) : null
-            }
             className="max-lg:order-4"
           >
-            {!enough || quotes.length === 0 ? (
-              emptyLine
-            ) : (
               <div className="space-y-2.5">
-                {quotes
-                  .slice(0, typeof window !== "undefined" && window.innerWidth >= 1024 ? 4 : quoteLimitMobile)
-                  .map((q) => (
+                {quotes.map((q) => (
                     <QuoteCard key={`${q.entryId}-${q.quote.slice(0, 24)}`} line={q} />
                   ))}
               </div>
-            )}
           </Card>
+          ) : null}
         </div>
 
         <div className="space-y-4">
+          {themes.length > 0 ? (
           <Card
             title="Themes"
             action={
-              themes.length > 0 ? (
                 <Link
                   to={`${INSIGHTS_HREF}/themes`}
                   className="text-[13px] font-medium text-accent-link"
                 >
                   All
                 </Link>
-              ) : null
             }
           >
-            {!enough || themes.length === 0 ? (
-              emptyLine
-            ) : (
               <>
                 <div className="divide-y divide-border/60 lg:hidden">
                   {mobileThemes.map((row) => (
@@ -514,14 +504,11 @@ function MainInsights({
                   </span>
                 </p>
               </>
-            )}
           </Card>
+          ) : null}
 
+          {showMovers ? (
           <Card title="What moves your mood">
-            {!enough ||
-            (movers.lifts.length === 0 && movers.weighs.length === 0) ? (
-              emptyLine
-            ) : (
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -563,10 +550,11 @@ function MainInsights({
                   From the mood of the entries each comes up in.
                 </p>
               </>
-            )}
           </Card>
+          ) : null}
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -856,8 +844,9 @@ export function JournalHistoryInsightsView() {
 
   if (optIn === null) {
     return (
-      <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted">
-        Loading…
+      <div className="flex flex-1 items-center justify-center p-8">
+        {/* Loading… */}
+        <span className="mm-placeholder block h-4 w-40 rounded-md" aria-hidden />
       </div>
     );
   }

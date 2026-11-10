@@ -6,6 +6,7 @@ import {
   IconChevronUp,
 } from "@tabler/icons-react";
 import { SearchInput } from "@/components/search-input";
+import { PlaceholderLine } from "@/components/loading-placeholder";
 import { journalMoodLabel, isJournalMoodId, JOURNAL_MOOD_PILL } from "@/lib/journal-moods";
 import {
   deriveEntryTitle,
@@ -343,7 +344,7 @@ export function JournalReflectPicker({
 
       <ul className="space-y-2">
         {!listReady ? (
-          <li className="text-sm text-muted">Loading entries…</li>
+          <li>{/* Loading entries… */}<PlaceholderLine className="h-4 w-40" /></li>
         ) : filtered.length === 0 ? (
           <li className="text-sm text-muted">
             {searchQuery.trim()

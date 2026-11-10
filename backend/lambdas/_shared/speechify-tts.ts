@@ -58,8 +58,8 @@ function stripPauseMarkersForSpeechify(script: string): string {
  */
 /** Target band ~400–700ms after commas. */
 export const SPEECHIFY_COMMA_BREAK_MS = 550;
-/** Target band ~1–2s after full stops. */
-export const SPEECHIFY_PERIOD_BREAK_MS = 1500;
+/** Fallback sentence break. Delivery profiles `shared.pauseAfterSentence` sets the live value. */
+export const SPEECHIFY_PERIOD_BREAK_MS = 1000;
 
 /**
  * After each comma + following space, insert a Speechify SSML break.
@@ -92,7 +92,16 @@ export function insertSpeechifyBreaksAfterPeriods(
   return escapedText.replace(/(?<!\d)\.(?=\s|$)/g, `.${tag}`);
 }
 
-/** Speechify `<speechify:style emotion="…">` values we send. */
+/** After `.`, `?`, or `!`, insert a Speechify SSML break. Skips decimals like `3.14`. */
+export function insertSpeechifyBreaksAfterSentenceEnds(
+  escapedText: string,
+  breakMs: number,
+): string {
+  const ms = Math.round(breakMs);
+  if (!Number.isFinite(ms) || ms <= 0) return escapedText;
+  const tag = `<break time="${ms}ms"/>`;
+  return escapedText.replace(/(?<!\d)[.!?](?=\s|$)/g, (mark) => `${mark}${tag}`);
+}
 export type SpeechifyEmotionTag = "warm" | "calm";
 
 /** Speechify emotion for meditation renders (supported tag; not `neutral`). */
@@ -111,6 +120,8 @@ export function scriptToSpeechifySsml(
     rate?: string;
     emotion?: SpeechifyEmotionTag | null;
     sentenceBreakMs?: number;
+    /** When set with sentenceBreakMs, the break follows `.`, `?`, and `!`. */
+    breakAllSentenceEnds?: boolean;
     commaBreakMs?: number;
   },
 ): string {
@@ -127,7 +138,9 @@ export function scriptToSpeechifySsml(
     Number.isFinite(opts.sentenceBreakMs) &&
     opts.sentenceBreakMs > 0
   ) {
-    inner = insertSpeechifyBreaksAfterPeriods(inner, opts.sentenceBreakMs);
+    inner = opts.breakAllSentenceEnds
+      ? insertSpeechifyBreaksAfterSentenceEnds(inner, opts.sentenceBreakMs)
+      : insertSpeechifyBreaksAfterPeriods(inner, opts.sentenceBreakMs);
   }
   const rate = opts?.rate?.trim();
   if (rate) {
@@ -186,11 +199,10 @@ export type SpeechifyTtsParams = {
    * (dev A/B for raw volume). Default true.
    */
   loudnessNormalization?: boolean;
-  /**
-   * When set, after the spoken chunk is prepared, insert
-   * `<break time="{n}ms"/>` after each sentence-ending `.`.
-   */
+  /** When set, insert `<break time="{n}ms"/>` after each sentence-ending `.`. */
   sentenceBreakMs?: number;
+  /** With sentenceBreakMs, also break after `?` and `!`. Measurement uses this. */
+  breakAllSentenceEnds?: boolean;
   /** When set, insert `<break time="{n}ms"/>` after each comma. */
   commaBreakMs?: number;
 };
@@ -211,6 +223,7 @@ async function speechifyTtsStream(
     rate,
     emotion: params.emotion,
     sentenceBreakMs: params.sentenceBreakMs,
+    breakAllSentenceEnds: params.breakAllSentenceEnds,
     commaBreakMs: params.commaBreakMs,
   });
   const loudnessNormalization = params.loudnessNormalization !== false;

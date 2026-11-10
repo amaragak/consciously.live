@@ -16,6 +16,9 @@ import { AdminScriptLabPanel } from "./components/admin-script-lab-panel";
 import { AdminSoundsPanel } from "./components/admin-sounds-panel";
 import { AdminStressTestPanel } from "./components/admin-stress-test-panel";
 import { AdminVoicePanel } from "./components/admin-voice-panel";
+import { AdminVoiceCalibrationList } from "./components/admin-voice-calibration-list";
+// import { AdminVoiceDetail } from "./components/admin-voice-detail";
+import { AdminDeliveryProfiles } from "./components/admin-delivery-profiles";
 import { AdminStylesPanel } from "./components/admin-styles-panel";
 import { AdminVoiceFxPanel } from "./components/admin-voice-fx-panel";
 import { MixerSoundsStudio } from "./components/mixer-sounds-studio";
@@ -218,7 +221,10 @@ export function App() {
             path="sound-mixes"
             element={<MixerSoundsStudio variant="admin" />}
           />
-          <Route path="voice" element={<AdminVoicePanel />} />
+          <Route path="voice" element={<AdminVoiceCalibrationList />} />
+          <Route path="voice/catalogue" element={<AdminVoicePanel />} />
+          {/* <Route path="voice/:modelId" element={<AdminVoiceDetail />} /> */}
+          <Route path="delivery" element={<AdminDeliveryProfiles />} />
           <Route path="styles" element={<AdminStylesPanel />} />
           <Route path="fx" element={<AdminVoiceFxPanel />} />
           <Route path="programs" element={<AdminProgramsPanel />} />

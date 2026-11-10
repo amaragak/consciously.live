@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { LineListPlaceholder } from "@/components/loading-placeholder";
 import { VOICE_FX_DIAL_DEFAULT } from "@consciously/common";
 import { mediaFileUrl } from "@/components/library-audio-strip";
 import { useLibraryPlayer } from "@/components/library-player-provider";
@@ -270,7 +271,10 @@ export function SoundsVoicesBrowse() {
 
       <SoundsBrowseWell>
         {loading && speakers.length === 0 ? (
-          <p className="text-sm text-muted">Loading voices…</p>
+          <div>
+            {/* <p className="text-sm text-muted">Loading voices…</p> */}
+            <LineListPlaceholder count={5} />
+          </div>
         ) : filteredVoices.length === 0 ? (
           <p className="text-sm text-muted">No voices match.</p>
         ) : (

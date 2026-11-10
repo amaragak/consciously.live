@@ -6,6 +6,7 @@ import {
   type SettingsSectionId,
 } from "@/components/settings/settings-sections";
 import type { UserSettingsV1 } from "@/lib/user-settings";
+import { SettingsPlaceholder } from "@/components/loading-placeholder";
 
 const SECTION_IDS = new Set<string>(SETTINGS_NAV.map((n) => n.id));
 
@@ -61,8 +62,9 @@ export function SettingsShell({
   // Wait for viewport; then desktop bare `/settings` → account in the URL.
   if (isMobile === null) {
     return (
-      <div className="flex min-h-0 flex-1 items-start justify-center px-3 py-3 text-sm text-muted">
-        Loading…
+      <div className="flex min-h-0 flex-1 items-start justify-center px-3 py-3">
+        {/* Loading… */}
+        <SettingsPlaceholder />
       </div>
     );
   }
@@ -133,7 +135,8 @@ export function SettingsShell({
 
   let mainContent: ReactNode;
   if (loading || !settings) {
-    mainContent = <p className="text-sm text-muted">Loading settings…</p>;
+    // mainContent = <p className="text-sm text-muted">Loading settings…</p>;
+    mainContent = <SettingsPlaceholder />;
   } else if (showList) {
     mainContent = (
       <div className="space-y-4">

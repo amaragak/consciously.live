@@ -6,6 +6,7 @@ import { IdeateCloudProvider } from "@/components/plan/ideate-cloud-provider";
 import { LibraryPlayerProvider } from "@/components/library-player-provider";
 import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import {
+  bootMedimadeAuthGate,
   ensureMedimadeSession,
   getMedimadeSessionJwt,
   isMedimadeAccessJwtUsable,
@@ -20,13 +21,14 @@ import { LoggedOutShell } from "./logged-out-shell";
 
 /**
  * Pure SPA auth gate — no SSR/hydration tricks.
- * Stay on “Loading…” until handoff redeem + session ensure finish so we never
- * flash the signed-out shell during marketing → app handoff (incl. Strict Mode).
+ * A known session paints the app at once. A handoff or refresh can wait, but
+ * that wait is blank: the home page is not a list, so it does not get list cards.
+ * The wait cannot sit forever if the session call never returns.
  */
 export function AppShell() {
   const location = useLocation();
-  const [authState, setAuthState] = useState<"pending" | "in" | "out">(
-    "pending",
+  const [authState, setAuthState] = useState<"pending" | "in" | "out">(() =>
+    hasPendingAuthHandoff() ? "pending" : bootMedimadeAuthGate(),
   );
   /** Native sign-in still has a step to show after the session exists. */
   const [nativeAuthHold, setNativeAuthHold] = useState(false);
@@ -37,20 +39,33 @@ export function AppShell() {
 
   useEffect(() => {
     let cancelled = false;
+    const settle = (next: "in" | "out") => {
+      if (!cancelled) setAuthState(next);
+    };
+    const giveUp = window.setTimeout(() => {
+      settle(isMedimadeAccessJwtUsable(getMedimadeSessionJwt()) ? "in" : "out");
+    }, 8_000);
     void (async () => {
-      const fromHandoff = await consumeAuthHandoffFromUrl();
-      if (cancelled) return;
-      if (fromHandoff) {
-        setAuthState("in");
-        return;
+      try {
+        const fromHandoff = await consumeAuthHandoffFromUrl();
+        if (cancelled) return;
+        if (fromHandoff) {
+          settle("in");
+          return;
+        }
+        const valid = await ensureMedimadeSession();
+        const inApp =
+          valid && isMedimadeAccessJwtUsable(getMedimadeSessionJwt());
+        settle(inApp ? "in" : "out");
+      } catch {
+        settle(isMedimadeAccessJwtUsable(getMedimadeSessionJwt()) ? "in" : "out");
+      } finally {
+        window.clearTimeout(giveUp);
       }
-      const valid = await ensureMedimadeSession();
-      const inApp =
-        valid && isMedimadeAccessJwtUsable(getMedimadeSessionJwt());
-      if (!cancelled) setAuthState(inApp ? "in" : "out");
     })();
     return () => {
       cancelled = true;
+      window.clearTimeout(giveUp);
     };
   }, []);
 
@@ -69,13 +84,9 @@ export function AppShell() {
   }, []);
 
   if (authState === "pending") {
-    // Native keeps its launch screen up instead.
-    if (__NATIVE_BUILD__) return null;
-    return (
-      <div className="mx-auto max-w-md px-6 py-20 text-sm text-muted">
-        Loading…
-      </div>
-    );
+    // Native keeps its launch screen up. Web stays blank for a handoff or
+    // refresh — not a stack of list cards in place of the home page.
+    return null;
   }
 
   if (authState === "out" || (__NATIVE_BUILD__ && nativeAuthHold)) {

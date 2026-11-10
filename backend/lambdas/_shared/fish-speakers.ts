@@ -38,6 +38,8 @@ export type FishSpeaker = {
   updatedAt?: string;
   /** Set once when the speaker row is created. Omitted on rows from before this field. */
   createdAt?: string;
+  /** Live measured WPM by delivery. Absent until a calibration is approved. */
+  liveWpm?: Partial<Record<"casual" | "guided" | "open_sits", number>>;
 };
 
 /**

@@ -12,6 +12,7 @@ import { CoverImage } from "@/components/cover-image";
 import { GuideBody, extractGuideHeadings } from "@/components/guide-body";
 import { ManifestPracticeButton } from "@/components/manifest-practice-button";
 import { MeditateGuidesGrid } from "@/components/meditate-guide-cards";
+import { LoadError, TileGridPlaceholder } from "@/components/loading-placeholder";
 import { PrimaryCreateButton } from "@/components/primary-create-button";
 import {
   guidesBasePath,
@@ -52,11 +53,10 @@ export function AreaGuidesIndexPage({ area }: { area: GuideArea }) {
       {guides.length > 0 ? (
         <MeditateGuidesGrid guides={guides} area={area} />
       ) : loading ? (
-        <p className="text-sm text-muted">Loading…</p>
+        // <p className="text-sm text-muted">Loading…</p>
+        <TileGridPlaceholder />
       ) : error ? (
-        <p className="text-sm text-muted">
-          Couldn’t load guides. Try again in a moment.
-        </p>
+        <LoadError onRetry={() => window.location.reload()} />
       ) : (
         <p className="text-sm text-muted">No guides yet.</p>
       )}

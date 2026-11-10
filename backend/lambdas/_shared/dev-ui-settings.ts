@@ -24,6 +24,8 @@ export type DevUiSettings = {
   libraryDevFlyout: boolean;
   /** Marketing homepage: app links open the pre-release waitlist instead of sign-up/sign-in. Not host-gated. */
   homeWaitlist: boolean;
+  /** Drop Fish voices from the customer voice list (`GET /fish/speakers`). Not host-gated. */
+  hideFishVoices: boolean;
 };
 
 export function defaultDevUiSettings(): DevUiSettings {
@@ -31,6 +33,7 @@ export function defaultDevUiSettings(): DevUiSettings {
     createAudioDevControls: false,
     libraryDevFlyout: false,
     homeWaitlist: false,
+    hideFishVoices: false,
   };
 }
 
@@ -51,6 +54,9 @@ function coerceSettings(raw: unknown): DevUiSettings {
   }
   if (typeof o.homeWaitlist === "boolean") {
     base.homeWaitlist = o.homeWaitlist;
+  }
+  if (typeof o.hideFishVoices === "boolean") {
+    base.hideFishVoices = o.hideFishVoices;
   }
   return base;
 }
@@ -89,6 +95,10 @@ export async function saveDevUiSettings(
         : current.libraryDevFlyout,
     homeWaitlist:
       typeof patch.homeWaitlist === "boolean" ? patch.homeWaitlist : current.homeWaitlist,
+    hideFishVoices:
+      typeof patch.hideFishVoices === "boolean"
+        ? patch.hideFishVoices
+        : current.hideFishVoices,
   };
   await ddb.send(
     new PutCommand({

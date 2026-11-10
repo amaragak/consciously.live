@@ -185,7 +185,10 @@ export function AdminStylesPanel() {
         }}
       />
       {loading ? (
-        <p className="text-sm text-muted">Loading…</p>
+        <>
+        {/* <p className="text-sm text-muted">Loading…</p> */}
+        <span className="mm-placeholder block h-4 w-48 rounded-md" aria-hidden />
+        </>
       ) : (
         <ul className="flex flex-col gap-3">
           {MEDITATION_STYLE_LABELS.map((style) => {
@@ -252,6 +255,25 @@ export function AdminStylesPanel() {
                   onGender={(gender) => void saveStyle(style, { ...t, gender })}
                   onAccent={(accent) => void saveStyle(style, { ...t, accent })}
                 />
+                <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    className="rounded border-border"
+                    checked={t.writeSectionsInOrder === true}
+                    disabled={busy}
+                    onChange={(e) =>
+                      void saveStyle(style, {
+                        ...t,
+                        writeSectionsInOrder: e.target.checked,
+                      })
+                    }
+                  />
+                  Write sections in order
+                </label>
+                <p className="mt-1 text-xs text-muted">
+                  Off by default (sections write in parallel). Turn on for body
+                  scan, story and progressive styles if joins sound off.
+                </p>
               </li>
             );
           })}

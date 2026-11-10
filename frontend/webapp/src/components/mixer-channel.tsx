@@ -998,7 +998,12 @@ export function MixerPresetChannel({
           </span>
         ) : null}
         <span className="min-w-0 flex-1 truncate">
-          {loading ? "Loading…" : triggerLabel}
+          {/* loading ? "Loading…" : triggerLabel */}
+          {loading ? (
+            <span className="mm-placeholder inline-block h-3 w-24 rounded-md align-middle" aria-hidden />
+          ) : (
+            triggerLabel
+          )}
         </span>
         <SelectChevron open={open} />
       </button>

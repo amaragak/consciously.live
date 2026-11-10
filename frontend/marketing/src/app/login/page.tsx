@@ -1067,7 +1067,8 @@ export default function LoginPage() {
           </aside>
           <section className="auth-split__panel">
             <div className="auth-split__panel-inner">
-              <p className="text-sm text-muted">Loading…</p>
+              {/* <p className="text-sm text-muted">Loading…</p> */}
+              <span className="mm-placeholder block h-4 w-32 rounded-md" aria-hidden />
             </div>
           </section>
         </div>

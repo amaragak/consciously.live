@@ -1827,8 +1827,9 @@ export function JournalWeeklyReflectionCard({
           to enable weekly reflections.
         </p>
       ) : loading ? (
-        <p className="text-sm italic text-muted">Loading…</p>
+        <span className="mm-placeholder block h-4 w-40 rounded-md" aria-hidden />
       ) : null}
+      {/* <p className="text-sm italic text-muted">Loading…</p> */}
 
       {notice ? (
         <InsightsNoticeCard

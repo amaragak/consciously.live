@@ -151,7 +151,8 @@ export function ProfileSettingsPage() {
   if (!ready) {
     return (
       <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
-        <p className="text-sm text-muted">Loading…</p>
+        {/* <p className="text-sm text-muted">Loading…</p> */}
+        <span className="mm-placeholder block h-4 w-40 rounded-md" aria-hidden />
       </div>
     );
   }

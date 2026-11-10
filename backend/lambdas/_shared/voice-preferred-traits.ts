@@ -15,6 +15,8 @@ export type VoicePreferredTraits = {
   accent: VoiceAccent | null;
   /** Ordered speaker model IDs (up to 3). Empty slots omitted. */
   speakers: string[];
+  /** When true, write script sections one after another instead of in parallel. */
+  writeSectionsInOrder: boolean;
 };
 
 export function emptyVoicePrefs(): VoicePreferredTraits {
@@ -24,6 +26,7 @@ export function emptyVoicePrefs(): VoicePreferredTraits {
     gender: null,
     accent: null,
     speakers: [],
+    writeSectionsInOrder: false,
   };
 }
 
@@ -90,6 +93,7 @@ export function coerceVoicePrefs(raw: unknown): VoicePreferredTraits {
     gender: coerceGender(o.gender),
     accent: coerceAccent(o.accent),
     speakers: coercePreferredSpeakers(o.speakers),
+    writeSectionsInOrder: o.writeSectionsInOrder === true,
   };
 }
 

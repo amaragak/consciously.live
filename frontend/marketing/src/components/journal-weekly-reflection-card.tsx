@@ -183,7 +183,10 @@ export function JournalWeeklyReflectionCard({
           to enable weekly reflections.
         </p>
       ) : loading ? (
-        <p className="mt-4 text-sm italic text-muted">Loading…</p>
+        <>
+        {/* <p className="mt-4 text-sm italic text-muted">Loading…</p> */}
+        <span className="mm-placeholder mt-4 block h-4 w-40 rounded-md" aria-hidden />
+        </>
       ) : emptyWeek && !reflection ? (
         <p className="mt-4 text-sm italic text-muted">
           Nothing from this week yet — journal a little or create a meditation, then

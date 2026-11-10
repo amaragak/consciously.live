@@ -1738,7 +1738,7 @@ function EmailSection({ settings, onPatch }: SectionProps) {
 }
 
 function MeditateSection({ settings, onPatch }: SectionProps) {
-  const lengthOptions = [2, 5, 10, 20].map((m) => ({
+  const lengthOptions = ([/* 2, */ 5, 10, 20] as const).map((m) => ({
     value: String(m),
     label: `${m} min`,
   }));

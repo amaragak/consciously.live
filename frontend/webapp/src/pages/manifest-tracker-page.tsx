@@ -2,6 +2,7 @@ import { ArrowUpRight, ChevronRight, MoreHorizontal, Pencil, Plus } from "lucide
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { LineListPlaceholder } from "@/components/loading-placeholder";
 import { TrackerTitleField, rowOpensOnKey, useCoarsePointer } from "@/components/plan/life-area/tracker";
 import { MIST, ProgressBar } from "@/components/plan/life-area/kit";
 import { useIdeateCloud } from "@/components/plan/ideate-cloud-provider";
@@ -236,7 +237,12 @@ function TrackerAll() {
   }
 
   if (!ready) {
-    return <div className="mx-auto max-w-6xl px-4 py-10 text-sm text-muted">Loading tracker…</div>;
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-10">
+        {/* Loading tracker… */}
+        <LineListPlaceholder count={4} />
+      </div>
+    );
   }
 
   const open = items.filter((item) => item.status !== "done").length;

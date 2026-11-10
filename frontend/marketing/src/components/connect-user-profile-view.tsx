@@ -34,7 +34,8 @@ export function ConnectUserProfileView() {
   if (!ready) {
     return (
       <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
-        <p className="text-sm text-muted">Loading…</p>
+        {/* <p className="text-sm text-muted">Loading…</p> */}
+        <span className="mm-placeholder block h-4 w-32 rounded-md" aria-hidden />
       </div>
     );
   }

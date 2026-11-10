@@ -180,7 +180,12 @@ function NarrateSpeakerSelect({
         className="flex w-full min-w-0 items-center gap-1 rounded-[10px] border border-border bg-card px-2.5 py-1.5 text-left text-sm disabled:opacity-50"
       >
         <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-          {voices.length === 0 ? "Loading…" : label}
+          {/* voices.length === 0 ? "Loading…" : label */}
+          {voices.length === 0 ? (
+            <span className="mm-placeholder inline-block h-3 w-24 rounded-md align-middle" aria-hidden />
+          ) : (
+            label
+          )}
         </span>
         <SelectChevron open={open} />
       </button>

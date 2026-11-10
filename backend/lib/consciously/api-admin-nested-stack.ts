@@ -677,6 +677,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       // Speechify sample ladder = admin rate ±5 (11 TTS + FX bakes).
+      // Script calibration batch = up to 27 Claude calls.
       timeout: cdk.Duration.minutes(15),
       memorySize: 2048,
       ephemeralStorageSize: cdk.Size.mebibytes(1024),
@@ -693,10 +694,10 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
         FISH_TTS_MODEL: "s2.1-pro-free",
         SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
-        AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
         SPEECHIFY_VOICE_ID: "geffen_32",
         SPEECHIFY_TTS_MODEL: "simba-3.2",
         OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
+        CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
         CONSCIOUSLY_API_URL: httpApi.apiEndpoint,
       },
     });

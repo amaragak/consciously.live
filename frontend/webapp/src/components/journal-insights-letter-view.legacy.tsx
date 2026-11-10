@@ -199,7 +199,10 @@ function InsightsYourLettersSidebar(props: {
               }}
             >
               {loading ? (
-                <option value="">Loading…</option>
+                <>
+                {/* <option value="">Loading…</option> */}
+                <option value="">…</option>
+                </>
               ) : (
                 <>
                   <option value="">Choose insights…</option>
@@ -240,7 +243,10 @@ function InsightsYourLettersSidebar(props: {
         aria-label="Your insights"
       >
         {loading ? (
-          <p className="px-3 text-sm text-muted">Loading…</p>
+          <>
+          {/* <p className="px-3 text-sm text-muted">Loading…</p> */}
+          <span className="mm-placeholder mx-3 block h-4 w-40 rounded-md" aria-hidden />
+          </>
         ) : letters.length === 0 ? (
           <p className="px-3 text-sm leading-relaxed text-muted">
             Nothing here yet — generate your first insights from your journal.

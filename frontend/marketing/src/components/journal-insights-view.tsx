@@ -127,7 +127,10 @@ function InsightsPastLettersSidebar(props: {
         aria-label="Past weekly letters"
       >
         {loading ? (
-          <p className="text-sm text-muted">Loading…</p>
+          <>
+          {/* <p className="text-sm text-muted">Loading…</p> */}
+          <span className="mm-placeholder block h-4 w-40 rounded-md" aria-hidden />
+          </>
         ) : letters.length === 0 ? (
           <p className="text-sm text-muted">
             Nothing here yet — your first letter will appear once you write one.

@@ -20,6 +20,12 @@ import {
   speakerPreviewLoudFxSampleKey,
   withSpeakerSampleCacheBust,
 } from "@/lib/speaker-sample-speed";
+import {
+  defaultDeliveryProfiles,
+  defaultWpmFor,
+  speechShareFromPauseRules as creditSpeechShare,
+  type DeliveryProfiles,
+} from "@/lib/delivery-profiles";
 
 export {
   clearMedimadeSession,
@@ -3618,6 +3624,8 @@ export type VoicePreferredTraits = {
   accent: VoiceAccent | null;
   /** Ordered speaker model IDs (up to 3). Empty slots omitted. */
   speakers: string[];
+  /** When true, write script sections one after another instead of in parallel. */
+  writeSectionsInOrder?: boolean;
 };
 
 export function emptyVoicePrefs(): VoicePreferredTraits {
@@ -3627,6 +3635,7 @@ export function emptyVoicePrefs(): VoicePreferredTraits {
     gender: null,
     accent: null,
     speakers: [],
+    writeSectionsInOrder: false,
   };
 }
 
@@ -3698,6 +3707,7 @@ export function coerceVoicePrefs(raw: unknown): VoicePreferredTraits {
     gender,
     accent,
     speakers: coercePreferredSpeakers(o.speakers),
+    writeSectionsInOrder: o.writeSectionsInOrder === true,
   };
 }
 
@@ -3735,6 +3745,8 @@ export type FishSpeaker = {
   portraitImageUrl?: string | null;
   /** Admin row timestamp — Create/mixer append this to bust cached samples. */
   updatedAt?: string;
+  /** Live measured WPM by delivery, from an approved calibration. */
+  liveWpm?: Partial<Record<"casual" | "guided" | "open_sits", number>>;
 };
 
 export type OrpheusSpeaker = {
@@ -3802,6 +3814,62 @@ type FishSpeakersClientCache = {
 
 let fishSpeakersMemory: FishSpeakersClientCache | null = null;
 let styleVoicePrefsMemory: Record<string, VoicePreferredTraits> | null = null;
+
+export type DeliveryPacingClient = {
+  shares: Record<"casual" | "guided" | "open_sits", number>;
+  wpm: Record<"casual" | "guided" | "open_sits", number>;
+  charsPerWord: number;
+};
+
+function seededDeliveryPacing(): DeliveryPacingClient {
+  const profiles = defaultDeliveryProfiles();
+  return {
+    shares: {
+      casual: creditSpeechShare(profiles, "casual"),
+      guided: creditSpeechShare(profiles, "guided"),
+      open_sits: creditSpeechShare(profiles, "open_sits"),
+    },
+    wpm: {
+      casual: defaultWpmFor(profiles, "casual"),
+      guided: defaultWpmFor(profiles, "guided"),
+      open_sits: defaultWpmFor(profiles, "open_sits"),
+    },
+    charsPerWord: profiles.shared.charsPerWord,
+  };
+}
+
+let deliveryPacingMemory: DeliveryPacingClient | null = null;
+
+export function getDeliveryPacing(): DeliveryPacingClient {
+  return deliveryPacingMemory ?? seededDeliveryPacing();
+}
+
+function rememberDeliveryPacing(raw: {
+  deliveryShares?: Partial<DeliveryPacingClient["shares"]>;
+  defaultWpm?: Partial<DeliveryPacingClient["wpm"]>;
+  charsPerWord?: number;
+}): void {
+  const seed = seededDeliveryPacing();
+  const share = raw.deliveryShares ?? {};
+  const wpm = raw.defaultWpm ?? {};
+  deliveryPacingMemory = {
+    shares: {
+      casual: typeof share.casual === "number" ? share.casual : seed.shares.casual,
+      guided: typeof share.guided === "number" ? share.guided : seed.shares.guided,
+      open_sits:
+        typeof share.open_sits === "number" ? share.open_sits : seed.shares.open_sits,
+    },
+    wpm: {
+      casual: typeof wpm.casual === "number" ? wpm.casual : seed.wpm.casual,
+      guided: typeof wpm.guided === "number" ? wpm.guided : seed.wpm.guided,
+      open_sits: typeof wpm.open_sits === "number" ? wpm.open_sits : seed.wpm.open_sits,
+    },
+    charsPerWord:
+      typeof raw.charsPerWord === "number" && raw.charsPerWord > 0
+        ? raw.charsPerWord
+        : seed.charsPerWord,
+  };
+}
 let fishSpeakersInflight: Promise<FishSpeaker[]> | null = null;
 const preloadedSpeakerSampleUrls = new Set<string>();
 
@@ -3820,6 +3888,7 @@ function fishSpeakersCacheVersion(speakers: FishSpeaker[]): string {
         s.description ?? "",
         (s.goodFor ?? []).join(","),
         s.speechifyRate == null ? "" : String(s.speechifyRate),
+        s.liveWpm ? JSON.stringify(s.liveWpm) : "",
       ].join("\0"),
     )
     .sort()
@@ -3962,6 +4031,9 @@ async function fetchFishSpeakersNetwork(): Promise<FishSpeaker[]> {
   const data = (await res.json()) as {
     speakers?: FishSpeaker[];
     styleVoicePrefs?: unknown;
+    deliveryShares?: Partial<DeliveryPacingClient["shares"]>;
+    defaultWpm?: Partial<DeliveryPacingClient["wpm"]>;
+    charsPerWord?: number;
     error?: string;
     detail?: string;
   };
@@ -3971,6 +4043,7 @@ async function fetchFishSpeakersNetwork(): Promise<FishSpeaker[]> {
   }
   const speakers = normalizeFishSpeakersList(data.speakers ?? []);
   styleVoicePrefsMemory = coerceStyleVoicePrefsMap(data.styleVoicePrefs);
+  rememberDeliveryPacing(data);
   writeFishSpeakersLocalCache({
     version: fishSpeakersCacheVersion(speakers),
     speakers,
@@ -3985,6 +4058,22 @@ export async function listStyleVoicePrefs(): Promise<
   if (styleVoicePrefsMemory) return styleVoicePrefsMemory;
   await fetchFishSpeakersNetwork();
   return styleVoicePrefsMemory ?? {};
+}
+
+/** Every visible voice, including Fish when customers have Fish hidden. Admin screens only. */
+export async function listAllFishSpeakersForAdmin(): Promise<FishSpeaker[]> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/fish/speakers?all=1`, {
+    cache: "no-store",
+  });
+  const data = (await res.json()) as {
+    speakers?: FishSpeaker[];
+    error?: string;
+    detail?: string;
+  };
+  if (!res.ok) throw new Error(data.detail ?? data.error ?? res.statusText);
+  return normalizeFishSpeakersList(data.speakers ?? []);
 }
 
 export async function listFishSpeakers(opts?: {
@@ -6148,17 +6237,108 @@ export type AdminPauseBands = {
   open: number;
 };
 
+export type AdminCalibrationSummary = {
+  modelId: string;
+  wpm: number | null;
+  measuredAt: string | null;
+  measuring: boolean;
+  error: string | null;
+  audioUrl: string | null;
+  /** "Measuring… 1/3" while a measurement is speaking. */
+  progress?: string | null;
+  /** WPM of each text, text 1 first. Fish numbers include [break]. */
+  texts?: number[];
+  /** Fish only. Average WPM with no [break]. */
+  plainWpm?: number | null;
+  /** Fish only. Plain WPM of each text, text 1 first. */
+  plainTexts?: number[];
+  /** Fish only. Estimated seconds added by one [break]. */
+  shortPauseSec?: number | null;
+  /** Speechify only. Sentence break the latest measurement used. */
+  sentencePauseSec?: number | null;
+  /** atempo pace adjustment in percent (null = none). */
+  paceAdjustPct?: number | null;
+  /** Average final length vs request over the last 20 meditations (null under 3). */
+  lengthVsRequestPct?: number | null;
+};
+
+export type AdminDeliveryLengthStats = {
+  count: number;
+  avgVsRequestPct: number | null;
+  checkedCount: number;
+  preScaledPct: number | null;
+  postScaledPct: number | null;
+  revisedPct: number | null;
+};
+
+export type AdminSectionStatsRow = {
+  delivery: "casual" | "guided" | "open_sits";
+  minutes: number;
+  count: number;
+  openingPct: number | null;
+  mainPct: number | null;
+  closingPct: number | null;
+  totalPct: number | null;
+  fixRatePct: number;
+  shortRatePct: number;
+  avgPlanMs?: number | null;
+  avgSectionsWriteMs?: number | null;
+};
+
+export type AdminCalibrationHistoryEntry = {
+  at: string;
+  by: string;
+  naturalWpm: number;
+  rate: number;
+  rateLabel: string;
+  confirmedWpm: number;
+  outOfRange: boolean;
+};
+
+export type AdminVoiceDetail = {
+  modelId: string;
+  speaker: AdminVoiceSpeaker | null;
+  summary: AdminCalibrationSummary | null;
+  targetWpm: number;
+  standardSampleUrl: string | null;
+  calibratedSampleUrl: string | null;
+  history: AdminCalibrationHistoryEntry[];
+};
+
+export type AdminCalibrationConfig = {
+  targetWpm: number;
+  text: string;
+  texts?: string[];
+};
+
 export type AdminVoiceState = {
   baseUrl?: string;
   speakers: AdminVoiceSpeaker[];
   pauses: AdminPauseBands;
   styleVoicePrefs: Record<string, VoicePreferredTraits>;
+  calibration?: AdminCalibrationSummary[];
+  calibrationConfig?: AdminCalibrationConfig;
+  deliveryProfiles?: DeliveryProfiles;
+  targetCorrection?: import("./script-target-correction").ScriptTargetCorrection;
+  scriptGeneration?: import("./script-generation-settings").ScriptGenerationSettings;
+  deliveryProfileMeta?: {
+    updatedAt: string | null;
+    updatedBy: string | null;
+    history: Array<{ at: string; by: string; note: string }>;
+  };
+  calibrationScripts?: { guided: string; casual: string; reading: string };
+  voiceDetail?: AdminVoiceDetail | null;
+  lengthStats?: Partial<Record<"casual" | "guided" | "open_sits", AdminDeliveryLengthStats>>;
+  sectionStats?: AdminSectionStatsRow[];
 };
 
-export async function listAdminVoice(): Promise<AdminVoiceState> {
+export async function listAdminVoice(modelId?: string): Promise<AdminVoiceState> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
-  const res = await medimadeFetch(`${base}/admin/voice`, { headers: medimadeApiAuthHeaders() });
+  const query = modelId ? `?modelId=${encodeURIComponent(modelId)}` : "";
+  const res = await medimadeFetch(`${base}/admin/voice${query}`, {
+    headers: medimadeApiAuthHeaders(),
+  });
   const data = (await res.json()) as AdminVoiceState & { error?: string; detail?: string };
   if (!res.ok) {
     throw new Error(data.detail ?? data.error ?? res.statusText);
@@ -6178,7 +6358,111 @@ export async function listAdminVoice(): Promise<AdminVoiceState> {
     styleVoicePrefs: coerceStyleVoicePrefsMap(
       (data as { styleVoicePrefs?: unknown }).styleVoicePrefs,
     ),
+    calibration: data.calibration,
+    calibrationConfig: data.calibrationConfig,
+    deliveryProfiles: data.deliveryProfiles,
+    targetCorrection: data.targetCorrection,
+    scriptGeneration: data.scriptGeneration,
+    deliveryProfileMeta: data.deliveryProfileMeta,
+    voiceDetail: data.voiceDetail ?? null,
+    lengthStats: data.lengthStats,
+    sectionStats: data.sectionStats ?? [],
   };
+}
+
+function waitMs(ms: number, shouldStop?: () => boolean): Promise<void> {
+  const slice = 200;
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const tick = () => {
+      if (shouldStop?.() || Date.now() - started >= ms) {
+        resolve();
+        return;
+      }
+      setTimeout(tick, Math.min(slice, ms - (Date.now() - started)));
+    };
+    setTimeout(tick, Math.min(slice, ms));
+  });
+}
+
+/** Speak the calibration text one short chunk at a time. A timed-out chunk is waited out, not started twice. */
+export async function runAdminVoiceCalibration(
+  modelId: string,
+  onUpdate?: (summary: AdminCalibrationSummary) => void,
+  shouldStop?: () => boolean,
+): Promise<void> {
+  const stop = async () => {
+    try {
+      const res = await postAdminVoice<{ summary?: AdminCalibrationSummary }>({
+        action: "calibration-cancel",
+        modelId,
+      });
+      if (res.summary) onUpdate?.(res.summary);
+    } catch {
+      // The batch has already stopped asking for the next chunk.
+    }
+  };
+  let waits = 0;
+  for (let step = 0; step < 280; ) {
+    if (shouldStop?.()) {
+      await stop();
+      return;
+    }
+    try {
+      const res = await postAdminVoice<{
+        done?: boolean;
+        busy?: boolean;
+        summary?: AdminCalibrationSummary;
+      }>({ action: "calibration-step", modelId });
+      if (shouldStop?.()) {
+        await stop();
+        return;
+      }
+      if (res.summary) onUpdate?.(res.summary);
+      if (res.busy) {
+        waits += 1;
+        if (waits > 40) throw new Error("Calibration step did not finish");
+        await waitMs(3000, shouldStop);
+        continue;
+      }
+      waits = 0;
+      if (res.done || res.summary?.error) return;
+      step += 1;
+    } catch (e) {
+      if (shouldStop?.()) {
+        await stop();
+        return;
+      }
+      waits += 1;
+      if (waits > 40) throw e instanceof Error ? e : new Error("Measurement failed");
+      await waitMs(3000, shouldStop);
+      try {
+        const data = await listAdminVoice();
+        const summary = (data.calibration ?? []).find((s) => s.modelId === modelId);
+        if (summary) onUpdate?.(summary);
+        if (summary?.error) return;
+        if (summary && !summary.measuring) return;
+      } catch {
+        // The chunk may still be speaking. Keep waiting.
+      }
+    }
+  }
+  throw new Error("Calibration did not finish");
+}
+
+export async function postAdminVoice<T>(body: Record<string, unknown>): Promise<T> {
+  const base = getMedimadeApiBase();
+  if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
+  const res = await medimadeFetch(`${base}/admin/voice`, {
+    method: "POST",
+    headers: medimadeJsonHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json()) as T & { error?: string; detail?: string };
+  if (!res.ok) {
+    throw new Error(data.detail ?? data.error ?? res.statusText);
+  }
+  return data;
 }
 
 /** Admin-gated localhost-only UI switches (defaults off). */
@@ -6187,6 +6471,8 @@ export type DevUiSettings = {
   libraryDevFlyout: boolean;
   /** Marketing homepage waitlist (pre-release). Off = normal sign-up / sign-in. */
   homeWaitlist: boolean;
+  /** Hide every Fish voice from customer-facing voice lists. Applies on production. */
+  hideFishVoices: boolean;
 };
 
 export function defaultDevUiSettings(): DevUiSettings {
@@ -6194,6 +6480,7 @@ export function defaultDevUiSettings(): DevUiSettings {
     createAudioDevControls: false,
     libraryDevFlyout: false,
     homeWaitlist: false,
+    hideFishVoices: false,
   };
 }
 
@@ -6213,6 +6500,7 @@ export async function fetchDevUiSettings(): Promise<DevUiSettings> {
       createAudioDevControls: data.settings?.createAudioDevControls === true,
       libraryDevFlyout: data.settings?.libraryDevFlyout === true,
       homeWaitlist: data.settings?.homeWaitlist === true,
+      hideFishVoices: data.settings?.hideFishVoices === true,
     };
   } catch {
     return defaultDevUiSettings();
@@ -6282,6 +6570,7 @@ export async function patchDevUiSettings(
     createAudioDevControls: data.settings?.createAudioDevControls === true,
     libraryDevFlyout: data.settings?.libraryDevFlyout === true,
     homeWaitlist: data.settings?.homeWaitlist === true,
+    hideFishVoices: data.settings?.hideFishVoices === true,
   };
 }
 
@@ -9218,10 +9507,12 @@ export type LibraryMeditationItem = {
 export const MEDITATION_DRAFT_STATE_VERSION = 1 as const;
 
 /** Creator-selected guided length (coach + script targets). */
-export type MeditationTargetMinutes = 2 | 5 | 10 | 20;
+export type MeditationTargetMinutes = 5 | 10 | 20;
+// v9: 2 min removed. Was: 2 | 5 | 10 | 20
 
 export const MEDITATION_TARGET_MINUTES: readonly MeditationTargetMinutes[] = [
-  2, 5, 10, 20,
+  // 2,
+  5, 10, 20,
 ];
 
 export function isMeditationTargetMinutes(
@@ -9230,10 +9521,30 @@ export function isMeditationTargetMinutes(
   return MEDITATION_TARGET_MINUTES.includes(raw as MeditationTargetMinutes);
 }
 
+/** Map any numeric length to the nearest of 5 / 10 / 20. */
+export function nearestMeditationTargetMinutes(
+  minutes: number,
+): MeditationTargetMinutes {
+  if (!Number.isFinite(minutes)) return 5;
+  let best: MeditationTargetMinutes = 5;
+  let bestDist = Infinity;
+  for (const opt of MEDITATION_TARGET_MINUTES) {
+    const d = Math.abs(opt - minutes);
+    if (d < bestDist) {
+      best = opt;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
 export function coerceMeditationTargetMinutes(
   raw: unknown,
 ): MeditationTargetMinutes {
-  return isMeditationTargetMinutes(raw) ? raw : 5;
+  if (isMeditationTargetMinutes(raw)) return raw;
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (Number.isFinite(n) && n > 0) return nearestMeditationTargetMinutes(n);
+  return 5;
 }
 
 export type MeditationDraftStateV1 = {

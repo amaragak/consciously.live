@@ -2727,7 +2727,8 @@ function ScriptLabEmbeddingProgressBar(props: {
               {total > 0 ? ` (${pct}%)` : ""}
             </>
           ) : (
-            "Loading…"
+            // "Loading…"
+            <span className="mm-placeholder inline-block h-3 w-16 rounded-md align-middle" aria-hidden />
           )}
         </span>
       </div>

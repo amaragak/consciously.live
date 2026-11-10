@@ -53,7 +53,7 @@ export function buildFocusPreflightMeditationMaterial(
   input: FocusPreflightMeditationInput,
 ): string {
   const lines: string[] = [
-    "Create a short (~2 minute) Visualization / manifestation meditation to set a success mindset before a focus session.",
+    "Create a short (~5 minute) Visualization / manifestation meditation to set a success mindset before a focus session.",
     "",
     "Intent:",
     "— Visualise succeeding in this life area with a calm, capable, energised mindset.",
@@ -95,7 +95,7 @@ function packageFocusPreflightPrompt(material: string): string {
   return (
     "Please write a complete guided Visualization meditation script from this pre-focus request. " +
     "Use a calm, warm, energising tone suitable for spoken guidance just before focused work. " +
-    "Interpret the material generously — do not ask clarifying questions. Aim for about 2 minutes when spoken.\n\n" +
+    "Interpret the material generously — do not ask clarifying questions. Aim for about 5 minutes when spoken.\n\n" +
     `Request:\n${material.trim()}`
   );
 }
@@ -138,7 +138,7 @@ export async function startFocusPreflightMeditationGeneration(
   const { jobId } = await createMeditationAudioJob({
     meditationStyle: "Visualization",
     journalMode: false,
-    meditationTargetMinutes: 2,
+    meditationTargetMinutes: 5 /* was 2; v9 */,
     transcript,
     scriptText: "",
     reference_id: speakerModelId,

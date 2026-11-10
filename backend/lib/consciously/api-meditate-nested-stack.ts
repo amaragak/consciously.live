@@ -85,7 +85,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
     meditationAnalyticsTable.grantReadWriteData(workerRole);
     meditationJobsTable.grantReadWriteData(workerRole);
     soundCatalogTable.grantReadData(workerRole);
-    voiceAdminTable.grantReadData(workerRole);
+    voiceAdminTable.grantReadWriteData(workerRole);
     aiUsageTable.grantReadWriteData(workerRole);
     mediaBucket.grantReadWrite(workerRole);
     fishApiKeySecret.grantRead(workerRole);

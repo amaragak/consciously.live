@@ -126,6 +126,50 @@ export async function wavPathToMp3Buffer(wavPath: string): Promise<Buffer> {
   }
 }
 
+/** Any ffmpeg-readable buffer, time-stretched by `atempo` (0.5–2, pitch kept), → mono 44.1 kHz MP3. */
+export async function bufferToMp3WithTempo(
+  buf: Buffer,
+  inputExt: string,
+  tempo: number,
+): Promise<Buffer> {
+  const id = randomUUID();
+  const ext = inputExt.startsWith(".") ? inputExt : `.${inputExt}`;
+  const inPath = `/tmp/tempo-in-${id}${ext}`;
+  const wavPath = `/tmp/tempo-out-${id}.wav`;
+  const factor = Math.min(2, Math.max(0.5, tempo));
+  fs.writeFileSync(inPath, buf);
+  try {
+    await execFileAsync(
+      ffmpegBin(),
+      [
+        "-hide_banner",
+        "-y",
+        "-i",
+        inPath,
+        "-af",
+        `atempo=${factor.toFixed(4)}`,
+        "-ac",
+        "1",
+        "-ar",
+        "44100",
+        "-c:a",
+        "pcm_s16le",
+        wavPath,
+      ],
+      { env: optPathEnv() },
+    );
+    return await wavPathToMp3Buffer(wavPath);
+  } finally {
+    for (const p of [inPath, wavPath]) {
+      try {
+        fs.unlinkSync(p);
+      } catch {
+        /* */
+      }
+    }
+  }
+}
+
 /** Any ffmpeg-readable buffer → mono 44.1 kHz MP3. */
 export async function bufferToMp3(buf: Buffer, inputExt: string): Promise<Buffer> {
   const id = randomUUID();

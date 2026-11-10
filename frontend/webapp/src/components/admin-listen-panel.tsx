@@ -245,7 +245,10 @@ export function AdminListenPanel() {
       />
 
       {loading && !state ? (
-        <p className="text-sm text-muted">Loading…</p>
+        <>
+        {/* <p className="text-sm text-muted">Loading…</p> */}
+        <span className="mm-placeholder block h-4 w-48 rounded-md" aria-hidden />
+        </>
       ) : null}
     </div>
   );

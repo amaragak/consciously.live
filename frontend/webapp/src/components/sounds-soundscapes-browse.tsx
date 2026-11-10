@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { TileGridPlaceholder } from "@/components/loading-placeholder";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import { MistPlayBadge } from "@/components/mist-play-badge";
 import { SelectChevron } from "@/components/select-chevron";
@@ -386,7 +387,10 @@ export function SoundsSoundscapesBrowse() {
 
       <SoundsBrowseWell>
         {loading && compositions.length === 0 ? (
-          <p className="text-sm text-muted">Loading soundscapes…</p>
+          <div>
+            {/* <p className="text-sm text-muted">Loading soundscapes…</p> */}
+            <TileGridPlaceholder />
+          </div>
         ) : filteredSoundscapes.length === 0 ? (
           <p className="text-sm text-muted">
             {soundCategory === "favourites"

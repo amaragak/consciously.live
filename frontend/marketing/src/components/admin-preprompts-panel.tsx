@@ -75,7 +75,10 @@ export function AdminPrepromptsPanel() {
       ) : null}
 
       {loading ? (
-        <p className="text-sm text-muted">Loading…</p>
+        <>
+        {/* <p className="text-sm text-muted">Loading…</p> */}
+        <span className="mm-placeholder block h-4 w-48 rounded-md" aria-hidden />
+        </>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(14rem,20rem)_minmax(0,1fr)]">
           <aside className="min-w-0 space-y-2">

@@ -80,6 +80,7 @@ import {
   backgroundAudioPlaybackKey,
   getMedimadeMediaBaseUrl,
   listBackgroundAudio,
+  getDeliveryPacing,
   listFishSpeakers,
   listStyleVoicePrefs,
   peekBackgroundAudioCache,
@@ -2210,7 +2211,7 @@ export const CreateSoundStep = forwardRef<
               : { speechifyRate: pacedSpeechifyRate }),
               }
             : {
-                claudeModel: CLAUDE_SONNET_45_MODEL_ID,
+                // Script model comes from Admin › Delivery profiles (not hard-coded).
                 fishPauseMode: "segmented" as const,
             ...(speaker?.brand === "speechify"
               ? { speechifyRate: pacedSpeechifyRate }
@@ -2319,6 +2320,10 @@ export const CreateSoundStep = forwardRef<
         lengthMinutes,
         delivery,
         isProVoice: isProVoiceSpeaker(selectedVoice),
+        voiceWpm: getDeliveryPacing().wpm[delivery],
+        // voiceWpm: selectedVoice?.liveWpm?.[delivery] ?? getDeliveryPacing().wpm[delivery],
+        spokenShare: getDeliveryPacing().shares[delivery],
+        charsPerWord: getDeliveryPacing().charsPerWord,
       }),
     [lengthMinutes, delivery, selectedVoice],
   );

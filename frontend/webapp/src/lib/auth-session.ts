@@ -448,6 +448,24 @@ function demoteUnusableAccessSession(opts?: {
 }
 
 /**
+ * First paint of the shell. A usable access token opens the app immediately.
+ * No remembered session opens the signed-out screen. Anything else waits
+ * for a refresh, and must not invent a page of placeholder cards.
+ */
+export function bootMedimadeAuthGate(): "in" | "out" | "pending" {
+  if (typeof window === "undefined") return "pending";
+  hydrateAccessJwtFromStorage();
+  if (
+    isMedimadeAccessJwtUsable(memoryAccessJwt) &&
+    !accessJwtNeedsRefresh(memoryAccessJwt)
+  ) {
+    return "in";
+  }
+  if (!isMedimadeSessionActive() && !getMedimadeSessionEmail()) return "out";
+  return "pending";
+}
+
+/**
  * Restore / rotate access JWT from refresh cookie or durable local refresh token.
  * Safe to call often — coalesces concurrent calls (including across HMR).
  *

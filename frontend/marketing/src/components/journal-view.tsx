@@ -1961,7 +1961,10 @@ export function JournalView() {
             }
           >
             {!hydrated ? (
-              <p className="text-sm text-muted">Loading…</p>
+              <>
+              {/* <p className="text-sm text-muted">Loading…</p> */}
+              <span className="mm-placeholder block h-16 w-full rounded-2xl" aria-hidden />
+              </>
             ) : sidebarGroups.length === 0 ? (
               <p className="text-sm text-muted">
                 {jumpDate && !searchQuery.trim()

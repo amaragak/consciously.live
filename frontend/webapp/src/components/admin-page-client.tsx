@@ -4,7 +4,8 @@ import type { ReactNode } from "react";
 const SECTIONS = [
   { href: "/admin/sounds", label: "Sounds" },
   { href: "/admin/sound-mixes", label: "Sound mixes" },
-  { href: "/admin/voice", label: "Voice" },
+  { href: "/admin/voice", label: "Voices" },
+  { href: "/admin/delivery", label: "Delivery profiles" },
   { href: "/admin/styles", label: "Styles" },
   { href: "/admin/fx", label: "FX" },
   { href: "/admin/programs", label: "Programs" },

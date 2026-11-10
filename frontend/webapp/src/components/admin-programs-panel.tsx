@@ -12,7 +12,7 @@ import {
   getMedimadeMediaBaseUrl,
   listAdminPrograms,
   listBackgroundAudio,
-  listFishSpeakers,
+  listAllFishSpeakersForAdmin,
   ttsProviderForSpeaker,
   PROGRAM_DAY_DESCRIPTION_MIN_CHARS,
   saveAdminProgram,
@@ -476,7 +476,7 @@ export function AdminProgramsPanel() {
       try {
         const [list, sp, beds] = await Promise.all([
           listAdminPrograms(),
-          listFishSpeakers().catch(() => [] as FishSpeaker[]),
+          listAllFishSpeakersForAdmin().catch(() => [] as FishSpeaker[]),
           listBackgroundAudio().catch(() => null),
         ]);
         if (cancelled) return;

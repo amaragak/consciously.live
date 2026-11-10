@@ -33,7 +33,8 @@ export function EnhancedConnectPage() {
   if (!ready) {
     return (
       <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6" aria-busy>
-        <p className="text-sm text-muted">Loading…</p>
+        {/* <p className="text-sm text-muted">Loading…</p> */}
+        <span className="mm-placeholder block h-4 w-32 rounded-md" aria-hidden />
       </div>
     );
   }

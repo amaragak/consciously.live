@@ -165,7 +165,14 @@ export function SoundscapePicker({
 
   if (loading) {
     return (
-      <p className="px-1 py-6 text-sm text-muted">Loading soundscapes…</p>
+      <>
+      {/* <p className="px-1 py-6 text-sm text-muted">Loading soundscapes…</p> */}
+      <div className="space-y-2 px-1 py-4">
+        <span className="mm-placeholder block h-12 w-full rounded-xl" aria-hidden />
+        <span className="mm-placeholder block h-12 w-full rounded-xl" aria-hidden />
+        <span className="mm-placeholder block h-12 w-full rounded-xl" aria-hidden />
+      </div>
+      </>
     );
   }
   if (visibleItems.length === 0) {

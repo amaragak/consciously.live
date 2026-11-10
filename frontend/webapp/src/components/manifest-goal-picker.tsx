@@ -188,7 +188,7 @@ export function ManifestGoalPicker({
 
       <ul className="space-y-2">
         {!listReady ? (
-          <li className="text-sm text-muted">Loading life areas…</li>
+          <li>{/* Loading life areas… */}<span className="mm-placeholder block h-4 w-40 rounded-md" aria-hidden /></li>
         ) : filtered.length === 0 ? (
           <li className="text-sm leading-relaxed text-muted">
             {searchQuery.trim() ? (

@@ -76,7 +76,8 @@ function CompleteProfileInner() {
   if (phase === "check") {
     return (
       <div className="mx-auto max-w-md px-4 py-12 sm:px-6">
-        <p className="text-sm text-muted">Loading…</p>
+        {/* <p className="text-sm text-muted">Loading…</p> */}
+        <span className="mm-placeholder block h-4 w-32 rounded-md" aria-hidden />
       </div>
     );
   }
@@ -132,7 +133,8 @@ export default function CompleteProfilePage() {
     <Suspense
       fallback={
         <div className="mx-auto max-w-md px-4 py-12 sm:px-6">
-          <p className="text-sm text-muted">Loading…</p>
+          {/* <p className="text-sm text-muted">Loading…</p> */}
+        <span className="mm-placeholder block h-4 w-32 rounded-md" aria-hidden />
         </div>
       }
     >

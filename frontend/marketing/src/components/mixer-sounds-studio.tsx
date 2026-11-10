@@ -1225,7 +1225,10 @@ export function MixerSoundsStudio({
                   </button>
                 </div>
                 {!hydrated ? (
-                  <p className="text-sm text-muted">Loading…</p>
+                  <>
+                  {/* <p className="text-sm text-muted">Loading…</p> */}
+                  <span className="mm-placeholder block h-4 w-32 rounded-md" aria-hidden />
+                  </>
                 ) : presets.length === 0 ? (
                   <p className="text-sm text-muted">
                     Nothing saved yet — start from a preset above, or build your

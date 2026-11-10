@@ -470,7 +470,7 @@ export function CreateOneFlow({
         if (!cancelled) setShowCreateHint(settings.meditate.showCreateHint);
       })
       .catch(() => {
-        /* keep default true */
+        if (!cancelled) setShowCreateHint(true);
       });
     return () => {
       cancelled = true;
@@ -532,7 +532,7 @@ export function CreateOneFlow({
   const [briefDraft, setBriefDraft] = useState("");
   const [audioBusy, setAudioBusy] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
-  const [showCreateHint, setShowCreateHint] = useState(true);
+  const [showCreateHint, setShowCreateHint] = useState<boolean | null>(null);
   const [soundPreviewPlaying, setSoundPreviewPlaying] = useState(false);
   const [soundSessionMeta, setSoundSessionMeta] =
     useState<CreateSoundSessionOverrideMeta>(EMPTY_SESSION_OVERRIDE_META);
@@ -2806,7 +2806,7 @@ export function CreateOneFlow({
           {step === "start" ? (
             <div className="flex w-full flex-col gap-4">
               <h1 className="sr-only">Create</h1>
-              {showCreateHint ? (
+              {showCreateHint === true ? (
                 <div className="flex items-center gap-2.5 rounded-xl border border-accent/35 bg-accent-soft px-3.5 py-2.5 text-[14px] text-foreground">
                   <span className="shrink-0 text-accent-link" aria-hidden>
                     ✦

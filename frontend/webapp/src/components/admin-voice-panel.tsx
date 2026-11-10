@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { VoicePreferredTraitFields } from "@/components/voice-trait-radios";
+import { SettingsSwitch } from "@/components/settings/settings-primitives";
 import {
   type AdminVoiceSpeaker,
   deleteAdminVoiceSpeaker,
+  fetchDevUiSettings,
   generateAdminVoiceEmotionSamples,
   generateAdminVoicePortrait,
   generateAdminVoiceSample,
+  invalidateFishSpeakersClientCache,
   listAdminVoice,
   patchAdminVoice,
+  patchDevUiSettings,
+  postAdminVoice,
   coerceEnergies,
   type SpeechifyEmotionSampleTag,
   type VoiceAccent,
@@ -83,6 +88,8 @@ export function AdminVoicePanel() {
   const [addBusy, setAddBusy] = useState(false);
   const [sampleBusy, setSampleBusy] = useState(false);
   const [sampleProgress, setSampleProgress] = useState<string | null>(null);
+  const [hideFishVoices, setHideFishVoices] = useState<boolean | null>(null);
+  const [hideFishBusy, setHideFishBusy] = useState(false);
 
   const visibleSpeakers = speakers
     .filter((s) =>
@@ -101,7 +108,22 @@ export function AdminVoicePanel() {
     void load()
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load voice admin"))
       .finally(() => setLoading(false));
+    void fetchDevUiSettings().then((s) => setHideFishVoices(s.hideFishVoices));
   }, []);
+
+  async function saveHideFishVoices(next: boolean) {
+    setHideFishBusy(true);
+    setError(null);
+    try {
+      const settings = await patchDevUiSettings({ hideFishVoices: next });
+      setHideFishVoices(settings.hideFishVoices);
+      invalidateFishSpeakersClientCache();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save");
+    } finally {
+      setHideFishBusy(false);
+    }
+  }
 
   async function addSpeaker() {
     const name = newName.trim();
@@ -204,7 +226,31 @@ export function AdminVoicePanel() {
           {error}
         </div>
       ) : null}
-      {loading ? <p className="text-sm text-muted">Loading…</p> : null}
+      {loading ? (
+        // <p className="text-sm text-muted">Loading…</p>
+        <span className="mm-placeholder mt-3 block h-4 w-48 rounded-md" aria-hidden />
+      ) : null}
+
+      <section className="flex items-start justify-between gap-4 rounded-2xl border border-border bg-card p-4 sm:p-5">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold">Hide all Fish voices</h2>
+          <p className="mt-1 text-xs text-muted">
+            On: customers only see Speechify voices on Create, Sounds › Voices
+            and every other voice picker. Admin screens still list Fish.
+            Meditations already made with a Fish voice keep playing.
+          </p>
+        </div>
+        {hideFishVoices == null ? (
+          <span className="mm-placeholder block h-6 w-11 shrink-0 rounded-full" aria-hidden />
+        ) : (
+          <SettingsSwitch
+            aria-label="Hide all Fish voices"
+            checked={hideFishVoices}
+            disabled={hideFishBusy}
+            onCheckedChange={(next) => void saveHideFishVoices(next)}
+          />
+        )}
+      </section>
 
       <section className="rounded-2xl border border-border bg-card p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -406,6 +452,12 @@ function SpeakerRow({
   const [hidden, setHidden] = useState(speaker.hidden);
   const [busy, setBusy] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [rateCompare, setRateCompare] = useState<{
+    rate: number;
+    tempo: number;
+    rateUrl: string;
+    stretchedUrl: string;
+  } | null>(null);
 
   const savedGoodFor = joinGoodFor(speaker.goodFor);
   const energyKey = coerceEnergies(speaker.energy).join(",");
@@ -979,6 +1031,66 @@ function SpeakerRow({
               );
             })}
           </ul>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <p className="mr-auto text-xs font-medium text-muted">
+              Rate vs stretch
+              <span className="ml-1 font-normal">
+                (saved rate from Speechify, or rate 0 slowed with ffmpeg atempo)
+              </span>
+            </p>
+            {rateCompare ? (
+              <>
+                <span className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground">
+                  <EmotionSamplePlayButton
+                    url={rateCompare.rateUrl}
+                    label={`rate ${rateCompare.rate}`}
+                  />
+                  Rate {rateCompare.rate > 0 ? "+" : ""}
+                  {rateCompare.rate}%
+                </span>
+                <span className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground">
+                  <EmotionSamplePlayButton
+                    url={rateCompare.stretchedUrl}
+                    label={`atempo ${rateCompare.tempo}`}
+                  />
+                  Rate 0 · atempo {Math.round(rateCompare.tempo * 100)}%
+                </span>
+              </>
+            ) : null}
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => {
+                setBusy("rate-compare");
+                onError(null);
+                void postAdminVoice<{
+                  rate: number;
+                  tempo: number;
+                  rateAudioBase64: string;
+                  stretchedAudioBase64: string;
+                }>({ action: "rate-compare", modelId: speaker.modelId })
+                  .then((res) =>
+                    setRateCompare({
+                      rate: res.rate,
+                      tempo: res.tempo,
+                      rateUrl: `data:audio/mpeg;base64,${res.rateAudioBase64}`,
+                      stretchedUrl: `data:audio/mpeg;base64,${res.stretchedAudioBase64}`,
+                    }),
+                  )
+                  .catch((err) =>
+                    onError(err instanceof Error ? err.message : "Could not compare"),
+                  )
+                  .finally(() => setBusy(null));
+              }}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-card disabled:opacity-50"
+            >
+              {busy === "rate-compare"
+                ? "Generating…"
+                : rateCompare
+                  ? "Regenerate"
+                  : "Generate comparison"}
+            </button>
+          </div>
         </div>
       ) : null}
     </li>
