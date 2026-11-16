@@ -3128,7 +3128,7 @@ export function defaultDevUiSettings(): DevUiSettings {
   return {
     createAudioDevControls: false,
     libraryDevFlyout: false,
-    homeWaitlist: false,
+    homeWaitlist: true,
   };
 }
 
