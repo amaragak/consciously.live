@@ -114,6 +114,8 @@ async function pipeAnthropicSseToClient(
       inputTokens,
       outputTokens,
       feature: meter.feature,
+      source: "user",
+      reason: meter.feature,
     });
   }
 }

@@ -58,8 +58,10 @@ function stripPauseMarkersForSpeechify(script: string): string {
  */
 /** Target band ~400–700ms after commas. */
 export const SPEECHIFY_COMMA_BREAK_MS = 550;
-/** Fallback sentence break. Delivery profiles `shared.pauseAfterSentence` sets the live value. */
+/** Fallback sentence break (1s). */
 export const SPEECHIFY_PERIOD_BREAK_MS = 1000;
+/** Provider max for a single Speechify SSML break (not an admin setting). */
+export const SPEECHIFY_MAX_BREAK_SECONDS = 10;
 
 /**
  * After each comma + following space, insert a Speechify SSML break.

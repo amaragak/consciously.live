@@ -23,7 +23,11 @@ import {
   AI_PROVIDER_CATALOG,
   type AiProviderId,
 } from "./_shared/ai-provider-pricing";
-import { loadAiUsageTotals } from "./_shared/ai-usage";
+import {
+  listAiUsageEvents,
+  loadAiUsageTotals,
+  type AiUsageEvent,
+} from "./_shared/ai-usage";
 
 const secrets = new SecretsManagerClient({});
 
@@ -131,11 +135,25 @@ export async function handler(
 
   try {
     if (method === "GET") {
+      const qs = event.queryStringParameters ?? {};
+      const day =
+        typeof qs.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(qs.day.trim())
+          ? qs.day.trim()
+          : new Date().toISOString().slice(0, 10);
+      const eventLimit = Math.max(
+        1,
+        Math.min(200, Number(qs.limit) || 80),
+      );
       const providerIds = AI_PROVIDER_CATALOG.map((p) => p.id);
-      const [balances, fishLive, totals] = await Promise.all([
+      const [balances, fishLive, totals, claudeEvents] = await Promise.all([
         loadAiCreditBalances(),
         fetchFishCreditUsd(),
         loadAiUsageTotals(providerIds),
+        listAiUsageEvents({
+          provider: "anthropic",
+          day,
+          limit: eventLimit,
+        }),
       ]);
       const totalsById = new Map(totals.map((t) => [t.provider, t]));
 
@@ -181,12 +199,31 @@ export async function handler(
         0,
       );
 
+      const dayUsd = claudeEvents.reduce((a, e) => a + e.usd, 0);
+
       return json(200, {
         generatedAt: new Date().toISOString(),
         providers,
         trackedTotalUsd,
+        claudeEventsDay: day,
+        claudeEventsDayUsd: Math.round(dayUsd * 1e6) / 1e6,
+        claudeEvents: claudeEvents.map((e: AiUsageEvent) => ({
+          createdAt: e.createdAt,
+          feature: e.feature,
+          model: e.model,
+          source: e.source,
+          reason: e.reason,
+          userId: e.userId,
+          inputTokens: e.inputTokens,
+          outputTokens: e.outputTokens,
+          thinkingTokens: e.thinkingTokens,
+          cacheCreationTokens: e.cacheCreationTokens,
+          cacheReadTokens: e.cacheReadTokens,
+          usd: e.usd,
+        })),
         notes: [
           "Tracked spend is written to the AI usage ledger at call time (O(1) totals read — no table scans).",
+          "Each Claude call stores feature, source (admin/user/system), reason, tokens (incl. cache), and USD.",
           "Historical usage from before the ledger was deployed is not included.",
           "Fish remaining credit is live from the wallet API.",
           "Set manual remaining balances for Anthropic / OpenAI / Google / Speechify until Admin billing keys are wired.",

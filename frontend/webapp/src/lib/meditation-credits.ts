@@ -29,8 +29,8 @@ export const DEFAULT_WPM_BY_DELIVERY: Record<MeditationDelivery, number> = {
 /** Default WPM until a voice is measured. Casual rate, used when delivery is unknown. */
 export const DEFAULT_VOICE_WPM = DEFAULT_WPM_BY_DELIVERY.casual;
 
-/** Average characters per spoken word (estimate). */
-export const AVG_CHARS_PER_WORD = SEEDED.shared.charsPerWord;
+/** Average characters per spoken word (estimate). Fixed — not an admin setting. */
+export const AVG_CHARS_PER_WORD = 5.7;
 
 /** Base script-generation cost in credits. */
 export const DEFAULT_SCRIPT_BASE_CREDITS = 1;
@@ -98,7 +98,18 @@ export function estimateMeditationCredits(
     input.charsPerCreditStandard ?? DEFAULT_CHARS_PER_CREDIT_STANDARD,
   );
 
-  const spokenMinutes = lengthMinutes * spokenShare;
+  // Credits are based on the script only — not lead-in, title or fade-out.
+  // Approximate script share: requested minutes minus typical around-parts
+  // (~20s lead + ~6s title + ~20s fade ≈ 46s ≈ 0.77 min on a 5–20 min session).
+  const aroundMinutes =
+    (SEEDED.shared.sessionLeadInSeconds +
+      SEEDED.shared.sessionFadeOutSeconds +
+      SEEDED.shared.titleLeadPauseSeconds +
+      SEEDED.shared.titleTrailPauseSeconds +
+      2) /
+    60;
+  const scriptMinutes = Math.max(0.5, lengthMinutes - aroundMinutes);
+  const spokenMinutes = scriptMinutes * spokenShare;
   const estimatedCharacters = Math.round(
     spokenMinutes * wpm * charsPerWord,
   );

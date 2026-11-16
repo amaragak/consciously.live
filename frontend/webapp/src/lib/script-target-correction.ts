@@ -101,5 +101,11 @@ export function correctionHasCalibratedSamples(
   return false;
 }
 
+export function lengthKeyForMinutes(minutes: number): "5" | "10" | "20" {
+  if (minutes <= 7) return "5";
+  if (minutes <= 15) return "10";
+  return "20";
+}
+
 /** @deprecated v9 */
 export type CorrectionBucket = "first" | "last" | "middle" | "single";

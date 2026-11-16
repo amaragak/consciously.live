@@ -86,6 +86,46 @@ export function coerceClaudeModel(model: unknown): string {
   return isSupportedClaudeModel(model) ? model : CLAUDE_HAIKU_55_MODEL_ID;
 }
 
+/** Force Haiku family for word-fix (never request Sonnet even if style-infer was pointed at it). */
+export function coerceHaikuModel(model: unknown): string {
+  const priced = claudeModelForPricing(model);
+  if (priced.includes("haiku")) return priced;
+  return CLAUDE_HAIKU_55_MODEL_ID;
+}
+
+/**
+ * Map a requested or API-returned model id to a rate table key.
+ * Dated snapshots (e.g. claude-haiku-5-5-YYYYMMDD) resolve to the family default.
+ */
+export function claudeModelForPricing(model: unknown): string {
+  if (isSupportedClaudeModel(model)) return model;
+  const id = typeof model === "string" ? model.trim().toLowerCase() : "";
+  if (!id) return CLAUDE_HAIKU_55_MODEL_ID;
+  if (id.includes("sonnet-5-5") || id.includes("sonnet-4-5")) {
+    return id.includes("sonnet-5-5")
+      ? CLAUDE_SONNET_55_MODEL_ID
+      : CLAUDE_SONNET_45_LEGACY_MODEL_ID;
+  }
+  if (id.includes("sonnet-4-6")) return CLAUDE_SONNET_46_MODEL_ID;
+  if (id.includes("haiku-5-5")) return CLAUDE_HAIKU_55_MODEL_ID;
+  if (id.includes("haiku-4-5")) return CLAUDE_HAIKU_45_LEGACY_MODEL_ID;
+  if (id.includes("sonnet")) return CLAUDE_SONNET_55_MODEL_ID;
+  if (id.includes("haiku")) return CLAUDE_HAIKU_55_MODEL_ID;
+  return CLAUDE_HAIKU_55_MODEL_ID;
+}
+
+/** Model id from a Messages API JSON body (`model` field), if present. */
+export function parseAnthropicMessageModel(jsonText: string): string | null {
+  try {
+    const o = JSON.parse(jsonText) as { model?: unknown };
+    return typeof o.model === "string" && o.model.trim()
+      ? o.model.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function isClaudeSonnet55(model: string): boolean {
   return model.trim().toLowerCase().includes("sonnet-5-5");
 }
@@ -159,14 +199,48 @@ export function claudeHaiku45UsdFromTokens(
   return claudeUsdFromTokens(CLAUDE_HAIKU_55_MODEL_ID, inputTokens, outputTokens);
 }
 
-/** Parse `usage` from a non-streaming `/v1/messages` JSON body. */
-export function parseAnthropicMessageUsage(jsonText: string): {
+export type AnthropicMessageUsage = {
   input_tokens: number;
+  /** Completion tokens billed (includes thinking when the API folds them in). */
   output_tokens: number;
-} | null {
+  /**
+   * Thinking / reasoning tokens when reported or inferred from thinking
+   * content blocks. Billed at the output rate; often already counted inside
+   * `output_tokens`.
+   */
+  thinking_tokens?: number;
+  /** Tokens written into the prompt cache (billed at write rate). */
+  cache_creation_input_tokens?: number;
+  /** Tokens read from the prompt cache (billed at read rate). */
+  cache_read_input_tokens?: number;
+  /** 5-minute ephemeral cache writes (when API reports the breakdown). */
+  cache_creation_5m_input_tokens?: number;
+  /** 1-hour ephemeral cache writes (when API reports the breakdown). */
+  cache_creation_1h_input_tokens?: number;
+};
+
+/** Parse `usage` from a non-streaming `/v1/messages` JSON body. */
+export function parseAnthropicMessageUsage(
+  jsonText: string,
+): AnthropicMessageUsage | null {
   try {
     const o = JSON.parse(jsonText) as {
-      usage?: { input_tokens?: unknown; output_tokens?: unknown };
+      content?: Array<{
+        type?: string;
+        thinking?: string;
+        text?: string;
+      }>;
+      usage?: {
+        input_tokens?: unknown;
+        output_tokens?: unknown;
+        thinking_tokens?: unknown;
+        cache_creation_input_tokens?: unknown;
+        cache_read_input_tokens?: unknown;
+        cache_creation?: {
+          ephemeral_5m_input_tokens?: unknown;
+          ephemeral_1h_input_tokens?: unknown;
+        };
+      };
     };
     const u = o.usage;
     if (!u) return null;
@@ -174,10 +248,135 @@ export function parseAnthropicMessageUsage(jsonText: string): {
     const ot = u.output_tokens;
     if (typeof it !== "number" || typeof ot !== "number") return null;
     if (!Number.isFinite(it) || !Number.isFinite(ot)) return null;
-    return { input_tokens: it, output_tokens: ot };
+    const cacheWrite =
+      typeof u.cache_creation_input_tokens === "number" &&
+      Number.isFinite(u.cache_creation_input_tokens)
+        ? u.cache_creation_input_tokens
+        : 0;
+    const cacheRead =
+      typeof u.cache_read_input_tokens === "number" &&
+      Number.isFinite(u.cache_read_input_tokens)
+        ? u.cache_read_input_tokens
+        : 0;
+    const c5 =
+      typeof u.cache_creation?.ephemeral_5m_input_tokens === "number" &&
+      Number.isFinite(u.cache_creation.ephemeral_5m_input_tokens)
+        ? u.cache_creation.ephemeral_5m_input_tokens
+        : 0;
+    const c1h =
+      typeof u.cache_creation?.ephemeral_1h_input_tokens === "number" &&
+      Number.isFinite(u.cache_creation.ephemeral_1h_input_tokens)
+        ? u.cache_creation.ephemeral_1h_input_tokens
+        : 0;
+    let thinking = 0;
+    if (
+      typeof u.thinking_tokens === "number" &&
+      Number.isFinite(u.thinking_tokens)
+    ) {
+      thinking = Math.max(0, u.thinking_tokens);
+    } else if (Array.isArray(o.content)) {
+      // Approx when the API returns thinking blocks but no separate usage field.
+      let chars = 0;
+      for (const block of o.content) {
+        if (block?.type === "thinking" && typeof block.thinking === "string") {
+          chars += block.thinking.length;
+        }
+      }
+      if (chars > 0) thinking = Math.max(1, Math.round(chars / 4));
+    }
+    return {
+      input_tokens: it,
+      output_tokens: ot,
+      thinking_tokens: thinking,
+      cache_creation_input_tokens: cacheWrite,
+      cache_read_input_tokens: cacheRead,
+      cache_creation_5m_input_tokens: c5,
+      cache_creation_1h_input_tokens: c1h,
+    };
   } catch {
     return null;
   }
+}
+
+/** Merge usage from several Claude calls (plan + sections). */
+export function mergeAnthropicMessageUsage(
+  parts: Array<AnthropicMessageUsage | null | undefined>,
+): AnthropicMessageUsage | null {
+  let any = false;
+  const out: AnthropicMessageUsage = {
+    input_tokens: 0,
+    output_tokens: 0,
+    thinking_tokens: 0,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0,
+    cache_creation_5m_input_tokens: 0,
+    cache_creation_1h_input_tokens: 0,
+  };
+  for (const u of parts) {
+    if (!u) continue;
+    any = true;
+    out.input_tokens += u.input_tokens;
+    out.output_tokens += u.output_tokens;
+    out.thinking_tokens =
+      (out.thinking_tokens ?? 0) + (u.thinking_tokens ?? 0);
+    out.cache_creation_input_tokens =
+      (out.cache_creation_input_tokens ?? 0) +
+      (u.cache_creation_input_tokens ?? 0);
+    out.cache_read_input_tokens =
+      (out.cache_read_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
+    out.cache_creation_5m_input_tokens =
+      (out.cache_creation_5m_input_tokens ?? 0) +
+      (u.cache_creation_5m_input_tokens ?? 0);
+    out.cache_creation_1h_input_tokens =
+      (out.cache_creation_1h_input_tokens ?? 0) +
+      (u.cache_creation_1h_input_tokens ?? 0);
+  }
+  return any ? out : null;
+}
+
+/**
+ * Cache write multipliers vs base input (Anthropic list pricing).
+ * 5m write = 1.25×, 1h write = 2×, cache read = 0.1×.
+ */
+export function claudeUsdFromUsage(
+  model: string,
+  usage: AnthropicMessageUsage,
+): number {
+  const priced = claudeModelForPricing(model);
+  const rate =
+    CLAUDE_MODEL_RATES[priced] ?? CLAUDE_MODEL_RATES[CLAUDE_HAIKU_55_MODEL_ID];
+  const baseIn = rate.usdPerInputToken;
+  const out = Math.max(0, usage.output_tokens) * rate.usdPerOutputToken;
+  const uncached = Math.max(0, usage.input_tokens) * baseIn;
+  const read = Math.max(0, usage.cache_read_input_tokens ?? 0) * baseIn * 0.1;
+  const write5 = Math.max(0, usage.cache_creation_5m_input_tokens ?? 0) * baseIn * 1.25;
+  const write1h = Math.max(0, usage.cache_creation_1h_input_tokens ?? 0) * baseIn * 2;
+  const writeOther = Math.max(
+    0,
+    (usage.cache_creation_input_tokens ?? 0) -
+      (usage.cache_creation_5m_input_tokens ?? 0) -
+      (usage.cache_creation_1h_input_tokens ?? 0),
+  );
+  // When the API omits the 5m/1h split, treat remaining writes as 5m (1.25×).
+  const writeFallback = writeOther * baseIn * 1.25;
+  return uncached + read + write5 + write1h + writeFallback + out;
+}
+
+/** Lowest effort for Sonnet 5.5 section / fix writes. */
+export function withClaudeEffortLow(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
+  const model =
+    typeof body.model === "string" ? body.model : CLAUDE_HAIKU_55_MODEL_ID;
+  if (!isClaudeSonnet55(model)) return body;
+  const existing = body.output_config as { effort?: string } | undefined;
+  return {
+    ...body,
+    output_config: {
+      ...(existing && typeof existing === "object" ? existing : {}),
+      effort: "low",
+    },
+  };
 }
 
 const COUNT_TOKENS_URL = "https://api.anthropic.com/v1/messages/count_tokens";

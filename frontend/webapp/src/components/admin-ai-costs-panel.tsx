@@ -238,6 +238,79 @@ export function AdminAiCostsPanel() {
         </ul>
       )}
 
+      {data?.claudeEvents ? (
+        <section className="rounded-2xl border border-border p-4">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="font-display text-lg font-medium text-foreground">
+                Claude calls
+              </h2>
+              <p className="mt-0.5 text-xs text-muted">
+                Per-call ledger for{" "}
+                {data.claudeEventsDay ?? "today"} (UTC) ·{" "}
+                {data.claudeEvents.length} shown · day sum{" "}
+                {formatUsd(data.claudeEventsDayUsd)}
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs text-muted">
+                  <th className="py-2 pr-2 font-medium">Time</th>
+                  <th className="py-2 pr-2 font-medium">Source</th>
+                  <th className="py-2 pr-2 font-medium">Reason</th>
+                  <th className="py-2 pr-2 font-medium">Model</th>
+                  <th className="py-2 pr-2 font-medium tabular-nums">In</th>
+                  <th className="py-2 pr-2 font-medium tabular-nums">Out</th>
+                  <th className="py-2 pr-2 font-medium tabular-nums">Cache W/R</th>
+                  <th className="py-2 font-medium tabular-nums">USD</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.claudeEvents.map((e) => (
+                  <tr
+                    key={`${e.createdAt}-${e.reason}-${e.usd}`}
+                    className="border-b border-border/60 text-foreground"
+                  >
+                    <td className="py-1.5 pr-2 text-xs text-muted whitespace-nowrap">
+                      {new Date(e.createdAt).toLocaleTimeString()}
+                    </td>
+                    <td className="py-1.5 pr-2 text-xs">{e.source ?? "—"}</td>
+                    <td className="py-1.5 pr-2 text-xs text-muted">
+                      {e.reason ?? e.feature}
+                    </td>
+                    <td className="py-1.5 pr-2 text-xs text-muted">
+                      {e.model ?? "—"}
+                    </td>
+                    <td className="py-1.5 pr-2 tabular-nums text-xs">
+                      {e.inputTokens.toLocaleString()}
+                    </td>
+                    <td className="py-1.5 pr-2 tabular-nums text-xs">
+                      {e.outputTokens.toLocaleString()}
+                    </td>
+                    <td className="py-1.5 pr-2 tabular-nums text-xs text-muted">
+                      {e.cacheCreationTokens.toLocaleString()}/
+                      {e.cacheReadTokens.toLocaleString()}
+                    </td>
+                    <td className="py-1.5 tabular-nums text-xs font-medium">
+                      {formatUsd(e.usd)}
+                    </td>
+                  </tr>
+                ))}
+                {!data.claudeEvents.length ? (
+                  <tr>
+                    <td colSpan={8} className="py-3 text-sm text-muted">
+                      No Claude events stored for this day yet.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
       {data?.notes?.length ? (
         <ul className="list-disc space-y-1 pl-5 text-xs text-muted">
           {data.notes.map((n) => (

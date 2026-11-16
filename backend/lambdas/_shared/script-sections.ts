@@ -11,8 +11,51 @@ import {
 } from "./meditation-length-fit";
 import { sumPauseMarkerSeconds, type ScriptPauseBand } from "./script-pause-bands";
 
-/** Default max spoken words in any one section (admin setting). */
+/** Absolute hard ceiling for spoken words in any one section. */
 export const DEFAULT_SECTION_WORD_CAP = 250;
+
+/**
+ * Per-delivery word cap from max section minutes × WPM × speech share,
+ * never above the hard ceiling.
+ */
+export function sectionWordCapForDelivery(params: {
+  hardCap: number;
+  maxSectionMinutes: number;
+  medianWpm: number;
+  silenceShare: number;
+}): number {
+  const speechShare = Math.max(0.05, Math.min(0.95, 1 - params.silenceShare));
+  const byTime = Math.floor(
+    Math.max(0.5, params.maxSectionMinutes) *
+      Math.max(1, params.medianWpm) *
+      speechShare,
+  );
+  return Math.max(1, Math.min(Math.max(1, params.hardCap), byTime));
+}
+
+/** Minimum section count so no section needs more than `wordCap` words. */
+export function minSectionsForWords(totalWords: number, wordCap: number): number {
+  return Math.max(1, Math.ceil(Math.max(0, totalWords) / Math.max(1, wordCap)));
+}
+
+/**
+ * Pause seconds for a section that keeps the delivery silence share,
+ * given spoken words and median effective WPM.
+ * duration_min = words / WPM / speechShare; pause = duration − speak.
+ */
+export function sectionPauseSecondsForWords(params: {
+  words: number;
+  medianWpm: number;
+  silenceShare: number;
+}): number {
+  const wpm = Math.max(1, params.medianWpm);
+  const speechShare = Math.max(0.05, Math.min(0.95, 1 - params.silenceShare));
+  const speakMin = Math.max(0, params.words) / wpm;
+  const durationMin = speakMin / speechShare;
+  const pauseSec = (durationMin - speakMin) * 60;
+  return Math.max(0, Math.round(pauseSec));
+}
+
 /** Total words more than this far off → one targeted fix. Within it → pause scaling only. */
 /** @deprecated v9: fix is triggered by length salvage, not a word ±% band. */
 export const SECTION_TOTAL_FIX_TOLERANCE_PCT = 20;
@@ -39,15 +82,21 @@ export function sessionTotals(params: {
   pauseScale: number;
   commaBreakSeconds: number;
   titleIntro: boolean;
+  /** Override fallback title speech (e.g. from title words ÷ WPM). */
+  titleSpeechSeconds?: number;
+  /** Override written title pauses (lead + trail). */
+  titlePauseSecondsWritten?: number;
 }): SessionTotals {
   const pauseScale = Math.max(0.1, params.pauseScale);
   const comma = COMMAS_PER_WORD * Math.max(0, params.commaBreakSeconds);
+  const titleSpeech =
+    params.titleSpeechSeconds ?? TITLE_INTRO_SPEECH_SECONDS;
+  const titlePause =
+    params.titlePauseSecondsWritten ?? TITLE_INTRO_PAUSE_SECONDS;
   const bodySeconds = Math.max(
     30,
     params.stemSeconds -
-      (params.titleIntro
-        ? TITLE_INTRO_SPEECH_SECONDS + TITLE_INTRO_PAUSE_SECONDS * pauseScale
-        : 0),
+      (params.titleIntro ? titleSpeech + titlePause * pauseScale : 0),
   );
   const medianSecPerWord = 60 / Math.max(1, params.medianWpm) + comma;
   const voiceSecPerWord = 60 / Math.max(1, params.voiceWpm) + comma;
@@ -79,6 +128,70 @@ export type ScriptSectionPlan = {
   totalWords: number;
   totalPauseSeconds: number;
 };
+
+/**
+ * Overwrite each section's pauseSeconds from its words (plan chooses words only).
+ * Own-silence: first/last estimates also use the delivery silence share (for
+ * sizing/caps only). Edge section writes omit a pause target; after writing,
+ * use the pauses actually written.
+ */
+export function applySectionPausesFromWords(
+  sections: PlannedSection[],
+  params: {
+    medianWpm: number;
+    /** Delivery silence share (used for every section's plan estimate). */
+    silenceShare: number;
+    /** @deprecated Own-silence: ignored; kept for call-site compat. */
+    firstSilenceShare?: number;
+    /** @deprecated Own-silence: ignored; kept for call-site compat. */
+    lastSilenceShare?: number;
+  },
+): PlannedSection[] {
+  const mid = params.silenceShare;
+  // Own-silence: estimate first/last with delivery share (not admin edge shares).
+  // const first = params.firstSilenceShare ?? mid;
+  // const last = params.lastSilenceShare ?? mid;
+  void params.firstSilenceShare;
+  void params.lastSilenceShare;
+  return sections.map((s) => ({
+    ...s,
+    pauseSeconds: sectionPauseSecondsForWords({
+      words: s.words,
+      medianWpm: params.medianWpm,
+      silenceShare: mid,
+    }),
+  }));
+}
+
+/** True when index is first or last (or there is no middle). */
+export function isEdgeSectionIndex(index: number, sectionCount: number): boolean {
+  const n = Math.max(0, sectionCount);
+  return n <= 2 || index === 0 || index === n - 1;
+}
+
+/** Sum of planned pause seconds for middle sections only (plan-scale target). */
+export function middlePlannedPauseSeconds(sections: PlannedSection[]): number {
+  const n = sections.length;
+  return sections.reduce(
+    (a, s, i) => (isEdgeSectionIndex(i, n) ? a : a + Math.max(0, s.pauseSeconds)),
+    0,
+  );
+}
+
+export function planObeysSectionCaps(
+  sections: PlannedSection[],
+  params: { wordCap: number; wordMin: number; minSections: number },
+): boolean {
+  if (!sections.length) return false;
+  if (sections.length < params.minSections) return false;
+  for (const s of sections) {
+    if (s.words > params.wordCap) return false;
+    if (sections.length >= 2 && params.wordMin > 0 && s.words < params.wordMin) {
+      return false;
+    }
+  }
+  return true;
+}
 
 function round5(n: number): number {
   return Math.max(0, Math.round(n / 5) * 5);
@@ -142,11 +255,13 @@ export function parseScriptPlan(
     const row = list[i];
     if (!row || typeof row !== "object") return null;
     const o = row as Record<string, unknown>;
-    const name = asString(o.name) || `section ${i + 1}`;
+    // Compact keys (n/i/c/sf/ea/d/w/p) preferred; long keys still accepted.
+    const name =
+      asString(o.n) || asString(o.name) || `section ${i + 1}`;
     let id = slugName(name, i);
     if (used.has(id)) id = `${id}-${i + 1}`;
     used.add(id);
-    const words = asPositiveInt(o.words, 0);
+    const words = asPositiveInt(o.w ?? o.words, 0);
     // v7: over/under word bounds are clamped in rescaleScriptPlan so a
     // phase-sized plan that slightly overshoots the cap still survives.
     // Reject only empty / non-positive rows here.
@@ -154,16 +269,20 @@ export function parseScriptPlan(
     if ((params.wordMin ?? 0) > 0 && words > 0 && words < (params.wordMin ?? 0)) return null; */
     void params.wordCap;
     void params.wordMin;
-    if (words <= 0 && asPositiveInt(o.pause_seconds ?? o.pauseSeconds, 0) <= 0) return null;
+    const pauseSeconds = asPositiveInt(
+      o.p ?? o.pause_seconds ?? o.pauseSeconds,
+      0,
+    );
+    if (words <= 0 && pauseSeconds <= 0) return null;
     out.push({
       name: id,
-      intention: asString(o.intention),
-      covers: asString(o.covers),
-      startsFrom: asString(o.starts_from ?? o.startsFrom),
-      endsAt: asString(o.ends_at ?? o.endsAt),
-      details: asString(o.details),
+      intention: asString(o.i ?? o.intention),
+      covers: asString(o.c ?? o.covers),
+      startsFrom: asString(o.sf ?? o.starts_from ?? o.startsFrom),
+      endsAt: asString(o.ea ?? o.ends_at ?? o.endsAt),
+      details: asString(o.d ?? o.details),
       words,
-      pauseSeconds: asPositiveInt(o.pause_seconds ?? o.pauseSeconds, 0),
+      pauseSeconds,
     });
   }
   for (let i = 0; i < out.length - 1; i++) {
@@ -204,13 +323,16 @@ export function rescaleScriptPlan(
       totalPauseSeconds: totals.totalPauseSeconds,
     };
   }
+  // Always-sections v2: 60-word min only when there are two or more sections.
+  // A single section may be any size up to the cap.
+  const effectiveMin = sections.length >= 2 ? wordMin : 0;
   const words = sections.map((s) => Math.max(0, s.words));
   const pauses = sections.map((s) => Math.max(0, s.pauseSeconds));
   const sumW = words.reduce((a, b) => a + b, 0) || 1;
   const sumP = pauses.reduce((a, b) => a + b, 0) || 1;
 
   let scaled = words.map((w) => (w / sumW) * totals.totalWords);
-  // Clamp to [wordMin, wordCap] and redistribute the difference.
+  // Clamp to [effectiveMin, wordCap] and redistribute the difference.
   for (let pass = 0; pass < sections.length + 3; pass++) {
     let excess = 0;
     let deficit = 0;
@@ -220,14 +342,14 @@ export function rescaleScriptPlan(
       if (scaled[i]! > wordCap) {
         excess += scaled[i]! - wordCap;
         scaled[i] = wordCap;
-      } else if (wordMin > 0 && scaled[i]! < wordMin) {
-        deficit += wordMin - scaled[i]!;
-        scaled[i] = wordMin;
+      } else if (effectiveMin > 0 && scaled[i]! < effectiveMin) {
+        deficit += effectiveMin - scaled[i]!;
+        scaled[i] = effectiveMin;
       }
     }
     for (let i = 0; i < scaled.length; i++) {
       if (scaled[i]! < wordCap) roomUp += wordCap - scaled[i]!;
-      if (scaled[i]! > wordMin) roomDown += scaled[i]! - wordMin;
+      if (scaled[i]! > effectiveMin) roomDown += scaled[i]! - effectiveMin;
     }
     if (excess > 0.5 && roomUp > 0) {
       for (let i = 0; i < scaled.length; i++) {
@@ -238,8 +360,8 @@ export function rescaleScriptPlan(
     }
     if (deficit > 0.5 && roomDown > 0) {
       for (let i = 0; i < scaled.length; i++) {
-        if (scaled[i]! <= wordMin) continue;
-        scaled[i]! -= ((scaled[i]! - wordMin) / roomDown) * deficit;
+        if (scaled[i]! <= effectiveMin) continue;
+        scaled[i]! -= ((scaled[i]! - effectiveMin) / roomDown) * deficit;
       }
       continue;
     }
@@ -247,7 +369,7 @@ export function rescaleScriptPlan(
   }
 
   const scaledP = pauses.map((p) => (p / sumP) * totals.totalPauseSeconds);
-  const floor = Math.max(5, wordMin);
+  const floor = Math.max(5, effectiveMin);
   const out = sections.map((s, i) => ({
     ...s,
     words: Math.max(floor, Math.min(wordCap, round5(scaled[i]!))),
@@ -257,7 +379,7 @@ export function rescaleScriptPlan(
   const driftW = totals.totalWords - out.reduce((a, s) => a + s.words, 0);
   const driftP = totals.totalPauseSeconds - out.reduce((a, s) => a + s.pauseSeconds, 0);
   const last = out[out.length - 1]!;
-  last.words = Math.max(Math.max(5, wordMin), Math.min(wordCap, last.words + driftW));
+  last.words = Math.max(Math.max(5, effectiveMin), Math.min(wordCap, last.words + driftW));
   last.pauseSeconds = Math.max(0, last.pauseSeconds + driftP);
 
   return {

@@ -2,6 +2,8 @@ import {
   creatorChoseSpecificMeditationTechnique,
   styleAdherenceBlockForPrompt,
 } from "./meditation-types";
+import { styleGuidePromptBlock } from "./style-guide-for-prompt";
+import type { DeliveryId } from "./delivery-profiles";
 import {
   getFleetScriptWordTargets,
   scriptDurationPlanningAppendix,
@@ -116,9 +118,12 @@ export function scriptLengthInstruction(params: {
   const n = params.targetMinutes;
   const base = `Length: this session should last about ${n} minutes in total, spoken words plus pauses. The voice speaks at about ${Math.round(params.effectiveWpm)} words per minute (not counting pauses). For this delivery, about ${Math.round(params.silenceSharePct)}% of the session should be silence. Plan the amount of speech and the pauses so the whole session comes out close to ${n} minutes.`;
   if (params.words == null || params.pauseSecondsWritten == null) return base;
-  const b = params.pauseBands ?? SCRIPT_PAUSE_BAND_SECONDS;
-  const bands = `extra short ${b["extra-short"]} s, short ${b.short} s, medium ${b.medium} s, long ${b.long} s, extra long ${b["extra-long"]} s, open ${b.open} s`;
-  return `${base} That works out at about **${params.words} spoken words** and about **${params.pauseSecondsWritten} seconds of pauses** in total, counting every [[PAUSE …]] marker (${bands}; timed markers count their seconds). Keep a running tally of both as you write.`;
+  // Was: inject named-band seconds map from admin pause lengths.
+  // const b = params.pauseBands ?? SCRIPT_PAUSE_BAND_SECONDS;
+  // const bands = `extra short ${b["extra-short"]} s, …`;
+  void params.pauseBands;
+  void SCRIPT_PAUSE_BAND_SECONDS;
+  return `${base} That works out at about **${params.words} spoken words** and about **${params.pauseSecondsWritten} seconds of pauses** in total, counting every timed pause marker (\`<N>\` = N seconds). Keep a running tally of both as you write.`;
 }
 
 /** Ask for a section plan instead of a script. */
@@ -127,79 +132,146 @@ export function scriptPlanTaskInstruction(params: {
   totalPauseSeconds: number;
   wordCap: number;
   wordMin: number;
+  /** Minimum sections from time-based word cap (ceil(total/cap)). */
+  minSections?: number;
+  /** Max wall-clock minutes per section (for the plan text). */
+  maxSectionMinutes?: number;
 }): string {
   const minSections = Math.max(
     1,
-    Math.ceil(params.totalWords / Math.max(1, params.wordCap)),
+    params.minSections ??
+      Math.ceil(params.totalWords / Math.max(1, params.wordCap)),
   );
-  const maxByMin = Math.max(
-    minSections,
-    Math.floor(params.totalWords / Math.max(1, params.wordMin)),
-  );
-  // Prefer phase-sized plans (about 3–7). Floor is set by the word cap.
-  const maxSections = Math.max(minSections, Math.min(7, maxByMin));
-  const preferCount = Math.max(
-    minSections,
-    Math.min(maxSections, Math.round((minSections + maxSections) / 2)),
-  );
-  const typicalWords = Math.round(params.totalWords / preferCount);
+  const maxMin = Math.max(0.5, params.maxSectionMinutes ?? 3);
+  // Kept for callers / caps checks — no longer stated as a target count in the prompt.
+  void minSections;
+  // Previous wording (removed — pushed artificial section counts / sizes):
+  // `Because of the word cap, this session needs at least ${minSections} sections…`
+  // `Prefer fuller phases near ~${typicalWords} words each…`
+  // Also dropped "p" (pause placeholder) — backend derives pauses from words.
   return [
     `Instead of writing the script, plan it. The session has about ${params.totalWords} spoken words and ${params.totalPauseSeconds} seconds of pauses in total. Divide it into sections, in order, following the user's request and the delivery.`,
     "",
-    `A section is a phase of the session: one coherent stretch with a single purpose, usually lasting a few minutes. It is not a single line, cue or instruction: a section contains many lines and their pauses, and in Open sits several cues and the silences between them. Most sessions have between 3 and 7 sections. Each section must have between ${params.wordMin} and ${params.wordCap} words — never over ${params.wordCap}. For this session use ${minSections === maxSections ? `exactly ${minSections}` : `between ${minSections} and ${maxSections}`} sections (prefer fewer, fuller phases near ~${typicalWords} words each, not many short fragments). If a phase would need more than ${params.wordCap} words, split it into consecutive phases. Return JSON: a list of sections, each with:`,
-    '- name (e.g. "opening", "breath", "body: feet to hips", "closing")',
-    "- intention: what this section is for, specific to the user",
-    "- covers: its own ground, so sections don't overlap or skip (for sequential techniques like a body scan, counting or a story, be explicit about the range)",
-    "- starts_from: where the listener is when it begins (attention, posture, breath)",
-    "- ends_at: where it leaves them (the next section's starts_from must match)",
-    "- details: which of the user's specifics it uses (if they asked for concrete imagery — named objects, a described room, three things to notice — list the actual specifics this section will speak, not vague categories)",
-    "- words: its spoken words",
-    "- pause_seconds: its total pauses",
-    `The words must add up to about ${params.totalWords}, and pause_seconds to about ${params.totalPauseSeconds}.`,
-    "Output **only** the JSON array (no markdown fences, no commentary).",
+    `A section is a phase of the session: one coherent stretch with a single purpose. It is not a single line, cue or instruction. No section may have more than ${params.wordCap} words or last more than ${maxMin} minutes; split a section when it would go over either. Also split wherever the topic or phase changes, so each section is about one thing. When there are two or more sections, each must have at least ${params.wordMin} words. A short session may be a single section if its words fit under ${params.wordCap}. You choose only the spoken words per section — pause length is derived later from the delivery silence share.`,
+    "Do not repeat the brief or explain — sections already see the brief and chat.",
+    "HARD word caps (count words; cut before emitting if over): n≤4, i≤15, c≤20, sf≤10, ea≤10; d = 2–6 key terms only (array or comma list), no sentences.",
+    "Return a JSON array only (no fences, no prose). Each object uses short keys:",
+    '- "n": name ≤ 4 words (e.g. "opening", "breath", "body feet", "closing")',
+    '- "i": intention ≤ 15 words',
+    '- "c": covers ≤ 20 words',
+    '- "sf": starts_from ≤ 10 words',
+    '- "ea": ends_at ≤ 10 words',
+    '- "d": details — user key terms only for this section',
+    '- "w": spoken words (integer)',
+    // '- "p": pause_seconds — removed; backend sets pauses from words',
+    `The "w" values must add up to about ${params.totalWords}. Aim for a short plan (roughly a few hundred tokens total).`,
   ].join("\n");
 }
 
+function clipWords(text: string, maxWords: number): string {
+  const words = (text ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return words.join(" ");
+  return words.slice(0, maxWords).join(" ");
+}
+
+function clipDetails(raw: string): string {
+  const t = (raw ?? "").trim();
+  if (!t) return "";
+  // Prefer comma / semicolon lists; otherwise take first ~6 tokens.
+  const parts = t
+    .split(/[,;|/]+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length >= 2) return parts.slice(0, 6).join(", ");
+  return clipWords(t, 6);
+}
+
 export function formatPlanForPrompt(plan: ScriptSectionPlan): string {
+  // Compact, no "p" — plan JSON is cached once (checkpoint 2) across section calls.
+  // Clip fields so a verbose model reply cannot bloat every section's checkpoint 2.
   return JSON.stringify(
     plan.sections.map((s) => ({
-      name: s.name,
-      intention: s.intention,
-      covers: s.covers,
-      starts_from: s.startsFrom,
-      ends_at: s.endsAt,
-      details: s.details,
-      words: s.words,
-      pause_seconds: s.pauseSeconds,
+      n: clipWords(s.name, 4),
+      i: clipWords(s.intention, 15),
+      c: clipWords(s.covers, 20),
+      sf: clipWords(s.startsFrom, 10),
+      ea: clipWords(s.endsAt, 10),
+      d: clipDetails(s.details),
+      w: s.words,
     })),
-    null,
-    2,
   );
 }
 
-/** Per-section write instruction (replaces the Length paragraph). */
+/**
+ * Shared section-writing rules (byte-identical for every section of a meditation).
+ * Cached with the plan JSON as Messages checkpoint 2.
+ */
+export function scriptSectionSharedRules(): string {
+  return [
+    "### Section writing rules",
+    "Write only the section named in the task below. Follow that section's intention (\"i\") and cover only its ground (\"c\"). Begin from its \"sf\" and end at its \"ea\". Use the personal details the plan assigns to this section, in the user's own words.",
+    // Was: short pause markers (`<s>`, `<m>`, …).
+    "Output only the spoken text and timed pause markers (`<N>`, e.g. `<2>` or `<5.5>`). Do not write `[[PAUSE …]]`.",
+    "Important formatting constraints:",
+    "1) Do NOT output any title, heading, or preamble of any kind.",
+    "2) The very first spoken content must start immediately (first non-whitespace characters must be the guide's words).",
+    "3) Do NOT start the script with a pause marker; only include pauses after speaking has begun.",
+  ].join("\n");
+}
+
+/**
+ * Uncached per-section task only — name, word range, pause budget, open/close role.
+ * Details / sf / ea / PERSONALIZATION live in the cached plan + shared rules.
+ */
+export function scriptSectionTaskOnly(params: {
+  section: PlannedSection;
+  isFirst: boolean;
+  isLast: boolean;
+  priorText?: string;
+}): string {
+  const role = params.isFirst
+    ? "This is the first section: open the session."
+    : params.isLast
+      ? "This is the last section: close the session."
+      : "Don't open or close the session; continue from the previous section and lead into the next.";
+  const lo = Math.max(5, Math.round((params.section.words * 0.9) / 5) * 5);
+  const hi = Math.max(lo, Math.round((params.section.words * 1.1) / 5) * 5);
+  const pauseAsk =
+    params.isFirst || params.isLast
+      ? "Pauses: your choice."
+      : `Pauses: about ${params.section.pauseSeconds} s.`;
+  // Previous long task (kept for reference) inlined details/sf/ea + PERSONALIZATION:
+  // `Write only the "${name}" section… Follow its intention… use these specifics: … Begin from "…" …`
+  const lines = [
+    `Section: "${params.section.name}". ${lo}–${hi} spoken words. ${pauseAsk}`,
+    role,
+    "Output only the spoken text and pause markers.",
+  ];
+  if (params.priorText?.trim()) {
+    lines.push("", "### Script so far", params.priorText.trim());
+  }
+  return lines.join("\n");
+}
+
+/** @deprecated Prefer scriptSectionTaskOnly + scriptSectionSharedRules. */
 export function scriptSectionWriteInstruction(params: {
   section: PlannedSection;
   plan: ScriptSectionPlan;
   isFirst: boolean;
   isLast: boolean;
   priorText?: string;
+  /** When false, omit the plan block (caller puts it in a separate cacheable chunk). */
+  includePlan?: boolean;
 }): string {
-  const role = params.isFirst
-    ? "Open the session."
-    : params.isLast
-      ? "Close the session."
-      : "Don't open or close the session; continue from the previous section and lead into the next.";
-  const lo = Math.max(5, Math.round((params.section.words * 0.9) / 5) * 5);
-  const hi = Math.max(lo, Math.round((params.section.words * 1.1) / 5) * 5);
-  const lines = [
-    `Write only the "${params.section.name}" section of this session. Write between ${lo} and ${hi} spoken words (pause markers don't count) and about ${params.section.pauseSeconds} seconds of pauses in total, placed and sized for each moment. Follow its intention and cover only its own ground${params.section.details?.trim() ? `; use these specifics: ${params.section.details.trim()}` : ""}. Begin from "${params.section.startsFrom || "where the previous section left the listener"}" and end at "${params.section.endsAt || "ready for the next section"}". ${role} Output only the spoken text and pause markers.`,
-    "",
-    "### Plan for the whole session",
-    formatPlanForPrompt(params.plan),
-  ];
-  if (params.priorText?.trim()) {
-    lines.push("", "### Script so far", params.priorText.trim());
+  const lines = [scriptSectionTaskOnly(params)];
+  if (params.includePlan !== false) {
+    lines.unshift(
+      "### Plan for the whole session",
+      formatPlanForPrompt(params.plan),
+      "",
+      scriptSectionSharedRules(),
+      "",
+    );
   }
   return lines.join("\n");
 }
@@ -213,6 +285,8 @@ export function buildSectionFixPrompt(params: {
     "You are an expert meditation scriptwriter for consciously.live. You adjust the length of named sections of a finished spoken script.",
     PERSONALIZATION_KEEP_RULES,
     GENDER_NEUTRAL_SCRIPT_RULES,
+    // Was: Use short pause markers only: `<s>`, `<m>`, …
+    "Use timed pause markers only: `<N>`, for example `<2>` or `<5.5>`. Do not write `[[PAUSE …]]`.",
   ].join(" ");
   const asks = params.fixes.map((f) =>
     f.action === "add"
@@ -230,8 +304,8 @@ export function buildSectionFixPrompt(params: {
     "",
     "Don't repeat lines, images or instructions used elsewhere in the script.",
     params.fixes.length > 1
-      ? 'Return only the new version of each changed section. Start each with a line `### Section: {name}` then the spoken text and pause markers.'
-      : `Return only the new version of the "${params.fixes[0]!.id}" section: spoken text and pause markers, no title or commentary.`,
+      ? "Return only the new version of each changed section. Start each with a line `### Section: {name}` then the spoken text and short pause markers."
+      : `Return only the new version of the "${params.fixes[0]!.id}" section: spoken text and short pause markers, no title or commentary.`,
   ].join("\n");
   return { system, userContent };
 }
@@ -257,10 +331,10 @@ export function buildLengthRevisionPrompt(params: {
           `Its pauses add up to about ${params.pauses.seconds} seconds; bring them to about ${params.pauses.targetSeconds} seconds in total by changing the length or number of the long silences.`,
         ]
       : [
-          "Keep the [[PAUSE …]] markers where they still fit; add or remove them only along with the words you add or remove.",
+          "Keep the pause markers (`<N>`) where they still fit; add or remove them only along with the words you add or remove.",
         ]),
     "Keep the same voice, delivery and closing.",
-    "Output **only** the revised script: the words the guide speaks and the [[PAUSE …]] markers, no title or commentary.",
+    "Output **only** the revised script: the words the guide speaks and short pause markers, no title or commentary.",
     "",
     "### Script",
     params.script,
@@ -272,6 +346,23 @@ export function buildLengthRevisionPrompt(params: {
  * Shared meditation script generation prompt used by the real create flow
  * (includeSegmentPlaceholders: false) and Script Lab admin (true).
  */
+/** Structured prompt for dual prompt-cache breakpoints (1h system, 5m context). */
+export type ScriptGenerationPrompt = {
+  /** Rules + delivery + style guide — identical across users with same delivery/style. */
+  systemStable: string;
+  /** Brief / chat / style lock — shared across plan + section calls. */
+  meditationContext: string;
+  /** Plan JSON for section writes (empty otherwise). */
+  meditationContextExtra: string;
+  /** Call-specific task (plan / write section / single script). */
+  taskContent: string;
+  /** Alias of systemStable for older callers. */
+  system: string;
+  /** meditationContext + extra + task joined (older callers / Script Lab). */
+  userContent: string;
+  maxTokens: number;
+};
+
 export function buildMeditationScriptGenerationPrompt(params: {
   transcript: string;
   meditationStyle: string;
@@ -289,6 +380,19 @@ export function buildMeditationScriptGenerationPrompt(params: {
   /** Pause rules for this delivery, appended after the word budget. */
   pauseRules?: string;
   /**
+   * Delivery silence share + Casual longest pause for the style-guide pacing
+   * line. Falls back to lengthFit.silenceSharePct and 4s when omitted.
+   */
+  styleGuideContext?: {
+    silenceShare: number;
+    longestPauseSeconds: number;
+  };
+  /**
+   * When set, load this style's writer's guide (e.g. Haiku-inferred) without
+   * treating it as the creator's locked technique choice.
+   */
+  styleGuideStyle?: string;
+  /**
    * Voice pace and delivery silence share. When set (production create), the
    * prompt carries the Length paragraph and the delivery block in place of
    * the word range and pause-budget blocks.
@@ -304,7 +408,14 @@ export function buildMeditationScriptGenerationPrompt(params: {
   };
   /** v4: plan the sections, or write one section. */
   task?:
-    | { kind: "plan"; totals: SessionTotals; wordCap: number; wordMin: number }
+    | {
+        kind: "plan";
+        totals: SessionTotals;
+        wordCap: number;
+        wordMin: number;
+        minSections?: number;
+        maxSectionMinutes?: number;
+      }
     | {
         kind: "section";
         section: PlannedSection;
@@ -313,7 +424,18 @@ export function buildMeditationScriptGenerationPrompt(params: {
         isLast: boolean;
         priorText?: string;
       };
-}): { system: string; userContent: string; maxTokens: number } {
+  /**
+   * Time-based single call: keep the original script-gen system/preprompt
+   * (delivery, pauses, personalization, style guide) but target script time +
+   * range of space instead of word/pause quotas. Outline then script.
+   */
+  timeBased?: {
+    scriptTimeSeconds: number;
+    spaceRangeMin: number;
+    spaceRangeMax: number;
+    roughSpeechWords: number;
+  };
+}): ScriptGenerationPrompt {
   const deliveryStyle =
     params.deliveryStyle === "casual" || params.deliveryStyle === "open_sits"
       ? params.deliveryStyle
@@ -321,7 +443,9 @@ export function buildMeditationScriptGenerationPrompt(params: {
   const longerBreaks =
     params.longerBreaks === true || deliveryStyle === "open_sits";
   const casual = deliveryStyle === "casual";
+  const timeBased = params.timeBased;
   const fitPrompt =
+    !timeBased &&
     (Boolean(params.lengthFit) || Boolean(params.task)) &&
     !params.includeSegmentPlaceholders;
   const words = getFleetScriptWordTargets({
@@ -336,6 +460,19 @@ export function buildMeditationScriptGenerationPrompt(params: {
     longerBreaks && words.spokenBudgetMinutes != null
       ? `Write the **guided spoken sections** like a ~**${words.spokenBudgetMinutes}-minute** script (roughly ${scriptWordsMin}–${scriptWordsMax} words), then add cued open-practice sits so the full stem hits **${params.targetMinutes} minutes**.`
       : `Target length: about **${params.targetMinutes} minutes** at a calm, unhurried speaking pace (roughly ${scriptWordsMin}–${scriptWordsMax} words).`;
+  const timeBasedLengthNote = timeBased
+    ? (() => {
+        const scriptMin =
+          Math.round((timeBased.scriptTimeSeconds / 60) * 10) / 10;
+        const lo = Math.round(timeBased.spaceRangeMin * 100);
+        const hi = Math.round(timeBased.spaceRangeMax * 100);
+        return [
+          `TIME-BASED LENGTH: the spoken script stem (after lead-in, title, and fade-out) should last about **${scriptMin} minutes** (${Math.round(timeBased.scriptTimeSeconds)}s).`,
+          `Range of space (silence share of that stem): **${lo}–${hi}%**. Place and size pauses by feel so the piece sits in that range — do not chase a word or pause-second quota.`,
+          `Rough amount of speech: about **${timeBased.roughSpeechWords} spoken words** (guidance only, not a target).`,
+        ].join(" ");
+      })()
+    : null;
   const styleForScript = params.meditationStyle.trim();
   const storyType = isStoryMeditationType(
     params.journalMode ? null : styleForScript,
@@ -370,91 +507,150 @@ export function buildMeditationScriptGenerationPrompt(params: {
         })
       : "";
 
-  const userParts: string[] = [
-    styleHint,
-    lockBlock,
-  ];
-
+  // Shared meditation context (5m cache): transcript + style — no task, no delivery.
+  const meditationParts: string[] = [styleHint, lockBlock];
   if (segmentBlock) {
-    userParts.push("", segmentBlock);
+    meditationParts.push("", segmentBlock);
   }
-
-  userParts.push(
+  meditationParts.push(
     "",
     "### Conversation between creator and guide (chronological)",
     params.transcript.trim() || "(No messages yet.)",
-    "",
-    "### Your task",
-    ...(params.task?.kind === "plan"
-      ? [
-          scriptPlanTaskInstruction({
-            totalWords: params.task.totals.totalWords,
-            totalPauseSeconds: params.task.totals.totalPauseSeconds,
-            wordCap: params.task.wordCap,
-            wordMin: params.task.wordMin,
-          }),
-          DELIVERY_PROMPT_BLOCKS[deliveryStyle],
-        ]
-      : params.task?.kind === "section"
-        ? [
-            scriptSectionWriteInstruction(params.task),
-            DELIVERY_PROMPT_BLOCKS_SECTION[deliveryStyle],
-          ]
-      : [
-          "Write the complete guided meditation script that a human guide would read aloud for recording.",
-          ...(fitPrompt
-            ? [
-                scriptLengthInstruction({
-                  targetMinutes: params.targetMinutes,
-                  ...params.lengthFit!,
-                }),
-                DELIVERY_PROMPT_BLOCKS[deliveryStyle],
-              ]
-            : [
-                spokenBudgetNote,
-                casual
-                  ? "Use a **Casual** delivery: go straight into what they asked for. Skip settling-in openings (no “settle into your breath”, body scan framing, or eyes-closed arrival) and skip a long reflective wind-down. Keep pauses short — never invent a single reflective silence longer than about **4 seconds**."
-                  : "Use clear sections (e.g. opening/arrival, main practice, gentle closing).",
-              ]),
-        ]),
-    "Match the emotional tone, intentions, and imagery from the conversation — and keep concrete personal facts (see PERSONALIZATION rules), not only vague impressions.",
-    "Use second person or gentle imperatives; warm, inclusive, non-clinical language.",
-    params.task?.kind === "section"
-      ? PERSONALIZATION_SECTION_RULES
-      : PERSONALIZATION_KEEP_RULES,
-    GENDER_NEUTRAL_SCRIPT_RULES,
-    "Phrase for natural text-to-speech: avoid single-word sentences or standalone one-word lines (they often get wrong stress or intonation). Prefer multi-word phrases and full sentences—for example, instead of ending with “Sleep.” alone, close with something like “When you’re ready, let yourself drift into sleep.”",
-    SCRIPT_PAUSE_PROMPT_RULES,
-    ...(params.task?.kind === "section"
-      ? [PAUSE_FITS_ACTION_RULE]
-      : fitPrompt
-      ? [
-          PAUSE_FITS_ACTION_RULE,
-          ...(deliveryStyle === "open_sits" ? [scriptOpenSitsMarkerRules()] : []),
-        ]
-      : [
-          ...(longerBreaks
-            ? [scriptLongerBreaksOpenPracticeRules(params.targetMinutes)]
-            : []),
-          scriptPauseBudgetGuidanceAppendix(params.targetMinutes, {
-            meditationType: meditationTypeForRules,
-            longerBreaks,
-          }),
-        ]),
-    // Closing-phase tag rules are emitted once in the structured-beats section
-    // below; the sleep-only copy here was a verbatim duplicate.
-    ...(sleepType && !params.includeSegmentPlaceholders
-      ? ["", scriptLabClosingPhaseTagRulesForType(meditationTypeForRules)]
-      : []),
-    ...(params.task?.kind === "plan"
-      ? []
-      : [
-          "Important formatting constraints:",
-          "1) Do NOT output any title, heading, or preamble of any kind.",
-          "2) The very first spoken content must start immediately (first non-whitespace characters must be the guide's words).",
-          "3) Do NOT start the script with a pause marker; only include pauses after speaking has begun.",
-        ]),
   );
+  if (timeBasedLengthNote) {
+    meditationParts.push("", timeBasedLengthNote);
+  } else if (fitPrompt) {
+    if (params.lengthFit) {
+      meditationParts.push(
+        "",
+        scriptLengthInstruction({
+          targetMinutes: params.targetMinutes,
+          ...params.lengthFit,
+        }),
+      );
+    } else {
+      meditationParts.push(
+        "",
+        `Plan speech and silence together so the whole session lands close to ${params.targetMinutes} minutes for this delivery.`,
+      );
+    }
+  } else if (params.task?.kind !== "plan" && params.task?.kind !== "section") {
+    meditationParts.push("", spokenBudgetNote);
+  }
+  // Same bytes for plan + section so checkpoint 2 prefixes match.
+  // Time-based: silence is a range, not a pause-budget appendix — skip those.
+  if (!timeBased) {
+    if (longerBreaks) {
+      meditationParts.push(
+        "",
+        // Was: `<o>` or timed; not stacks of `<xl>`.
+        `Longer-breaks mode: keep ordinary line pacing normal; hit Length with cued open sits using timed pauses like \`<60>\` / \`<90>\` / \`<120>\` (not stacks of short pauses).`,
+      );
+    } else if (storyType) {
+      meditationParts.push(
+        "",
+        `Story pacing (${params.targetMinutes} min): silences modest — medium max in narrative, long only at major boundaries, never extra-long.`,
+      );
+    } else if (fitPrompt) {
+      meditationParts.push(
+        "",
+        `Scale pause density to ${params.targetMinutes} min: longer scripts need more silence — more beats dominated by long, not spraying extra-long.`,
+      );
+    }
+  }
+
+  // Section path: plan JSON + shared section rules → cached checkpoint 2
+  // (meditationContextExtra). Per-section task stays in taskContent (uncached).
+  // Previous: plan JSON was uncached with the full section task every call.
+  const meditationContextExtra =
+    params.task?.kind === "section"
+      ? [
+          "### Plan for the whole session",
+          formatPlanForPrompt(params.task.plan),
+          "",
+          scriptSectionSharedRules(),
+        ].join("\n")
+      : "";
+
+  // Call-specific task (uncached). Delivery lives in systemStable — not repeated here.
+  const taskParts: string[] = [];
+  if (timeBased) {
+    // Same craft rules as the original single-call task; output is outline then script.
+    taskParts.push(
+      "### Your task",
+      "Write a short OUTLINE first, then the complete guided meditation script a human guide would read aloud for recording.",
+      "1) OUTLINE: one line per phase with a name and rough minutes; lines should add up to about the script time above.",
+      "2) SCRIPT: at the start of each phase put a short marker exactly like `[[phase: Opening]]` (name only). Then the spoken words with timed pause markers (`<N>`, e.g. `<2>` or `<60>`).",
+      casual
+        ? "Use a **Casual** delivery: go straight into what they asked for. Skip settling-in openings and a long reflective wind-down. Keep pauses short — never invent a single reflective silence longer than about **4 seconds** (Casual longest-pause still applies)."
+        : "Use clear phases (e.g. opening/arrival, main practice, gentle closing).",
+      "Match the emotional tone, intentions, and imagery from the conversation — keep concrete personal facts (see PERSONALIZATION), not only vague impressions.",
+      "Use second person or gentle imperatives; warm, inclusive, non-clinical language.",
+      ...(sleepType
+        ? ["", scriptLabClosingPhaseTagRulesForType(meditationTypeForRules)]
+        : []),
+      "Output format: outline lines, then a blank line, then the script with phase markers. No commentary outside outline + script. No word ranges. No per-phase silence targets.",
+      "Important: do not invent a separate title line; the first outline line may name the opening phase, and the script body starts at the first `[[phase: …]]` marker.",
+    );
+  } else if (params.task?.kind === "plan") {
+    taskParts.push(
+      "### Your task",
+      scriptPlanTaskInstruction({
+        totalWords: params.task.totals.totalWords,
+        totalPauseSeconds: params.task.totals.totalPauseSeconds,
+        wordCap: params.task.wordCap,
+        wordMin: params.task.wordMin,
+        minSections: params.task.minSections,
+        maxSectionMinutes: params.task.maxSectionMinutes,
+      }),
+    );
+  } else if (params.task?.kind === "section") {
+    // Short uncached task only — plan + shared rules are in meditationContextExtra.
+    taskParts.push(scriptSectionTaskOnly(params.task));
+  } else {
+    taskParts.push(
+      "### Your task",
+      "Write the complete guided meditation script that a human guide would read aloud for recording.",
+    );
+    if (!fitPrompt) {
+      taskParts.push(
+        casual
+          ? "Use a **Casual** delivery: go straight into what they asked for. Skip settling-in openings (no “settle into your breath”, body scan framing, or eyes-closed arrival) and skip a long reflective wind-down. Keep pauses short — never invent a single reflective silence longer than about **4 seconds**."
+          : "Use clear sections (e.g. opening/arrival, main practice, gentle closing).",
+      );
+    }
+  }
+  // Tone / formatting: already in systemStable (and section shared rules).
+  // Do not repeat on plan or section tasks. Time-based task carries its own copy.
+  if (
+    !timeBased &&
+    params.task?.kind !== "plan" &&
+    params.task?.kind !== "section"
+  ) {
+    taskParts.push(
+      "Match the emotional tone, intentions, and imagery from the conversation — keep concrete personal facts (see PERSONALIZATION), not only vague impressions.",
+      "Use second person or gentle imperatives; warm, inclusive, non-clinical language.",
+      ...(fitPrompt
+        ? []
+        : [
+            ...(longerBreaks
+              ? [scriptLongerBreaksOpenPracticeRules(params.targetMinutes)]
+              : []),
+            scriptPauseBudgetGuidanceAppendix(params.targetMinutes, {
+              meditationType: meditationTypeForRules,
+              longerBreaks,
+            }),
+          ]),
+      ...(sleepType && !params.includeSegmentPlaceholders
+        ? ["", scriptLabClosingPhaseTagRulesForType(meditationTypeForRules)]
+        : []),
+      "Important formatting constraints:",
+      "1) Do NOT output any title, heading, or preamble of any kind.",
+      "2) The very first spoken content must start immediately (first non-whitespace characters must be the guide's words).",
+      "3) Do NOT start the script with a pause marker; only include pauses after speaking has begun.",
+    );
+  }
+  const userParts = taskParts;
 
   if (params.includeSegmentPlaceholders) {
     userParts.push(
@@ -488,8 +684,8 @@ export function buildMeditationScriptGenerationPrompt(params: {
       "- Library beat: `{ tag: \"SETTLE_OPENER\" }` — never send `beatType` or `custom` here; both are derived from the tag.",
       "- Custom beat: `{ beatType: \"content\", text: \"…\" }` — main personalized practice material (may repeat).",
       "- Pause beat: `{ pauseBand: \"medium\" }` — standalone structural silence between beats.",
-      "Use inline `[[PAUSE …]]` inside a custom beat's text only for shorter pauses within one flowing narration.",
-      "Pause bands: extra-short, short, medium, long, extra-long (same vocabulary as [[PAUSE …]] rules above).",
+      // Was: named bands `<s>` `<m>` …
+      "Use inline timed pause markers (`<N>`) inside a custom beat's text only for shorter pauses within one flowing narration.",
       ...(storyType
         ? [
             scriptStoryPauseBandCapRules(),
@@ -503,7 +699,7 @@ export function buildMeditationScriptGenerationPrompt(params: {
       "### Worked examples (segment vs custom)",
       "",
       "**Fully generic → all tags**",
-      "Before: `{ beatType: \"content\", text: \"And as you exhale, let yourself arrive fully here. [[PAUSE short]] There's nowhere to rush, nowhere to be except right now.\" }`",
+      "Before: `{ beatType: \"content\", text: \"And as you exhale, let yourself arrive fully here. <s> There's nowhere to rush, nowhere to be except right now.\" }`",
       "After: `{ tag: \"BREATH_TRANSITION\" }`, `{ pauseBand: \"short\" }`, `{ tag: \"PACE_REASSURANCE\" }`",
       "",
       "**Partial split (generic aside only)**",
@@ -520,13 +716,19 @@ export function buildMeditationScriptGenerationPrompt(params: {
       "Before: `{ tag: \"CLOSE_SENSORY_RETURN\" }`, `{ beatType: \"close_sensory_return\", text: \"Notice the room around you and the rustling of leaves from your oak tree.\" }`",
       "After: tag beat, then `{ beatType: \"close_sensory_return\", text: \"Notice the rustling of leaves from your oak tree.\" }` — personalized detail only.",
     );
-  } else if (params.task?.kind !== "plan") {
+  } else if (
+    !timeBased &&
+    params.task?.kind !== "plan" &&
+    params.task?.kind !== "section"
+  ) {
+    // Section path: output rules live in cached scriptSectionSharedRules().
     userParts.push(
-      "Output **only** the words the guide speaks and these [[PAUSE …]] named-band markers; do not output other markdown or commentary.",
+      "Output **only** the words the guide speaks and timed pause markers (`<N>`); do not output other markdown or commentary.",
     );
   }
 
-  if (!fitPrompt) {
+  // Time-based: no fleet duration appendix (word ranges) — range of space replaces it.
+  if (!fitPrompt && !timeBased) {
     userParts.push(
       scriptDurationPlanningAppendix(params.targetMinutes, {
         speechSpeed: params.speechSpeed,
@@ -535,9 +737,7 @@ export function buildMeditationScriptGenerationPrompt(params: {
       }),
     );
   }
-  if (params.pauseRules?.trim()) {
-    userParts.push(params.pauseRules.trim());
-  }
+  // Delivery-specific pauseRules belong in systemStable (below), not the task.
 
   if (params.includeSegmentPlaceholders && params.segmentTags?.length) {
     userParts.push(
@@ -553,30 +753,51 @@ export function buildMeditationScriptGenerationPrompt(params: {
     );
   }
 
-  const sectionTask = params.task?.kind === "section";
+  const deliveryId = deliveryStyle as DeliveryId;
+  const silenceShare =
+    params.styleGuideContext?.silenceShare ??
+    (params.lengthFit?.silenceSharePct != null
+      ? params.lengthFit.silenceSharePct / 100
+      : deliveryId === "casual"
+        ? 0.25
+        : deliveryId === "open_sits"
+          ? 0.75
+          : 0.5);
+  const longestPauseSeconds =
+    params.styleGuideContext?.longestPauseSeconds ?? 4;
+  // Shared across plan + every section call (prompt-cache friendly). Edge
+  // sections have no silence target — omit that clause here; middle sections
+  // get a short reminder in the section write instruction.
+  const guideStyle = (params.styleGuideStyle?.trim() || styleForScript).trim();
+  const guideBlock =
+    !params.journalMode && guideStyle
+      ? styleGuidePromptBlock({
+          meditationStyle: guideStyle,
+          delivery: deliveryId,
+          silenceShare,
+          longestPauseSeconds,
+          stripPauses: deliveryId === "casual",
+          omitSectionSilenceTarget: true,
+        })
+      : null;
+
+  // Byte-stable across plan + section for the same delivery/style (1h cache).
+  // Personalization KEEP rules cover whole-script + section cases; section task
+  // still reminds the model to use the plan's assigned details.
   const systemParts = [
-    "You are an expert meditation scriptwriter for consciously.live.",
-    "You write speakable, production-ready guided meditation scripts.",
-    "Avoid self-referential product mentions. Do NOT mention Consciously/the app/this platform unless the user explicitly asks. If you must refer to it, use exactly: 'consciously.live' (lowercase) and nothing else.",
-    "If the user is joking or playful, it is OK to include whimsical / funny subject matter (e.g. a monkey eating ice cream on a volcano) BUT the meditation itself should remain genuinely calming, coherent, and high-quality—never 'silly writing' or comedy bits. Use playful imagery as a vehicle for grounding, breath, and emotional regulation.",
-    "Never generate hate/harassment, sexual content involving minors, non-consensual sexual content, graphic sexual content, instructions for wrongdoing, or glorification of self-harm. If the user asks for something socially unacceptable, refuse briefly and offer a safe alternative topic.",
-    sectionTask ? PERSONALIZATION_SECTION_RULES : PERSONALIZATION_KEEP_RULES,
+    "You are an expert meditation scriptwriter for consciously.live. Write speakable, production-ready guided scripts.",
+    "Do NOT mention Consciously/the app/this platform unless the user asks; if you must, use exactly 'consciously.live' (lowercase).",
+    "Playful/whimsical subject matter from the user is OK, but the meditation itself stays calming, coherent, and high-quality — never comedy bits. Use playful imagery as a vehicle for grounding and regulation.",
+    "Refuse hate/harassment, sexual content involving minors, non-consensual or graphic sexual content, instructions for wrongdoing, or glorification of self-harm. Offer a safe alternative briefly.",
+    PERSONALIZATION_KEEP_RULES,
     GENDER_NEUTRAL_SCRIPT_RULES,
-    "You phrase lines for natural TTS: avoid isolated one-word sentences; use multi-word phrases where possible.",
-    ...(sectionTask
-      ? []
-      : [
-          fitPrompt
-            ? `You plan speech and silence together so the whole session lands close to ${params.targetMinutes} minutes, with the silence share the Length line gives for this delivery.`
-            : longerBreaks
-              ? `You are in **longer breaks** mode for this ${params.targetMinutes}-minute script: keep ordinary line pacing normal, and hit Length with a few **cued self-paced open sits** using \`[[PAUSE open]]\` or timed \`[[PAUSE 60s]]\` / \`90s\` / \`120s\` (not stacks of 12s extra-long).`
-              : storyType
-                ? `You scale pause bands for Story narrative pacing (${params.targetMinutes} min): keep silences modest — **medium** max in narrative sections, **long** only at major scene/emotional boundaries, **never extra-long**. Reach duration with story content, not contemplative silence.`
-                : `You scale pause density and band weight to the target duration (${params.targetMinutes} min): longer scripts need substantially more silence than shorter ones — reach duration with more pause beats dominated by **long**, not by spraying **extra-long** throughout the core, and not with extra speech.`,
-        ]),
-    sectionTask
-      ? "Never invent spoken second-counts or count-along breath recipes unless the creator explicitly asked. When they do ask for counted timing, sync pauses to real seconds."
-      : "Never invent spoken second-counts or count-along breath recipes unless the creator explicitly asked; still choose [[PAUSE …]] bands thoughtfully for natural flow. When they do ask for counted timing, sync pauses to real seconds.",
+    "Phrase for natural TTS: avoid isolated one-word sentences; use multi-word phrases.",
+    DELIVERY_PROMPT_BLOCKS[deliveryStyle],
+    SCRIPT_PAUSE_PROMPT_RULES,
+    PAUSE_FITS_ACTION_RULE,
+    ...(deliveryStyle === "open_sits" ? [scriptOpenSitsMarkerRules()] : []),
+    ...(params.pauseRules?.trim() ? [params.pauseRules.trim()] : []),
+    "Never invent spoken second-counts or count-along breath recipes unless the creator explicitly asked; still choose pause bands thoughtfully. When they do ask for counted timing, sync pauses to real seconds.",
   ];
 
   if (params.includeSegmentPlaceholders) {
@@ -589,9 +810,29 @@ export function buildMeditationScriptGenerationPrompt(params: {
     );
   }
 
+  // Checkpoint 1 (1h): system rules + delivery + style guide.
+  const systemStable =
+    guideBlock != null
+      ? `${systemParts.join(" ")}\n\n${guideBlock}`
+      : systemParts.join(" ");
+
+  const meditationContext = meditationParts.join("\n");
+  const taskContent = userParts.join("\n");
+  const userContent = [
+    meditationContext,
+    meditationContextExtra,
+    taskContent,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
   return {
-    system: systemParts.join(" "),
-    userContent: userParts.join("\n"),
+    systemStable,
+    meditationContext,
+    meditationContextExtra,
+    taskContent,
+    system: systemStable,
+    userContent,
     maxTokens: 8192,
   };
 }

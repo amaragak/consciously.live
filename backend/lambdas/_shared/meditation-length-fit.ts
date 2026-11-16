@@ -183,9 +183,134 @@ export function predictStemLength(params: {
 
 /** Average commas per spoken word in production scripts (Speechify adds a break at each). */
 export const COMMAS_PER_WORD = 0.08;
-/** Title intro: `[[PAUSE 1s]] title [[PAUSE 3s]]`, as written, plus a short spoken title. */
+/**
+ * Title intro written pauses: `[[PAUSE 1s]] title [[PAUSE 3s]]`.
+ * Prefer `titleIntroPauseSecondsWritten` from delivery settings when available.
+ */
 export const TITLE_INTRO_PAUSE_SECONDS = 4;
+/**
+ * Fallback spoken title length when no title words are known (planning / calib).
+ * Prefer `titleSpeechSecondsFromWords` when a title exists.
+ */
 export const TITLE_INTRO_SPEECH_SECONDS = 2;
+
+/** Fixed parts around the script body (not counted in credits). */
+export type SessionAroundScript = {
+  /** Bed-only silence before the voice stem. */
+  leadInSeconds: number;
+  /** Bed hold + fade after the stem. */
+  fadeOutSeconds: number;
+  /** Written pause before the spoken title. */
+  titleLeadPauseSeconds: number;
+  /** Written pause after the title before the script body. */
+  titleTrailPauseSeconds: number;
+};
+
+export const DEFAULT_SESSION_AROUND_SCRIPT: SessionAroundScript = {
+  leadInSeconds: 20,
+  fadeOutSeconds: 20,
+  titleLeadPauseSeconds: 1,
+  titleTrailPauseSeconds: 3,
+};
+
+export function coerceSessionAroundScript(
+  raw: unknown,
+): SessionAroundScript {
+  const base = DEFAULT_SESSION_AROUND_SCRIPT;
+  if (!raw || typeof raw !== "object") return { ...base };
+  const o = raw as Record<string, unknown>;
+  const n = (v: unknown, fallback: number, lo: number, hi: number) => {
+    const x = typeof v === "number" && Number.isFinite(v) ? v : fallback;
+    return Math.min(hi, Math.max(lo, x));
+  };
+  return {
+    leadInSeconds: n(o.leadInSeconds ?? o.sessionLeadInSeconds, base.leadInSeconds, 0, 60),
+    fadeOutSeconds: n(o.fadeOutSeconds ?? o.sessionFadeOutSeconds, base.fadeOutSeconds, 0, 60),
+    titleLeadPauseSeconds: n(
+      o.titleLeadPauseSeconds,
+      base.titleLeadPauseSeconds,
+      0,
+      30,
+    ),
+    titleTrailPauseSeconds: n(
+      o.titleTrailPauseSeconds,
+      base.titleTrailPauseSeconds,
+      0,
+      30,
+    ),
+  };
+}
+
+/** Spoken title duration from word count ÷ effective WPM. */
+export function titleSpeechSecondsFromWords(
+  titleWords: number,
+  effectiveWpm: number,
+): number {
+  if (!(titleWords > 0) || !(effectiveWpm > 0)) return TITLE_INTRO_SPEECH_SECONDS;
+  return (titleWords / effectiveWpm) * 60;
+}
+
+export function titleIntroPauseSecondsWritten(around: SessionAroundScript): number {
+  return around.titleLeadPauseSeconds + around.titleTrailPauseSeconds;
+}
+
+/** Title speech + rendered title pauses. */
+export function titleIntroRenderedSeconds(params: {
+  titleSpeechSeconds: number;
+  titlePauseSecondsWritten: number;
+  pauseScale: number;
+}): number {
+  return (
+    Math.max(0, params.titleSpeechSeconds) +
+    Math.max(0, params.titlePauseSecondsWritten) * Math.max(0.1, params.pauseScale)
+  );
+}
+
+/** Lead-in + title intro + fade-out. */
+export function aroundScriptSeconds(params: {
+  around: SessionAroundScript;
+  titleSpeechSeconds: number;
+  pauseScale: number;
+}): number {
+  return (
+    Math.max(0, params.around.leadInSeconds) +
+    Math.max(0, params.around.fadeOutSeconds) +
+    titleIntroRenderedSeconds({
+      titleSpeechSeconds: params.titleSpeechSeconds,
+      titlePauseSecondsWritten: titleIntroPauseSecondsWritten(params.around),
+      pauseScale: params.pauseScale,
+    })
+  );
+}
+
+/** Time the script body must fill (requested session minus parts around it). */
+export function scriptBodyTargetSeconds(
+  requestedMinutes: number,
+  aroundTotalSeconds: number,
+): number {
+  return Math.max(30, requestedMinutes * 60 - Math.max(0, aroundTotalSeconds));
+}
+
+/**
+ * Predicted whole-session length: script body (speech + pauses after scale)
+ * plus the configured parts around it.
+ */
+export function predictTotalSessionSeconds(params: {
+  scriptPartSeconds: number;
+  aroundTotalSeconds: number;
+}): number {
+  return Math.max(0, params.scriptPartSeconds) + Math.max(0, params.aroundTotalSeconds);
+}
+
+/** % vs requested minutes (signed, rounded). */
+export function lengthPctVsRequested(
+  actualOrPredictedSeconds: number,
+  requestedMinutes: number,
+): number {
+  const want = requestedMinutes * 60;
+  if (!(want > 0)) return 0;
+  return Math.round((actualOrPredictedSeconds / want - 1) * 100);
+}
 
 export type LengthPlan = {
   /** Spoken words the script body should contain. */
@@ -209,12 +334,18 @@ export function lengthPlan(params: {
   pauseScale: number;
   commaBreakSeconds: number;
   titleIntro: boolean;
+  titleSpeechSeconds?: number;
+  titlePauseSecondsWritten?: number;
 }): LengthPlan {
   const speechSeconds = params.targetSeconds * (1 - params.silenceShare);
   const silenceSeconds = params.targetSeconds * params.silenceShare;
-  const bodySpeech = speechSeconds - (params.titleIntro ? TITLE_INTRO_SPEECH_SECONDS : 0);
+  const titleSpeech =
+    params.titleSpeechSeconds ?? TITLE_INTRO_SPEECH_SECONDS;
+  const titlePause =
+    params.titlePauseSecondsWritten ?? TITLE_INTRO_PAUSE_SECONDS;
+  const bodySpeech = speechSeconds - (params.titleIntro ? titleSpeech : 0);
   const bodySilence =
-    silenceSeconds - (params.titleIntro ? TITLE_INTRO_PAUSE_SECONDS * params.pauseScale : 0);
+    silenceSeconds - (params.titleIntro ? titlePause * params.pauseScale : 0);
   const secondsPerWord =
     60 / Math.max(1, params.effectiveWpm) + COMMAS_PER_WORD * Math.max(0, params.commaBreakSeconds);
   return {

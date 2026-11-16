@@ -70,6 +70,8 @@ import {
   normalizeScriptSegmentTag,
   type ScriptLengthTier,
 } from "./_shared/script-segment-tags";
+import { loadDeliveryProfileRecord } from "./_shared/voice-calibration-store";
+import { silenceShareFor, type DeliveryId } from "./_shared/delivery-profiles";
 
 const s3 = new S3Client({});
 const secrets = new SecretsManagerClient({});
@@ -758,6 +760,24 @@ async function handleGenerateScript(body: Record<string, unknown>) {
     const recentVariantIds = await loadScriptLabRecentVariantIds();
     const additionalContext =
       typeof body.additionalContext === "string" ? body.additionalContext.trim() : "";
+    const deliveryRawV2 =
+      typeof body.deliveryStyle === "string" ? body.deliveryStyle.trim() : "";
+    const deliveryStyleV2: DeliveryId =
+      deliveryRawV2 === "casual" || deliveryRawV2 === "open_sits"
+        ? deliveryRawV2
+        : "guided";
+    let styleGuideContextV2:
+      | { silenceShare: number; longestPauseSeconds: number }
+      | undefined;
+    try {
+      const profiles = (await loadDeliveryProfileRecord()).profiles;
+      styleGuideContextV2 = {
+        silenceShare: silenceShareFor(profiles, deliveryStyleV2),
+        longestPauseSeconds: profiles.casual.longestPause,
+      };
+    } catch {
+      /* */
+    }
     const result = await generateScriptLabScriptV2({
       apiKey,
       transcript,
@@ -765,6 +785,8 @@ async function handleGenerateScript(body: Record<string, unknown>) {
       journalMode,
       targetMinutes,
       speechSpeed,
+      deliveryStyle: deliveryStyleV2,
+      styleGuideContext: styleGuideContextV2,
       additionalContext: additionalContext || undefined,
       segmentTags,
       variantsByTag,
@@ -796,6 +818,24 @@ async function handleGenerateScript(body: Record<string, unknown>) {
     });
   }
 
+  const deliveryRaw =
+    typeof body.deliveryStyle === "string" ? body.deliveryStyle.trim() : "";
+  const deliveryStyle: DeliveryId =
+    deliveryRaw === "casual" || deliveryRaw === "open_sits"
+      ? deliveryRaw
+      : "guided";
+  let styleGuideContext:
+    | { silenceShare: number; longestPauseSeconds: number }
+    | undefined;
+  try {
+    const profiles = (await loadDeliveryProfileRecord()).profiles;
+    styleGuideContext = {
+      silenceShare: silenceShareFor(profiles, deliveryStyle),
+      longestPauseSeconds: profiles.casual.longestPause,
+    };
+  } catch {
+    /* defaults inside prompt builder */
+  }
   const result = await generateScriptLabScript({
     apiKey,
     transcript,
@@ -803,6 +843,8 @@ async function handleGenerateScript(body: Record<string, unknown>) {
     journalMode,
     targetMinutes,
     speechSpeed,
+    deliveryStyle,
+    styleGuideContext,
     segmentTags,
     generalTagVariants: verificationTagVariants,
     contextTags: buildScriptLabContextTags({

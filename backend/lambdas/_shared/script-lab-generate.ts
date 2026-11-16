@@ -41,6 +41,11 @@ export async function generateScriptLabScript(params: {
   journalMode: boolean;
   targetMinutes: number;
   speechSpeed: number;
+  deliveryStyle?: "casual" | "guided" | "open_sits";
+  styleGuideContext?: {
+    silenceShare: number;
+    longestPauseSeconds: number;
+  };
   segmentTags: Array<{
     name: string;
     scope: import("./script-segment-tags").ScriptSegmentScope;
@@ -85,6 +90,8 @@ export async function generateScriptLabScript(params: {
     speechSpeed: params.speechSpeed,
     includeSegmentPlaceholders: true,
     segmentTags: params.segmentTags,
+    deliveryStyle: params.deliveryStyle ?? "guided",
+    styleGuideContext: params.styleGuideContext,
   });
 
   const tool = scriptLabBeatsToolDefinition();
@@ -99,7 +106,13 @@ export async function generateScriptLabScript(params: {
     body: JSON.stringify(withClaudeThinkingOff({
       model: SCRIPT_LAB_SONNET_MODEL,
       max_tokens: 8192,
-      system,
+      system: [
+        {
+          type: "text",
+          text: system,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
       tools: [tool],
       tool_choice: { type: "tool", name: tool.name },
       messages: [{ role: "user", content: userContent }],

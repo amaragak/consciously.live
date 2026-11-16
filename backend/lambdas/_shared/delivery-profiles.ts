@@ -1,37 +1,96 @@
 /**
- * Delivery profiles: pause rules, fallback WPM, and the speech share derived
- * from those rules. Frontend `delivery-profiles.ts` must stay in step with this.
+ * Delivery profiles: silence shares + a few admin knobs.
+ * Frontend `delivery-profiles.ts` must stay in step with this.
+ *
+ * Admin-editable: silence share, Casual longest pause, shared length tolerance.
+ * First/last section silence removed (own-silence): edge sections choose their
+ * own pauses; plan estimates still use the delivery silence share.
+ * Everything else is a fixed constant (cleanup v2).
  */
+import type { SessionAroundScript } from "./meditation-length-fit";
 
 export type DeliveryId = "casual" | "guided" | "open_sits";
+
+/** Speechify SSML break cap (provider limit) — not an admin setting. */
+export const SPEECHIFY_MAX_BREAK_SECONDS = 10;
+export const FIXED_SECTION_WORD_CAP = 250;
+export const FIXED_SECTION_WORD_MIN = 40;
+export const FIXED_MAX_SECTION_MINUTES = 3;
+export const FIXED_SESSION_LEAD_IN_SECONDS = 20;
+export const FIXED_SESSION_FADE_OUT_SECONDS = 20;
+export const FIXED_TITLE_LEAD_PAUSE_SECONDS = 1;
+export const FIXED_TITLE_TRAIL_PAUSE_SECONDS = 3;
+export const FIXED_PAUSE_AFTER_SENTENCE_SECONDS = 1;
+/** @deprecated Credits use words; kept for preview/compat. */
+export const FIXED_CHARS_PER_WORD = 5.7;
+/** Fallback WPM when voice measurement is missing (not an admin setting). */
+export const FIXED_DEFAULT_WPM: Record<DeliveryId, number> = {
+  casual: 130,
+  guided: 85,
+  open_sits: 85,
+};
+
+/**
+ * Time-based mode only: allowed silence share of the script stem (0–1).
+ * Sectioned / legacy single still use `silenceShare` as a point target.
+ */
+export type SpaceRange = { min: number; max: number };
+
+export const DEFAULT_SPACE_RANGE: Record<DeliveryId, SpaceRange> = {
+  casual: { min: 0.15, max: 0.35 },
+  guided: { min: 0.4, max: 0.6 },
+  open_sits: { min: 0.65, max: 0.85 },
+};
 
 export type CasualProfile = {
   defaultWpm: number;
   /** Share of the session that is silence (0–1). Given to the script prompt and used for budgets. */
   silenceShare: number;
+  /**
+   * @deprecated Own-silence: first/last no longer use a silence setting.
+   * Kept for compat; always forced to silenceShare on coerce.
+   */
+  firstSectionSilenceShare: number;
+  /** @deprecated See firstSectionSilenceShare. */
+  lastSectionSilenceShare: number;
   pauseBetweenParagraphs: number;
   longestPause: number;
   openingClosing: number;
+  /** Time-based mode: silence share range (min–max). */
+  spaceRangeMin: number;
+  spaceRangeMax: number;
 };
 
 export type GuidedProfile = {
   defaultWpm: number;
   silenceShare: number;
+  /** @deprecated Own-silence: forced to silenceShare. */
+  firstSectionSilenceShare: number;
+  /** @deprecated Own-silence: forced to silenceShare. */
+  lastSectionSilenceShare: number;
   pauseAfterBreath: number;
   pauseBetweenSections: number;
   reflectivePer10: number;
   reflectiveLength: number;
   opening: number;
   closing: number;
+  spaceRangeMin: number;
+  spaceRangeMax: number;
 };
 
 export type OpenSitsProfile = {
   defaultWpm: number;
   silenceShare: number;
+  /** @deprecated Own-silence: forced to silenceShare. */
+  firstSectionSilenceShare: number;
+  /** @deprecated Own-silence: forced to silenceShare. */
+  lastSectionSilenceShare: number;
   cueWords: number;
   gap: number;
   opening: number;
   closing: number;
+  spaceRangeMin: number;
+  spaceRangeMax: number;
 };
 
 export type SharedProfile = {
@@ -42,22 +101,22 @@ export type SharedProfile = {
   ttsBreakLimit: number;
   /** ± percent. Meditation length check before and after audio. */
   lengthTolerancePct: number;
-  /** Max spoken words in any script section (plan + write). */
+  /** Absolute max spoken words in any script section (hard ceiling). */
   sectionWordCap: number;
-  /** Min spoken words in any script section. */
+  /** Min spoken words per section when there are two or more. */
   sectionWordMin: number;
-  /** Below this total word count, skip plan/split and write in one call. */
+  /** Max wall-clock length of one section (minutes); drives per-delivery word caps. */
+  maxSectionMinutes: number;
+  /** Below this total word count, skip plan/split and write in one call. (Unused — sections always plan.) */
   planMinWords: number;
-};
-
-/** Opening and closing shares of a delivery's words and silence, in percent. Main sections get the rest. */
-export type SectionShares = {
-  openingWordsPct: number;
-  closingWordsPct: number;
-  openingSilencePct: number;
-  closingSilencePct: number;
-  /** Lower bound on opening words. */
-  openingWordsMin: number;
+  /** Bed-only silence before the voice stem (default for planning / calib). */
+  sessionLeadInSeconds: number;
+  /** Bed hold + fade after the stem (default when fade-out is on). */
+  sessionFadeOutSeconds: number;
+  /** Written pause before the spoken title. */
+  titleLeadPauseSeconds: number;
+  /** Written pause after the title before the script body. */
+  titleTrailPauseSeconds: number;
 };
 
 export type DeliveryProfiles = {
@@ -65,7 +124,6 @@ export type DeliveryProfiles = {
   guided: GuidedProfile;
   openSits: OpenSitsProfile;
   shared: SharedProfile;
-  sections: Record<DeliveryId, SectionShares>;
 };
 
 export type DeliveryPreviewRow = {
@@ -81,73 +139,116 @@ const WINDOW_SEC = 600;
 export function defaultDeliveryProfiles(): DeliveryProfiles {
   return {
     casual: {
-      defaultWpm: 130,
+      defaultWpm: FIXED_DEFAULT_WPM.casual,
       silenceShare: 0.25,
+      firstSectionSilenceShare: 0.25,
+      lastSectionSilenceShare: 0.25,
+      // Fixed (removed from admin) — kept for type/compat:
       pauseBetweenParagraphs: 2.5,
       longestPause: 4,
       openingClosing: 0,
+      spaceRangeMin: DEFAULT_SPACE_RANGE.casual.min,
+      spaceRangeMax: DEFAULT_SPACE_RANGE.casual.max,
     },
     guided: {
-      defaultWpm: 85,
+      defaultWpm: FIXED_DEFAULT_WPM.guided,
       silenceShare: 0.5,
+      firstSectionSilenceShare: 0.5,
+      lastSectionSilenceShare: 0.5,
       pauseAfterBreath: 6,
       pauseBetweenSections: 10,
       reflectivePer10: 3,
       reflectiveLength: 30,
       opening: 45,
       closing: 30,
+      spaceRangeMin: DEFAULT_SPACE_RANGE.guided.min,
+      spaceRangeMax: DEFAULT_SPACE_RANGE.guided.max,
     },
     openSits: {
-      defaultWpm: 85,
+      defaultWpm: FIXED_DEFAULT_WPM.open_sits,
       silenceShare: 0.75,
+      firstSectionSilenceShare: 0.75,
+      lastSectionSilenceShare: 0.75,
       cueWords: 20,
       gap: 60,
       opening: 30,
       closing: 20,
+      spaceRangeMin: DEFAULT_SPACE_RANGE.open_sits.min,
+      spaceRangeMax: DEFAULT_SPACE_RANGE.open_sits.max,
     },
     shared: {
-      charsPerWord: 5.7,
-      pauseAfterSentence: 1,
-      ttsBreakLimit: 10,
+      charsPerWord: FIXED_CHARS_PER_WORD,
+      pauseAfterSentence: FIXED_PAUSE_AFTER_SENTENCE_SECONDS,
+      ttsBreakLimit: SPEECHIFY_MAX_BREAK_SECONDS,
       lengthTolerancePct: 10,
-      sectionWordCap: 250,
-      sectionWordMin: 60,
+      sectionWordCap: FIXED_SECTION_WORD_CAP,
+      sectionWordMin: FIXED_SECTION_WORD_MIN,
+      maxSectionMinutes: FIXED_MAX_SECTION_MINUTES,
       planMinWords: 300,
-    },
-    sections: {
-      casual: {
-        openingWordsPct: 5,
-        closingWordsPct: 10,
-        openingSilencePct: 5,
-        closingSilencePct: 10,
-        openingWordsMin: 25,
-      },
-      guided: {
-        openingWordsPct: 15,
-        closingWordsPct: 15,
-        openingSilencePct: 15,
-        closingSilencePct: 15,
-        openingWordsMin: 0,
-      },
-      open_sits: {
-        openingWordsPct: 20,
-        closingWordsPct: 20,
-        openingSilencePct: 10,
-        closingSilencePct: 10,
-        openingWordsMin: 0,
-      },
+      sessionLeadInSeconds: FIXED_SESSION_LEAD_IN_SECONDS,
+      sessionFadeOutSeconds: FIXED_SESSION_FADE_OUT_SECONDS,
+      titleLeadPauseSeconds: FIXED_TITLE_LEAD_PAUSE_SECONDS,
+      titleTrailPauseSeconds: FIXED_TITLE_TRAIL_PAUSE_SECONDS,
     },
   };
 }
 
-function coerceSectionShares(raw: unknown, base: SectionShares): SectionShares {
-  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+/**
+ * Force non-admin fields to fixed constants. Admin-kept: silence shares,
+ * first/last section silence, Casual longestPause, lengthTolerancePct.
+ */
+export function applyFixedDeliveryProfileConstants(
+  profiles: DeliveryProfiles,
+): DeliveryProfiles {
+  const base = defaultDeliveryProfiles();
   return {
-    openingWordsPct: num(r.openingWordsPct, base.openingWordsPct, 0, 45),
-    closingWordsPct: num(r.closingWordsPct, base.closingWordsPct, 0, 45),
-    openingSilencePct: num(r.openingSilencePct, base.openingSilencePct, 0, 45),
-    closingSilencePct: num(r.closingSilencePct, base.closingSilencePct, 0, 45),
-    openingWordsMin: num(r.openingWordsMin, base.openingWordsMin, 0, 200),
+    casual: {
+      ...profiles.casual,
+      defaultWpm: base.casual.defaultWpm,
+      pauseBetweenParagraphs: base.casual.pauseBetweenParagraphs,
+      openingClosing: base.casual.openingClosing,
+      // Own-silence: first/last always mirror delivery silence share.
+      firstSectionSilenceShare: profiles.casual.silenceShare,
+      lastSectionSilenceShare: profiles.casual.silenceShare,
+      // longestPause + space range stay admin
+    },
+    guided: {
+      ...profiles.guided,
+      defaultWpm: base.guided.defaultWpm,
+      pauseAfterBreath: base.guided.pauseAfterBreath,
+      pauseBetweenSections: base.guided.pauseBetweenSections,
+      reflectivePer10: base.guided.reflectivePer10,
+      reflectiveLength: base.guided.reflectiveLength,
+      opening: base.guided.opening,
+      closing: base.guided.closing,
+      firstSectionSilenceShare: profiles.guided.silenceShare,
+      lastSectionSilenceShare: profiles.guided.silenceShare,
+    },
+    openSits: {
+      ...profiles.openSits,
+      defaultWpm: base.openSits.defaultWpm,
+      cueWords: base.openSits.cueWords,
+      gap: base.openSits.gap,
+      opening: base.openSits.opening,
+      closing: base.openSits.closing,
+      firstSectionSilenceShare: profiles.openSits.silenceShare,
+      lastSectionSilenceShare: profiles.openSits.silenceShare,
+    },
+    shared: {
+      ...profiles.shared,
+      charsPerWord: base.shared.charsPerWord,
+      pauseAfterSentence: base.shared.pauseAfterSentence,
+      ttsBreakLimit: base.shared.ttsBreakLimit,
+      sectionWordCap: base.shared.sectionWordCap,
+      sectionWordMin: base.shared.sectionWordMin,
+      maxSectionMinutes: base.shared.maxSectionMinutes,
+      planMinWords: base.shared.planMinWords,
+      sessionLeadInSeconds: base.shared.sessionLeadInSeconds,
+      sessionFadeOutSeconds: base.shared.sessionFadeOutSeconds,
+      titleLeadPauseSeconds: base.shared.titleLeadPauseSeconds,
+      titleTrailPauseSeconds: base.shared.titleTrailPauseSeconds,
+      // lengthTolerancePct stays admin
+    },
   };
 }
 
@@ -203,7 +304,46 @@ export function openSitsSpeechSeconds(p: OpenSitsProfile, wpmOverride?: number):
   return middle * density0 * density;
 }
 
-/** Silence share for a delivery, 0–1. */
+function coerceSpaceRange(
+  raw: Record<string, unknown>,
+  fallback: SpaceRange,
+): SpaceRange {
+  let min = num(raw.spaceRangeMin, fallback.min, 0, 0.95);
+  let max = num(raw.spaceRangeMax, fallback.max, 0, 0.95);
+  if (max < min) {
+    const t = min;
+    min = max;
+    max = t;
+  }
+  return { min, max };
+}
+
+/** Time-based mode silence share range for a pacing. */
+export function spaceRangeFor(
+  profiles: DeliveryProfiles,
+  delivery: DeliveryId,
+): SpaceRange {
+  const p =
+    delivery === "casual"
+      ? profiles.casual
+      : delivery === "guided"
+        ? profiles.guided
+        : profiles.openSits;
+  let min = clampShare(p.spaceRangeMin ?? DEFAULT_SPACE_RANGE[delivery].min);
+  let max = clampShare(p.spaceRangeMax ?? DEFAULT_SPACE_RANGE[delivery].max);
+  if (max < min) {
+    const t = min;
+    min = max;
+    max = t;
+  }
+  return { min, max };
+}
+
+/** Midpoint silence share of the time-based range. */
+export function spaceRangeMidSilence(range: SpaceRange): number {
+  return clampShare((range.min + range.max) / 2);
+}
+
 export function silenceShareFor(profiles: DeliveryProfiles, delivery: DeliveryId): number {
   const p =
     delivery === "casual"
@@ -212,6 +352,23 @@ export function silenceShareFor(profiles: DeliveryProfiles, delivery: DeliveryId
         ? profiles.guided
         : profiles.openSits;
   return Math.min(0.95, Math.max(0, p.silenceShare));
+}
+
+/**
+ * Silence shares for planned section duration estimates.
+ * Own-silence: first/last no longer have admin overrides — all three use the
+ * delivery silence share (edge writes still omit a pause target).
+ */
+export function sectionSilenceSharesFor(
+  profiles: DeliveryProfiles,
+  delivery: DeliveryId,
+): { first: number; middle: number; last: number } {
+  const middle = silenceShareFor(profiles, delivery);
+  // Own-silence: first/last admin shares removed.
+  // const p = ...
+  // const first = Math.min(0.95, Math.max(0, p.firstSectionSilenceShare ?? middle));
+  // const last = Math.min(0.95, Math.max(0, p.lastSectionSilenceShare ?? middle));
+  return { first: middle, middle, last: middle };
 }
 
 export function speechShareFor(
@@ -242,12 +399,14 @@ export function speechShareFromPauseRules(
 }
 
 export function defaultWpmFor(
-  profiles: DeliveryProfiles,
+  _profiles: DeliveryProfiles,
   delivery: DeliveryId,
 ): number {
-  if (delivery === "casual") return profiles.casual.defaultWpm;
-  if (delivery === "guided") return profiles.guided.defaultWpm;
-  return profiles.openSits.defaultWpm;
+  // Admin WPM removed — voice measurements drive pace; this is fallback only.
+  // if (delivery === "casual") return profiles.casual.defaultWpm;
+  // if (delivery === "guided") return profiles.guided.defaultWpm;
+  // return profiles.openSits.defaultWpm;
+  return FIXED_DEFAULT_WPM[delivery];
 }
 
 export function wordBudget(params: {
@@ -271,7 +430,7 @@ export function previewDelivery(
     wpmOverride && wpmOverride > 0 ? wpmOverride : defaultWpmFor(profiles, delivery);
   const speechShare = speechShareFor(profiles, delivery, wpm);
   const words = wordBudget({ minutes, speechShare, wpm });
-  const chars = Math.round(words * profiles.shared.charsPerWord);
+  const chars = Math.round(words * FIXED_CHARS_PER_WORD);
   const silenceMinutes =
     Math.round(minutes * (1 - speechShare) * 10) / 10;
   return { delivery, speechShare, words, chars, silenceMinutes };
@@ -279,73 +438,82 @@ export function previewDelivery(
 
 export function coerceDeliveryProfiles(raw: unknown): DeliveryProfiles {
   const base = defaultDeliveryProfiles();
-  if (!raw || typeof raw !== "object") return base;
+  if (!raw || typeof raw !== "object") return applyFixedDeliveryProfileConstants(base);
   const o = raw as Record<string, unknown>;
   const c = (o.casual ?? {}) as Record<string, unknown>;
   const g = (o.guided ?? {}) as Record<string, unknown>;
   const open = (o.openSits ?? o.open_sits ?? {}) as Record<string, unknown>;
   const s = (o.shared ?? {}) as Record<string, unknown>;
-  const sec = (o.sections ?? {}) as Record<string, unknown>;
-  return {
-    sections: {
-      casual: coerceSectionShares(sec.casual, base.sections.casual),
-      guided: coerceSectionShares(sec.guided, base.sections.guided),
-      open_sits: coerceSectionShares(sec.open_sits, base.sections.open_sits),
-    },
+  const casualSilence = num(c.silenceShare, base.casual.silenceShare, 0, 0.95);
+  const guidedSilence = num(g.silenceShare, base.guided.silenceShare, 0, 0.95);
+  const openSilence = num(open.silenceShare, base.openSits.silenceShare, 0, 0.95);
+  const casualRange = coerceSpaceRange(c, DEFAULT_SPACE_RANGE.casual);
+  const guidedRange = coerceSpaceRange(g, DEFAULT_SPACE_RANGE.guided);
+  const openRange = coerceSpaceRange(open, DEFAULT_SPACE_RANGE.open_sits);
+  const coerced: DeliveryProfiles = {
     casual: {
-      defaultWpm: num(c.defaultWpm, base.casual.defaultWpm, 40, 220),
-      silenceShare: num(c.silenceShare, base.casual.silenceShare, 0, 0.95),
-      pauseBetweenParagraphs: num(
-        c.pauseBetweenParagraphs,
-        base.casual.pauseBetweenParagraphs,
-        0,
-        60,
-      ),
+      defaultWpm: base.casual.defaultWpm,
+      silenceShare: casualSilence,
+      // Own-silence: ignore stored first/last; force to delivery share.
+      // firstSectionSilenceShare: num(c.firstSectionSilenceShare, casualSilence, 0, 0.95),
+      // lastSectionSilenceShare: num(c.lastSectionSilenceShare, casualSilence, 0, 0.95),
+      firstSectionSilenceShare: casualSilence,
+      lastSectionSilenceShare: casualSilence,
+      pauseBetweenParagraphs: base.casual.pauseBetweenParagraphs,
       longestPause: num(c.longestPause, base.casual.longestPause, 0.2, 120),
-      openingClosing: num(c.openingClosing, base.casual.openingClosing, 0, 180),
+      openingClosing: base.casual.openingClosing,
+      spaceRangeMin: casualRange.min,
+      spaceRangeMax: casualRange.max,
     },
     guided: {
-      defaultWpm: num(g.defaultWpm, base.guided.defaultWpm, 40, 220),
-      silenceShare: num(g.silenceShare, base.guided.silenceShare, 0, 0.95),
-      pauseAfterBreath: num(g.pauseAfterBreath, base.guided.pauseAfterBreath, 0, 120),
-      pauseBetweenSections: num(
-        g.pauseBetweenSections,
-        base.guided.pauseBetweenSections,
-        0,
-        180,
-      ),
-      reflectivePer10: num(g.reflectivePer10, base.guided.reflectivePer10, 0, 20),
-      reflectiveLength: num(g.reflectiveLength, base.guided.reflectiveLength, 0, 180),
-      opening: num(g.opening, base.guided.opening, 0, 180),
-      closing: num(g.closing, base.guided.closing, 0, 180),
+      defaultWpm: base.guided.defaultWpm,
+      silenceShare: guidedSilence,
+      firstSectionSilenceShare: guidedSilence,
+      lastSectionSilenceShare: guidedSilence,
+      pauseAfterBreath: base.guided.pauseAfterBreath,
+      pauseBetweenSections: base.guided.pauseBetweenSections,
+      reflectivePer10: base.guided.reflectivePer10,
+      reflectiveLength: base.guided.reflectiveLength,
+      opening: base.guided.opening,
+      closing: base.guided.closing,
+      spaceRangeMin: guidedRange.min,
+      spaceRangeMax: guidedRange.max,
     },
     openSits: {
-      defaultWpm: num(open.defaultWpm, base.openSits.defaultWpm, 40, 220),
-      silenceShare: num(open.silenceShare, base.openSits.silenceShare, 0, 0.95),
-      cueWords: num(open.cueWords, base.openSits.cueWords, 1, 80),
-      gap: num(open.gap, base.openSits.gap, 0, 300),
-      opening: num(open.opening, base.openSits.opening, 0, 180),
-      closing: num(open.closing, base.openSits.closing, 0, 180),
+      defaultWpm: base.openSits.defaultWpm,
+      silenceShare: openSilence,
+      firstSectionSilenceShare: openSilence,
+      lastSectionSilenceShare: openSilence,
+      cueWords: base.openSits.cueWords,
+      gap: base.openSits.gap,
+      opening: base.openSits.opening,
+      closing: base.openSits.closing,
+      spaceRangeMin: openRange.min,
+      spaceRangeMax: openRange.max,
     },
     shared: {
-      charsPerWord: num(s.charsPerWord, base.shared.charsPerWord, 3, 12),
-      pauseAfterSentence: num(
-        s.pauseAfterSentence,
-        base.shared.pauseAfterSentence,
-        0,
-        10,
-      ),
-      ttsBreakLimit: num(s.ttsBreakLimit, base.shared.ttsBreakLimit, 1, 30),
+      ...base.shared,
       lengthTolerancePct: num(
         s.lengthTolerancePct,
         base.shared.lengthTolerancePct,
         1,
         40,
       ),
-      sectionWordCap: num(s.sectionWordCap, base.shared.sectionWordCap, 60, 600),
-      sectionWordMin: num(s.sectionWordMin, base.shared.sectionWordMin, 20, 200),
-      planMinWords: num(s.planMinWords, base.shared.planMinWords, 100, 2000),
     },
+  };
+  return applyFixedDeliveryProfileConstants(coerced);
+}
+
+/** Parts around the script — fixed constants (not admin settings). */
+export function sessionAroundFromProfiles(
+  _profiles: DeliveryProfiles,
+): SessionAroundScript {
+  // Previously read from profiles.shared.session* / title* — now fixed.
+  return {
+    leadInSeconds: FIXED_SESSION_LEAD_IN_SECONDS,
+    fadeOutSeconds: FIXED_SESSION_FADE_OUT_SECONDS,
+    titleLeadPauseSeconds: FIXED_TITLE_LEAD_PAUSE_SECONDS,
+    titleTrailPauseSeconds: FIXED_TITLE_TRAIL_PAUSE_SECONDS,
   };
 }
 
@@ -353,67 +521,61 @@ export function pauseRulesForPrompt(
   profiles: DeliveryProfiles,
   delivery: DeliveryId,
 ): string {
-  const limit = profiles.shared.ttsBreakLimit;
+  const limit = SPEECHIFY_MAX_BREAK_SECONDS;
+  void profiles;
+  // Named-band marker list and casual longest-pause cap removed — Claude
+  // chooses every pause length in seconds (`<N>`). TTS still stitches silence
+  // over the break limit as audio.
   if (delivery === "casual") {
-    const p = profiles.casual;
+    // Was: Never a single pause longer than ${p.longestPause}s.
+    // Was: Write pauses as short markers (`<s>`, `<m>`, …).
     return [
       "PAUSE RULES (Casual delivery — apply these, do not invent longer sits):",
-      `- After a sentence: ${profiles.shared.pauseAfterSentence}s.`,
-      `- Between paragraphs: ${p.pauseBetweenParagraphs}s.`,
-      `- Opening and closing: ${p.openingClosing}s each.`,
-      `- Never a single pause longer than ${p.longestPause}s.`,
-      `Write pauses as [[PAUSE Ns]] markers. Any silence over ${limit}s is stitched as audio, not sent as a TTS break.`,
-    ].join("\n");
-  }
-  if (delivery === "guided") {
-    const p = profiles.guided;
-    return [
-      "PAUSE RULES (Guided delivery):",
-      `- Opening settle-in: ${p.opening}s. Closing: ${p.closing}s.`,
-      `- After a sentence: ${profiles.shared.pauseAfterSentence}s.`,
-      `- After a breath cue: ${p.pauseAfterBreath}s.`,
-      `- Between sections: ${p.pauseBetweenSections}s.`,
-      `- Reflective silences: ${p.reflectivePer10} per 10 minutes, ${p.reflectiveLength}s each.`,
-      `Write pauses as [[PAUSE Ns]] markers. Any silence over ${limit}s is stitched as audio, not sent as a TTS break.`,
-    ].join("\n");
-  }
-  const p = profiles.openSits;
-  return [
-    "PAUSE RULES (Open sits):",
-    `- Each cue is about ${p.cueWords} words.`,
-    `- After a sentence: ${profiles.shared.pauseAfterSentence}s.`,
-    `- Gap between cues: ${p.gap}s ([[PAUSE ${Math.round(p.gap)}s]]).`,
-    `- Opening cue silence: ${p.opening}s. Closing cue silence: ${p.closing}s.`,
-    `Write the long gaps as [[PAUSE Ns]] markers. Any silence over ${limit}s is stitched as audio, not sent as a TTS break.`,
-  ].join("\n");
-}
-
-/** The shared sentence pause as a TTS break, capped by the break limit. Same for every delivery. */
-/** Pause rules for section writes: placement guidance only, no length numbers. */
-export function pauseRulesForSectionPrompt(delivery: DeliveryId): string {
-  if (delivery === "casual") {
-    return [
-      "PAUSE RULES (Casual delivery):",
-      "Keep pauses short. Place them where a human guide would breathe or let a line land.",
-      "Write pauses as [[PAUSE …]] markers.",
+      "Keep pauses short and conversational; place them where a human guide would breathe or let a line land.",
+      `Mark every pause with its length in seconds (\`<N>\`, e.g. \`<2>\`). Any silence over ${limit}s is stitched as audio, not sent as a TTS break.`,
     ].join("\n");
   }
   if (delivery === "guided") {
     return [
       "PAUSE RULES (Guided delivery):",
       "Use the full range of pauses: shorter between ordinary lines, longer after imagery or emotional lines, the longest only where the listener is practising on their own.",
-      "Write pauses as [[PAUSE …]] markers.",
+      `Mark every pause with its length in seconds (\`<N>\`, e.g. \`<2>\` or \`<5.5>\`). Any silence over ${limit}s is stitched as audio, not sent as a TTS break.`,
     ].join("\n");
   }
   return [
     "PAUSE RULES (Open sits):",
     "Keep pauses within a cue short. Long silences are the normal gap between cues.",
-    "Write the long gaps as [[PAUSE Ns]] or [[PAUSE open]] markers.",
+    `Mark every pause with its length in seconds (\`<N>\`, e.g. \`<2>\` or \`<60>\`). Any silence over ${limit}s is stitched as audio, not sent as a TTS break.`,
   ].join("\n");
 }
 
-export function sentenceBreakMs(profiles: DeliveryProfiles): number {
-  const limitMs = Math.round(profiles.shared.ttsBreakLimit * 1000);
-  const ms = Math.round(profiles.shared.pauseAfterSentence * 1000);
+/** The shared sentence pause as a TTS break, capped by the break limit. Same for every delivery. */
+/** Pause rules for section writes: placement guidance only, no named-band map. */
+export function pauseRulesForSectionPrompt(delivery: DeliveryId): string {
+  if (delivery === "casual") {
+    return [
+      "PAUSE RULES (Casual delivery):",
+      "Keep pauses short. Place them where a human guide would breathe or let a line land.",
+      // Was: Write pauses as short markers (`<s>`, `<m>`, …).
+      "Mark every pause with its length in seconds (`<N>`, e.g. `<2>`).",
+    ].join("\n");
+  }
+  if (delivery === "guided") {
+    return [
+      "PAUSE RULES (Guided delivery):",
+      "Use the full range of pauses: shorter between ordinary lines, longer after imagery or emotional lines, the longest only where the listener is practising on their own.",
+      "Mark every pause with its length in seconds (`<N>`, e.g. `<2>` or `<5.5>`).",
+    ].join("\n");
+  }
+  return [
+    "PAUSE RULES (Open sits):",
+    "Keep pauses within a cue short. Long silences are the normal gap between cues.",
+    "Mark every pause with its length in seconds (`<N>`, e.g. `<2>` or `<60>`).",
+  ].join("\n");
+}
+
+export function sentenceBreakMs(_profiles: DeliveryProfiles): number {
+  const limitMs = Math.round(SPEECHIFY_MAX_BREAK_SECONDS * 1000);
+  const ms = Math.round(FIXED_PAUSE_AFTER_SENTENCE_SECONDS * 1000);
   return Math.max(0, Math.min(limitMs, ms));
 }

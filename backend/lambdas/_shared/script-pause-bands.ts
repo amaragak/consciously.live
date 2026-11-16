@@ -107,9 +107,98 @@ export function secondsForPauseSpec(
   if (band) return map[band];
   const n = parseFloat(raw.trim().replace(/s$/i, ""));
   if (Number.isFinite(n) && n > 0) {
-    return Math.min(n, SCRIPT_PAUSE_TIMED_MAX_SECONDS);
+    // No parse clamp — TTS splits long breaks over the provider limit.
+    // return Math.min(n, SCRIPT_PAUSE_TIMED_MAX_SECONDS);
+    return n;
   }
   return 0;
+}
+
+/** Compact model-facing pause markers (`<s>`, `<2.5>`, …). Named kept for legacy parse. */
+export const SHORT_PAUSE_MARKER_RE =
+  /<(?:pause\s+)?(\d+(?:\.\d+)?s?|xs|xl|extra[\s-]?short|extra[\s-]?long|short|medium|long|open|[smlo])>/gi;
+
+function expandShortPauseBodyLocal(raw: string): string {
+  const t = raw.trim().toLowerCase().replace(/_/g, " ");
+  const band = BAND_ALIASES[t] ?? BAND_ALIASES[t.replace(/\s+/g, " ")];
+  if (band) return `[[PAUSE ${band}]]`;
+  const n = parseFloat(t.replace(/s$/i, ""));
+  if (Number.isFinite(n) && n > 0) {
+    const body = Number.isInteger(n) ? `${n}s` : `${n}s`;
+    return `[[PAUSE ${body}]]`;
+  }
+  return `[[PAUSE ${raw.trim()}]]`;
+}
+
+/** Expand short-form pauses to internal `[[PAUSE …]]`. Idempotent for legacy markers. */
+export function expandShortPauseMarkers(script: string): string {
+  if (!script) return script;
+  return script.replace(SHORT_PAUSE_MARKER_RE, (_m, body: string) =>
+    expandShortPauseBodyLocal(body),
+  );
+}
+
+/** Named short-form band tokens (legacy). New scripts use `<N>` only. */
+const NAMED_SHORT_PAUSE_BODY_RE =
+  /^(?:xs|xl|extra[\s-]?short|extra[\s-]?long|short|medium|long|open|[smlo])$/i;
+
+/**
+ * Count legacy named short markers (`<s>`, `<m>`, …) still present in a script.
+ * Timed `<N>` / `<x N>` are not counted.
+ */
+export function countNamedShortPauseMarkers(script: string): number {
+  if (!script) return 0;
+  const withoutExtendable = script.replace(/<x\s*\d+(?:\.\d+)?\s*>/gi, " ");
+  const re = new RegExp(SHORT_PAUSE_MARKER_RE.source, SHORT_PAUSE_MARKER_RE.flags);
+  let n = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(withoutExtendable)) !== null) {
+    const body = (m[1] ?? "").trim();
+    if (NAMED_SHORT_PAUSE_BODY_RE.test(body)) n += 1;
+  }
+  return n;
+}
+
+/** Ordinary timed / named short markers (not `<x N>`). */
+export function summarizeOrdinaryPauseMarkers(script: string): {
+  count: number;
+  totalSeconds: number;
+  averageSeconds: number | null;
+  longestSeconds: number;
+  namedMarkersUsed: number;
+} {
+  if (!script) {
+    return {
+      count: 0,
+      totalSeconds: 0,
+      averageSeconds: null,
+      longestSeconds: 0,
+      namedMarkersUsed: 0,
+    };
+  }
+  const namedMarkersUsed = countNamedShortPauseMarkers(script);
+  const withoutExtendable = script.replace(/<x\s*\d+(?:\.\d+)?\s*>/gi, " ");
+  const expanded = expandShortPauseMarkers(withoutExtendable);
+  const re = new RegExp(SCRIPT_PAUSE_MARKER_RE.source, SCRIPT_PAUSE_MARKER_RE.flags);
+  let count = 0;
+  let totalSeconds = 0;
+  let longestSeconds = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(expanded)) !== null) {
+    const sec = secondsForPauseSpec(m[1] ?? "");
+    if (sec > 0) {
+      count += 1;
+      totalSeconds += sec;
+      longestSeconds = Math.max(longestSeconds, sec);
+    }
+  }
+  return {
+    count,
+    totalSeconds,
+    averageSeconds: count > 0 ? Math.round((totalSeconds / count) * 10) / 10 : null,
+    longestSeconds: Math.round(longestSeconds * 10) / 10,
+    namedMarkersUsed,
+  };
 }
 
 export function sumPauseMarkerSeconds(
@@ -117,10 +206,11 @@ export function sumPauseMarkerSeconds(
   bands?: Record<ScriptPauseBand, number>,
 ): number {
   if (!script) return 0;
+  const normalized = expandShortPauseMarkers(script);
   const re = new RegExp(SCRIPT_PAUSE_MARKER_RE.source, SCRIPT_PAUSE_MARKER_RE.flags);
   let total = 0;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(script)) !== null) {
+  while ((m = re.exec(normalized)) !== null) {
     total += secondsForPauseSpec(m[1] ?? "", bands);
   }
   return total;
@@ -128,7 +218,7 @@ export function sumPauseMarkerSeconds(
 
 export function stripPauseMarkers(script: string): string {
   if (!script) return "";
-  return script
+  return expandShortPauseMarkers(script)
     .replace(new RegExp(SCRIPT_PAUSE_MARKER_RE.source, SCRIPT_PAUSE_MARKER_RE.flags), " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -204,6 +294,7 @@ export function replacePauseMarkersWithFishNative(
   _scale = 1,
 ): string {
   if (!script) return "";
+  script = expandShortPauseMarkers(script);
   const re = new RegExp(SCRIPT_PAUSE_MARKER_RE.source, SCRIPT_PAUSE_MARKER_RE.flags);
   return script
     .replace(re, (_full, raw: string) => {
@@ -231,6 +322,7 @@ export function parseScriptIntoSegments(
 ): ScriptSegment[] {
   const segments: ScriptSegment[] = [];
   if (!script) return segments;
+  script = expandShortPauseMarkers(script);
   const re = new RegExp(SCRIPT_PAUSE_MARKER_RE.source, SCRIPT_PAUSE_MARKER_RE.flags);
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -266,8 +358,12 @@ export function parseScriptIntoSegments(
 /**
  * Prompt block: named pause bands for natural flow; clocked/count spoken
  * timings only when the creator explicitly steers that way.
+ *
+ * Model-facing syntax is the short form (`<s>`, `<2.5>`, …). Expanded to
+ * `[[PAUSE …]]` immediately after generation.
  */
-export const SCRIPT_PAUSE_PROMPT_RULES = [
+/*
+export const SCRIPT_PAUSE_PROMPT_RULES_LEGACY = [
   "Use **liberal** natural pauses with inline markers `[[PAUSE short]]`, `[[PAUSE medium]]`, `[[PAUSE long]]`, or `[[PAUSE extra long]]`. Optional `[[PAUSE extra short]]` for a very brief bridge. Prefer **named bands** — do not write timed seconds (`3s`, `6s`, etc.) for ordinary pacing.",
   "Include them **often**—after most sentences or sense-units, at **every** meaningful transition (arrival → practice, shifts in technique or imagery, closing), and wherever a human guide would breathe or let a phrase land—not only at rare dramatic beats.",
   "Place **every** pause **intelligently**: think carefully how long each silence should be so the meditation flows naturally and the meditator has real space at reflection points. Each gap must fit the moment—what was just said, the emotional or somatic weight, the transition, and what comes next. Pauses are not filler; avoid random, uniform, or excessive markers that would break rhythm or feel mechanical.",
@@ -281,6 +377,26 @@ export const SCRIPT_PAUSE_PROMPT_RULES = [
   "Forbidden unless the user asked for it: spoken second recipes (“hold for five seconds”, “breathe in for four, hold for four, out for six”), count-along cues (“inhale for 4 — one, two, three, four”), metronomic box/ratio breathing with numbers, or any similar numeric timing recipe in the spoken words or as prescribed pause lengths the listener is meant to match.",
   "This does **not** mean you should skimp on pause craft. On the contrary: always choose [[PAUSE …]] bands with care so silence lands where reflection needs space. What is gated is **announcing or prescribing** specific timings — not using silence markers for natural flow.",
   "When the user **does** explicitly request count-based or second-precise timing (e.g. inhale for 4 with spoken 1, 2, 3, 4): size every gap to **real seconds**, not much more or less. Band map: extra-short ≈ 1.5s, short ≈ 2.5s, medium ≈ 4s, long ≈ 7s, extra-long ≈ 12s. For tight count-alongs, prefer timed markers such as `[[PAUSE 1s]]` between spoken counts so the listener is not left waiting ages for the next number, and not rushed through the phase. Spoken counts + silences in a phase should sum to roughly the named duration of that phase.",
+].join("\n");
+*/
+/*
+export const SCRIPT_PAUSE_PROMPT_RULES_NAMED = [
+  "Use **liberal** natural pauses with short markers: `<s>`, `<m>`, `<l>`, or `<xl>` … Prefer **named bands** …",
+].join("\n");
+*/
+export const SCRIPT_PAUSE_PROMPT_RULES = [
+  "Mark every pause with its length in seconds: `<N>`, for example `<2>` or `<5.5>`. Choose each length for the moment: short where the flow should carry on, longer after something the listener needs time to take in. Place pauses between ideas or small groups of sentences, not after every sentence.",
+  "Include them **often**—after most sentences or sense-units, at **every** meaningful transition (arrival → practice, shifts in technique or imagery, closing), and wherever a human guide would breathe or let a phrase land—not only at rare dramatic beats.",
+  "Place **every** pause **intelligently**: each gap must fit the moment—what was just said, the emotional or somatic weight, the transition, and what comes next. Pauses are not filler; avoid random, uniform, or excessive markers.",
+  "**Guided breath cycles:** between paired in→out (or hold→release) cues the guide delivers in order, use a short pause only (about `<1>`–`<2>`) — never a long open silence. Use longer pauses only when the listener has real open time before the guide speaks again.",
+  "When the listener follows in their own time, prefer a longer pause (sometimes several in a row when one sustained silence fits); never rush the next line, and never stack long silence where the script does not call for it.",
+  "Place pause markers on their own or immediately after a sentence, never splitting words. Never invent other spellings; do not write `[[PAUSE …]]`.",
+  "",
+  "### Explicit spoken timings (hard constraint)",
+  "**Only** invent clocked or count-based practice when the creator **explicitly steers** that in the conversation. Default / unprompted scripts must **never** do this.",
+  "Forbidden unless the user asked: spoken second recipes (“hold for five seconds”, “breathe in for four…”), count-along cues, metronomic box/ratio breathing with numbers, or any numeric timing recipe the listener is meant to match.",
+  "Still choose pause lengths carefully for natural flow. What is gated is **announcing or prescribing** specific timings in the spoken words — not using silence markers.",
+  "When the user **does** request count-based timing: size every gap to **real seconds** with timed markers such as `<1>` between spoken counts. Spoken counts + silences in a phase should sum to roughly the named duration of that phase.",
 ].join("\n");
 
 /**
@@ -379,27 +495,26 @@ export function scriptLongerBreaksOpenPracticeRules(
     "### Longer breaks — open practice (hard priority)",
     `The creator chose **longer breaks**. The voice stem must still land near **${plan.targetMinutes} minutes** (~**${stemSeconds}** s) — same Length setting as usual.`,
     "",
-    "**What changes:** insert a few **properly cued self-paced practice sits** with **long open silence** (about **one to two minutes** each on longer sits). Do **not** merely thin every line or spam `extra-long` (that band is only ~12 s).",
+    "**What changes:** insert a few **properly cued self-paced practice sits** with **long open silence** (about **one to two minutes** each on longer sits). Do **not** merely thin every line with many short pauses.",
     "",
-    "**What stays the same:** between ordinary spoken lines, keep using `[[PAUSE short]]` / `medium` / `long` / `extra long` as in a normal guided script. Guided in→out breath pairs stay **short** / **extra short**.",
+    "**What stays the same:** between ordinary spoken lines, keep using timed `<N>` pauses as in a normal guided script. Guided in→out breath pairs stay short (`<1>`–`<2>`).",
     "",
     "**Cue → open silence (required pattern):**",
     "1. Speak a clear self-paced invitation, e.g. “I’ll give you some time here — follow along at your own pace,” “Take as long as you need with this,” “Stay with this in your own time; I’ll wait,” “Practise this on your own for a little while.”",
-    "2. Immediately after that cue, place **one** open-practice pause marker (not a stack of `extra-long`).",
+    "2. Immediately after that cue, place **one** long timed pause (not a stack of short ones).",
     "3. After the silence, continue with the next guided section (or closing).",
     "",
     "**Open-practice pause markers (longer-breaks only):**",
-    `- Preferred default: \`[[PAUSE open]]\` (~**${plan.openBandSeconds}** s of silence).`,
-    `- When you need a specific length: timed markers are allowed here — \`[[PAUSE 60s]]\`, \`[[PAUSE 90s]]\`, \`[[PAUSE 120s]]\` (whole seconds only; max **${SCRIPT_PAUSE_TIMED_MAX_SECONDS}**). Pick the duration that fits the cue and the remaining time budget.`,
-    "- Never use timed seconds for ordinary line spacing — only for these cued open sits.",
+    // Was: Preferred default `<o>`; max SCRIPT_PAUSE_TIMED_MAX_SECONDS.
+    `- Use a timed marker for the open sit — e.g. \`<${plan.openBandSeconds}>\`, \`<60>\`, \`<90>\`, \`<120>\`. Pick the duration that fits the cue and the remaining time budget.`,
     "",
     "**Budget for this Length:**",
     `- Place about **${plan.countLo}–${plan.countHi}** open-practice sits.`,
-    `- Each open sit ~**${plan.secondsLo}–${plan.secondsHi}** s (use timed markers when \`open\` is the wrong size).`,
+    `- Each open sit ~**${plan.secondsLo}–${plan.secondsHi}** s.`,
     `- Together they should contribute roughly **~${plan.typicalOpenSeconds}** s of silence.`,
     `- Write the **spoken guided content** as roughly a **${plan.spokenBudgetMinutes}-minute** script (normal density + ordinary pauses). The open sits fill the rest so the stem hits **${plan.targetMinutes}** minutes.`,
     "",
-    "**Do not:** replace open sits with many `extra-long` markers; pad with filler talk; change the Length target; put a minute of silence without a self-paced cue first.",
+    "**Do not:** replace open sits with many short pauses; pad with filler talk; change the Length target; put a minute of silence without a self-paced cue first.",
   ].join("\n");
 }
 
@@ -408,8 +523,9 @@ export function scriptOpenSitsMarkerRules(): string {
   return [
     "",
     "### Open sits — long silence markers",
-    "Place **one** marker for each long silence, straight after the cue that sets it up (not a stack of `extra-long`).",
-    `- \`[[PAUSE open]]\` (~**${SCRIPT_PAUSE_BAND_SECONDS.open}** s of silence), or a timed marker when you need a specific length: \`[[PAUSE 30s]]\`, \`[[PAUSE 60s]]\`, \`[[PAUSE 90s]]\`, \`[[PAUSE 120s]]\` (whole seconds only; max **${SCRIPT_PAUSE_TIMED_MAX_SECONDS}**).`,
-    "- Never use timed seconds for ordinary line spacing inside a cue — only for the silences between cues.",
+    "Place **one** marker for each long silence, straight after the cue that sets it up (not a stack of short pauses).",
+    // Was: `<o>` or timed with max SCRIPT_PAUSE_TIMED_MAX_SECONDS.
+    `- Use a timed marker: \`<30>\`, \`<60>\`, \`<90>\`, \`<120>\` (or another length that fits).`,
+    "- Keep pauses within a cue short; long silences are the gaps between cues.",
   ].join("\n");
 }

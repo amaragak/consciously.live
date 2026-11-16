@@ -2,8 +2,22 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyStructuredResultV2,
 } from "aws-lambda";
-import { sentenceBreakMs, type DeliveryId } from "./_shared/delivery-profiles";
-import { paceAdjustmentPct, voicePaceTable } from "./_shared/meditation-length-fit";
+import {
+  sentenceBreakMs,
+  type DeliveryId,
+} from "./_shared/delivery-profiles";
+import {
+  paceAdjustmentPct,
+  voicePaceTable,
+} from "./_shared/meditation-length-fit";
+import { countSpokenWords } from "./_shared/meditation-length-fit";
+import {
+  measuredScriptGenCostRows,
+  overlayAvgCharsFromCells,
+  spokenCharCount,
+  usdFromCell,
+  type ScriptGenCostRow,
+} from "./_shared/script-gen-cost";
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import {
   CopyObjectCommand,
@@ -76,17 +90,90 @@ import {
   loadCalibrationConfig,
   loadDeliveryProfileRecord,
   calibrationCellKey,
+  clearScriptCalibrationForModel,
+  clearSingleCallCalibrationForModel,
+  clearTimeBasedCalibrationForModel,
+  loadComparisonMeta,
+  loadComparisonPairs,
+  loadLengthPreviewLogs,
   loadScriptCalibrationBatch,
+  loadTimeBasedCalibrationCells,
   loadScriptCalibrationCells,
+  loadSingleCallCalibrationCells,
   saveCalibration,
   saveCalibrationConfig,
+  saveComparisonMeta,
+  saveComparisonPair,
   saveDeliveryProfileRecord,
+  saveLengthPreviewLog,
   saveScriptCalibrationBatch,
   saveScriptCalibrationCell,
+  saveSingleCallCalibrationCell,
+  saveSingleCallCalibrationMeta,
+  saveTimeBasedCalibrationCell,
+  loadSilenceFitCalibrationCells,
+  loadSilenceHaikuCalibrationCells,
+  loadSilenceWordsCalibrationCells,
+  loadSilenceWordsHaikuCalibrationCells,
   type SpeakerRateDoc,
   loadRecentLengthLogs,
   type LengthLog,
 } from "./_shared/voice-calibration-store";
+import { runTimeBasedScriptCell } from "./_shared/script-time-based-cost-cell";
+import {
+  isTimeBasedCostWorkerEvent,
+  loadTimeBasedCostRun,
+  processTimeBasedCostTick,
+  startTimeBasedCostRun,
+  stopTimeBasedCostRun,
+} from "./_shared/script-time-based-cost-run";
+import {
+  isSilenceFitCostWorkerEvent,
+  loadSilenceFitCostRun,
+  processSilenceFitCostTick,
+  silenceFitWorkItems,
+  startSilenceFitCostRun,
+  stopSilenceFitCostRun,
+} from "./_shared/script-silence-fit-cost-run";
+import {
+  isSilenceHaikuCostWorkerEvent,
+  loadSilenceHaikuCostRun,
+  processSilenceHaikuCostTick,
+  silenceHaikuWorkItems,
+  startSilenceHaikuCostRun,
+  stopSilenceHaikuCostRun,
+} from "./_shared/script-silence-haiku-cost-run";
+import {
+  isSilenceWordsCostWorkerEvent,
+  loadSilenceWordsCostRun,
+  processSilenceWordsCostTick,
+  silenceWordsWorkItems,
+  startSilenceWordsCostRun,
+  stopSilenceWordsCostRun,
+} from "./_shared/script-silence-words-cost-run";
+import {
+  isSilenceWordsHaikuCostWorkerEvent,
+  loadSilenceWordsHaikuCostRun,
+  processSilenceWordsHaikuCostTick,
+  silenceWordsHaikuWorkItems,
+  startSilenceWordsHaikuCostRun,
+  stopSilenceWordsHaikuCostRun,
+} from "./_shared/script-silence-words-haiku-cost-run";
+import {
+  silenceWordsAsFitSettings,
+  silenceWordsWordBudget,
+} from "./_shared/script-silence-words-settings";
+import {
+  SILENCE_FIT_LENGTHS,
+  SILENCE_FIT_OPTIONS,
+  SILENCE_FIT_OPTION_LABEL,
+  silenceFitAutoSpeakingBands,
+  silenceFitEstimatedTotalAudioSeconds,
+  silenceFitCellFor,
+  silenceFitMinLongPauses,
+  silenceFitSentenceBudget,
+  silenceFitSpeakingShare,
+} from "./_shared/script-silence-fit-settings";
 import {
   defaultScriptTargetCorrection,
   correctionHasCalibratedSamples,
@@ -99,23 +186,100 @@ import {
 } from "./_shared/script-model-calibrate";
 import {
   applyFactorsToSettings,
+  CALIBRATION_MEDIAN_WPM,
+  CHECK_VOICES,
   calibrationWorkItems,
+  cellsForActiveBriefs,
   diversionsFromCells,
+  factorSpreadRows,
   factorsFromCalibrationCells,
+  perScriptFactorRows,
+  perScriptSectionBreakdown,
+  rejudgeCalibrationFidelity,
   runCalibrationCell,
   summarizeCalibrationCellGroup,
   type CalibrationCellResult,
   type StoredCalibrationBatch,
 } from "./_shared/script-calibration-batch";
 import {
+  deleteScriptCalibrationRun,
+  isScriptCalibrationWorkerEvent,
+  loadScriptCalibrationRun,
+  processScriptCalibrationTick,
+  startScriptCalibrationRun,
+  stopScriptCalibrationRun,
+} from "./_shared/script-calibration-run";
+import {
+  activeCalibrationBriefs,
+  coerceCalibrationBriefCount,
+  coerceScriptGenerationSettings,
   correctionForModel,
   resetCorrectionForModel,
   setCorrectionForModel,
+  setSingleCallCorrectionForModel,
+  singleCallCalibrationBriefs,
+  singleCallCorrectionForModel,
 } from "./_shared/script-generation-settings";
+import {
+  buildComparisonTable,
+  factorsFromSingleCallCells,
+  metricsFromCell,
+  runSectionedScriptCell,
+  runSingleCallScriptCell,
+  singleCallWorkItems,
+  type ComparisonPairResult,
+} from "./_shared/script-single-call-compare";
+import {
+  fmtClock,
+  runLengthPreview,
+} from "./_shared/script-length-preview";
 import { stepVoiceCalibration } from "./_shared/voice-calibration-run";
 
 const s3 = new S3Client({});
 const secrets = new SecretsManagerClient({});
+
+/** Active briefs (n) + cells filtered to this run’s brief window. */
+function runBriefsAndCells(
+  scriptGeneration: import("./_shared/script-generation-settings").ScriptGenerationSettings,
+  cells: CalibrationCellResult[],
+): {
+  briefs: string[];
+  briefCount: number;
+  cells: CalibrationCellResult[];
+} {
+  const briefs = activeCalibrationBriefs(scriptGeneration);
+  const briefCount = coerceCalibrationBriefCount(
+    scriptGeneration.calibrationBriefCount,
+    briefs.length,
+  );
+  return {
+    briefs,
+    briefCount,
+    cells: cellsForActiveBriefs(cells, briefCount),
+  };
+}
+
+function buildScriptGenCostRows(params: {
+  profiles: import("./_shared/delivery-profiles").DeliveryProfiles;
+  modelId: string;
+  cells: CalibrationCellResult[];
+  /** Sections (default) vs single-call vs time-based / silence-fit path. */
+  mode?:
+    | "sections"
+    | "single"
+    | "time"
+    | "silence"
+    | "silence_haiku"
+    | "silence_words"
+    | "silence_words_haiku";
+}): ScriptGenCostRow[] {
+  const { modelId, cells } = params;
+  void params.mode;
+  void params.profiles;
+  // Measured only — no synthetic estimate filler in admin cost tables.
+  const measured = measuredScriptGenCostRows(cells, modelId);
+  return overlayAvgCharsFromCells(measured, cells);
+}
 
 async function getFishApiKey(): Promise<string> {
   const arn = process.env.FISH_AUDIO_SECRET_ARN;
@@ -172,18 +336,106 @@ function json(
 }
 
 export async function handler(
-  event: APIGatewayProxyEventV2,
-): Promise<APIGatewayProxyStructuredResultV2> {
-  const method = event.requestContext.http.method;
+  event: APIGatewayProxyEventV2 | Record<string, unknown>,
+): Promise<APIGatewayProxyStructuredResultV2 | void> {
+  // Async self-invoke: script calibration tick (no API Gateway / no auth).
+  if (isScriptCalibrationWorkerEvent(event)) {
+    try {
+      await processScriptCalibrationTick({
+        modelId: event.job.modelId,
+        runToken: event.job.runToken,
+      });
+    } catch (e) {
+      console.error(
+        "script-calibration worker",
+        e instanceof Error ? e.message : e,
+      );
+    }
+    return;
+  }
+  if (isTimeBasedCostWorkerEvent(event)) {
+    try {
+      await processTimeBasedCostTick({
+        modelId: event.job.modelId,
+        runToken: event.job.runToken,
+      });
+    } catch (e) {
+      console.error(
+        "time-based-cost worker",
+        e instanceof Error ? e.message : e,
+      );
+    }
+    return;
+  }
+  if (isSilenceFitCostWorkerEvent(event)) {
+    try {
+      await processSilenceFitCostTick({
+        modelId: event.job.modelId,
+        runToken: event.job.runToken,
+      });
+    } catch (e) {
+      console.error(
+        "silence-fit-cost worker",
+        e instanceof Error ? e.message : e,
+      );
+    }
+    return;
+  }
+  if (isSilenceHaikuCostWorkerEvent(event)) {
+    try {
+      await processSilenceHaikuCostTick({
+        modelId: event.job.modelId,
+        runToken: event.job.runToken,
+      });
+    } catch (e) {
+      console.error(
+        "silence-haiku-cost worker",
+        e instanceof Error ? e.message : e,
+      );
+    }
+    return;
+  }
+  if (isSilenceWordsCostWorkerEvent(event)) {
+    try {
+      await processSilenceWordsCostTick({
+        modelId: event.job.modelId,
+        runToken: event.job.runToken,
+      });
+    } catch (e) {
+      console.error(
+        "silence-words-cost worker",
+        e instanceof Error ? e.message : e,
+      );
+    }
+    return;
+  }
+
+  if (isSilenceWordsHaikuCostWorkerEvent(event)) {
+    try {
+      await processSilenceWordsHaikuCostTick({
+        modelId: event.job.modelId,
+        runToken: event.job.runToken,
+      });
+    } catch (e) {
+      console.error(
+        "silence-words-haiku-cost worker",
+        e instanceof Error ? e.message : e,
+      );
+    }
+    return;
+  }
+
+  const httpEvent = event as APIGatewayProxyEventV2;
+  const method = httpEvent.requestContext.http.method;
   if (method === "OPTIONS") return json(204, {});
 
-  const admin = await requireAdminJson(event);
+  const admin = await requireAdminJson(httpEvent);
   if (!("sub" in admin)) return admin;
 
   try {
-    if (method === "GET") return await handleGet(event);
-    if (method === "PATCH") return await handlePatch(event);
-    if (method === "POST") return await handlePost(event, admin);
+    if (method === "GET") return await handleGet(httpEvent);
+    if (method === "PATCH") return await handlePatch(httpEvent);
+    if (method === "POST") return await handlePost(httpEvent, admin);
     return json(405, { error: "Method not allowed" });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Admin voice failed";
@@ -393,6 +645,39 @@ type SectionStatsRow = {
 
 function avg(values: number[]): number | null {
   return values.length ? round1(values.reduce((sum, n) => sum + n, 0) / values.length) : null;
+}
+
+/** Word-fix call fields from API-stored per-call usage (model = response id). */
+function haikuFixCallExportFields(cell: {
+  calls?: Array<{
+    label?: string;
+    model?: string;
+    usage?: { input_tokens?: number } | null;
+  }>;
+}): {
+  fixCallsModel: string | null;
+  fixCallsInputTokensTotal: number | null;
+  fixCallsCount: number;
+} {
+  const fixes = (cell.calls ?? []).filter((c) =>
+    /^haiku-phase-/i.test(c.label ?? ""),
+  );
+  const models = [
+    ...new Set(
+      fixes
+        .map((c) => (typeof c.model === "string" ? c.model.trim() : ""))
+        .filter(Boolean),
+    ),
+  ];
+  const inputTotal = fixes.reduce(
+    (s, c) => s + (c.usage?.input_tokens ?? 0),
+    0,
+  );
+  return {
+    fixCallsModel: models.length ? models.join("|") : null,
+    fixCallsInputTokensTotal: fixes.length ? Math.round(inputTotal) : null,
+    fixCallsCount: fixes.length,
+  };
 }
 
 /** First-draft accuracy per section kind and how often the targeted fix ran, per delivery and length. */
@@ -1041,6 +1326,1353 @@ async function handlePost(
       },
     });
   }
+  /** Wipe sectioned calibration cells + meta so Run calibration starts fresh. */
+  if (action === "clear-script-calibration-batch") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const cleared = await clearScriptCalibrationForModel(modelId);
+    await deleteScriptCalibrationRun(modelId);
+    return json(200, {
+      ok: true,
+      modelId,
+      deletedCells: cleared.deletedCells,
+    });
+  }
+  /**
+   * Start (or resume) server-side calibration. Worker ticks chain themselves;
+   * client only polls get-script-calibration-batch / get-script-calibration-run.
+   */
+  if (action === "start-script-calibration-run") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const restart = body.restart === true;
+    const by = admin.email?.trim() || admin.sub || "admin";
+    // Persist n from the request so the worker uses the same brief count.
+    if (body.briefCount != null) {
+      const briefCount = coerceCalibrationBriefCount(
+        body.briefCount,
+        prev.scriptGeneration.calibrationBriefs.length,
+      );
+      if (briefCount !== prev.scriptGeneration.calibrationBriefCount) {
+        await saveDeliveryProfileRecord({
+          profiles: prev.profiles,
+          scriptGeneration: {
+            ...prev.scriptGeneration,
+            calibrationBriefCount: briefCount,
+          },
+          by,
+          note: `Calibration brief count → ${briefCount}`,
+        });
+      }
+    }
+    const run = await startScriptCalibrationRun({
+      modelId,
+      restart,
+      by,
+    });
+    return json(200, { ok: true, run });
+  }
+  if (action === "stop-script-calibration-run") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const run = await stopScriptCalibrationRun(modelId);
+    return json(200, { ok: true, run });
+  }
+  if (action === "get-script-calibration-run") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const run = await loadScriptCalibrationRun(modelId);
+    const { briefs, briefCount, cells } = runBriefsAndCells(
+      prev.scriptGeneration,
+      await loadScriptCalibrationCells(modelId),
+    );
+    const workItems = calibrationWorkItems(briefs);
+    return json(200, {
+      ok: true,
+      run,
+      briefCount,
+      completedCount: cells.length,
+      total: workItems.length,
+      canResume: cells.length > 0 && cells.length < workItems.length,
+    });
+  }
+  if (action === "clear-single-call-calibration") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const cleared = await clearSingleCallCalibrationForModel(modelId);
+    return json(200, {
+      ok: true,
+      modelId,
+      deletedCells: cleared.deletedCells,
+    });
+  }
+  if (action === "clear-time-based-calibration") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const cleared = await clearTimeBasedCalibrationForModel(modelId);
+    return json(200, {
+      ok: true,
+      modelId,
+      deletedCells: cleared.deletedCells,
+    });
+  }
+  if (action === "start-time-based-costs") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const briefCount = coerceCalibrationBriefCount(
+      typeof body.calibrationBriefCount === "number"
+        ? body.calibrationBriefCount
+        : prev.scriptGeneration.calibrationBriefCount,
+      prev.scriptGeneration.calibrationBriefs.length || 10,
+    );
+    if (briefCount !== prev.scriptGeneration.calibrationBriefCount) {
+      await saveDeliveryProfileRecord({
+        profiles: prev.profiles,
+        scriptGeneration: {
+          ...prev.scriptGeneration,
+          calibrationBriefCount: briefCount,
+        },
+        by: admin.email?.trim() || admin.sub || "admin",
+        note: `Time-based cost run n=${briefCount}`,
+      });
+    }
+    const run = await startTimeBasedCostRun({
+      modelId,
+      restart: body.restart !== false,
+    });
+    return json(200, { ok: true, run });
+  }
+  if (action === "stop-time-based-costs") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const run = await stopTimeBasedCostRun(modelId);
+    return json(200, { ok: true, run });
+  }
+  if (action === "start-silence-fit-costs") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const briefCount = coerceCalibrationBriefCount(
+      typeof body.calibrationBriefCount === "number"
+        ? body.calibrationBriefCount
+        : prev.scriptGeneration.calibrationBriefCount,
+      prev.scriptGeneration.calibrationBriefs.length || 10,
+    );
+    if (briefCount !== prev.scriptGeneration.calibrationBriefCount) {
+      await saveDeliveryProfileRecord({
+        profiles: prev.profiles,
+        scriptGeneration: {
+          ...prev.scriptGeneration,
+          calibrationBriefCount: briefCount,
+        },
+        by: admin.email?.trim() || admin.sub || "admin",
+        note: `Silence-fit cost run n=${briefCount}`,
+      });
+    }
+    const run = await startSilenceFitCostRun({
+      modelId,
+      calibrationBriefCount: briefCount,
+      restart: body.restart !== false,
+    });
+    return json(200, { ok: true, run });
+  }
+  if (action === "stop-silence-fit-costs") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    await stopSilenceFitCostRun(modelId);
+    const run = await loadSilenceFitCostRun(modelId);
+    return json(200, { ok: true, run });
+  }
+  if (action === "get-silence-fit-calibration") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    // Last-run results: keep every stored brief. The n selector only scopes the
+    // next Run — clipping here hid all but brief 0 when n was set back to 1.
+    const cells = await loadSilenceFitCalibrationCells(modelId);
+    const briefs = activeCalibrationBriefs(prev.scriptGeneration);
+    const briefCount = coerceCalibrationBriefCount(
+      prev.scriptGeneration.calibrationBriefCount,
+      briefs.length,
+    );
+    const workItems = silenceFitWorkItems(briefCount);
+    const completedKeys = cells.map((c) =>
+      `${c.silenceFitOption ?? "guided"}#${c.minutes}#${c.briefIndex}`,
+    );
+    const sf = prev.scriptGeneration.silenceFit;
+    const avg = (nums: number[]) =>
+      nums.length
+        ? Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10
+        : null;
+    /** Finer mean — speech share must not collapse to 10% buckets. */
+    const avgFine = (nums: number[]) =>
+      nums.length
+        ? Math.round(
+            (nums.reduce((a, b) => a + b, 0) / nums.length) * 10000,
+          ) / 10000
+        : null;
+    const lengthAccuracy = SILENCE_FIT_OPTIONS.flatMap((option) =>
+      SILENCE_FIT_LENGTHS.map((len) => {
+        const minutes = Number(len);
+        const group = cells.filter(
+          (c) =>
+            c.silenceFitOption === option &&
+            c.minutes === minutes &&
+            !c.error &&
+            c.silenceFitAccuracy,
+        );
+        const snaps = group.map((c) => c.silenceFitAccuracy!).filter(Boolean);
+        const n = snaps.length;
+        const outside = snaps.filter((s) => s.outsideTolerance);
+        const inBand = snaps.filter((s) => s.insideSpeakingBand);
+        const afterPcts = snaps.map((s) =>
+          s.targetSeconds > 0
+            ? ((s.predictedSecondsAfter - s.targetSeconds) / s.targetSeconds) *
+              100
+            : 0,
+        );
+        const cellCfg = silenceFitCellFor(sf, option, minutes);
+        // Why whenever fit went past long pauses (not only outside tolerance).
+        const whys = [
+          ...new Set(
+            snaps
+              .map((s) => s.why)
+              .filter((w): w is string => typeof w === "string" && !!w.trim()),
+          ),
+        ];
+        const steps = snaps.map((s) => s.fitStep);
+        const stepMode =
+          steps.length === 0
+            ? null
+            : steps.every((s) => s === steps[0])
+              ? steps[0]
+              : "mixed";
+        const estimatedTotals = snaps.map((s) =>
+          typeof s.estimatedTotalAudioSeconds === "number" &&
+          Number.isFinite(s.estimatedTotalAudioSeconds)
+            ? s.estimatedTotalAudioSeconds
+            : silenceFitEstimatedTotalAudioSeconds(s.predictedSecondsAfter),
+        );
+        return {
+          option,
+          label: SILENCE_FIT_OPTION_LABEL[option],
+          minutes,
+          scripts: n,
+          speechShare: avgFine(snaps.map((s) => s.speechShare)),
+          speakingBandMin: silenceFitAutoSpeakingBands(
+            silenceFitSpeakingShare(prev.profiles, option),
+          ).speakingBandMin,
+          speakingBandMax: silenceFitAutoSpeakingBands(
+            silenceFitSpeakingShare(prev.profiles, option),
+          ).speakingBandMax,
+          beforeFitPct: avg(
+            snaps.map((s) =>
+              s.targetSeconds > 0
+                ? ((s.predictedSecondsBefore - s.targetSeconds) /
+                    s.targetSeconds) *
+                  100
+                : 0,
+            ),
+          ),
+          afterFitPct: avg(afterPcts),
+          estimatedTotalAudioSeconds: avg(estimatedTotals),
+          fitStep: stepMode,
+          outsideCount: outside.length,
+          outsidePct:
+            n > 0 ? Math.round((outside.length / n) * 1000) / 10 : null,
+          inBandCount: inBand.length,
+          inBandPct:
+            n > 0 ? Math.round((inBand.length / n) * 1000) / 10 : null,
+          why:
+            whys.length === 1
+              ? whys[0]!
+              : whys.length > 1
+                ? whys.join("; ")
+                : null,
+          scriptsDetail: group.map((c) => {
+            const acc = c.silenceFitAccuracy;
+            const phases = acc?.phases ?? [];
+            const words = acc?.words;
+            const sentencesWritten = acc?.writtenSentenceTotal;
+            const wpsUsed = acc?.wordsPerSentence;
+            const sentenceBudget = acc?.sentenceBudget;
+            const wordsBudget =
+              typeof sentenceBudget === "number" &&
+              typeof wpsUsed === "number" &&
+              sentenceBudget > 0 &&
+              wpsUsed > 0
+                ? Math.round(sentenceBudget * wpsUsed)
+                : null;
+            const wpsActual =
+              typeof words === "number" &&
+              typeof sentencesWritten === "number" &&
+              sentencesWritten > 0
+                ? Math.round((words / sentencesWritten) * 10) / 10
+                : null;
+            const headerMinutes = phases.reduce(
+              (s, p) => s + (p.headerMinutes || 0),
+              0,
+            );
+            const chars = spokenCharCount(c.scriptText);
+            const claudeUsd = c.usage ? usdFromCell(c, modelId) : null;
+            const briefWords = countSpokenWords(c.brief || "");
+            return {
+              briefIndex: c.briefIndex,
+              brief: c.brief,
+              ...(acc ?? {}),
+              scriptTextAsWritten: c.scriptTextAsWritten,
+              scriptText: c.scriptText,
+              wordsBudget,
+              wordsPerSentenceActual: wpsActual,
+              phaseCount: phases.length,
+              headerMinutes: Math.round(headerMinutes * 10) / 10,
+              chars: chars > 0 ? chars : null,
+              claudeUsd,
+              briefWords: briefWords > 0 ? briefWords : null,
+            };
+          }),
+        };
+      }),
+    );
+    const okSnaps = cells
+      .map((c) => c.silenceFitAccuracy)
+      .filter(Boolean) as NonNullable<(typeof cells)[0]["silenceFitAccuracy"]>[];
+    const missPcts = okSnaps.map((s) =>
+      s.targetSeconds > 0
+        ? ((s.predictedSecondsAfter - s.targetSeconds) / s.targetSeconds) * 100
+        : 0,
+    );
+    const absMisses = missPcts.map((m) => Math.abs(m));
+    let largestMissPct: number | null = null;
+    if (missPcts.length) {
+      let best = missPcts[0]!;
+      for (const m of missPcts) {
+        if (Math.abs(m) > Math.abs(best)) best = m;
+      }
+      largestMissPct = Math.round(best * 10) / 10;
+    }
+    const summary = {
+      scripts: okSnaps.length,
+      withinTolerance: okSnaps.filter((s) => !s.outsideTolerance).length,
+      insideSpeakingBand: okSnaps.filter((s) => s.insideSpeakingBand).length,
+      // Absolute average — signed misses cancel otherwise.
+      avgMissAfterPct: avg(absMisses),
+      largestMissAfterPct: largestMissPct,
+    };
+    const avgCharsByOptionLength = SILENCE_FIT_OPTIONS.flatMap((option) =>
+      SILENCE_FIT_LENGTHS.map((len) => {
+        const minutes = Number(len);
+        const group = cells.filter(
+          (c) =>
+            c.silenceFitOption === option &&
+            c.minutes === minutes &&
+            !c.error &&
+            c.scriptText,
+        );
+        const chars = group.map((c) =>
+          (c.scriptText || "").replace(/\[\[PAUSE[^\]]*\]\]/gi, "").length,
+        );
+        return {
+          option,
+          label: SILENCE_FIT_OPTION_LABEL[option],
+          minutes,
+          scripts: group.length,
+          avgChars: avg(chars),
+        };
+      }),
+    );
+    // Read-only computed budgets for Settings.
+    const budgets = SILENCE_FIT_OPTIONS.flatMap((option) =>
+      SILENCE_FIT_LENGTHS.map((len) => {
+        const minutes = Number(len);
+        const cellCfg = silenceFitCellFor(sf, option, minutes);
+        const scriptTimeSeconds = Math.max(30, minutes * 60 - 45);
+        const wpsRow = sf.wordsPerSentenceByOption[option];
+        const wps =
+          wpsRow.scriptCount > 0 ? wpsRow.wordsPerSentence : 12;
+        // Was: speakingBandMin: cellCfg.speakingBandMin (bottom of band).
+        const speakingShareForBudget = silenceFitSpeakingShare(
+          prev.profiles,
+          option,
+        );
+        const sentenceBudget = silenceFitSentenceBudget({
+          scriptTimeSeconds,
+          speakingBandMin: speakingShareForBudget,
+          effectiveWpm: CALIBRATION_MEDIAN_WPM,
+          wordsPerSentence: wps,
+        });
+        const minLongPauses = silenceFitMinLongPauses({
+          scriptTimeSeconds,
+          speakingBandMin: speakingShareForBudget,
+          longestSingleSilenceSeconds: cellCfg.longestSingleSilenceSeconds,
+        });
+        return {
+          option,
+          label: SILENCE_FIT_OPTION_LABEL[option],
+          minutes,
+          sentenceBudget,
+          minLongPauses,
+          wordsPerSentence: wps,
+          wpsScriptCount: wpsRow.scriptCount,
+          speakingShareForBudget,
+          speakingSeconds: Math.round(
+            scriptTimeSeconds * speakingShareForBudget,
+          ),
+        };
+      }),
+    );
+    const run = await loadSilenceFitCostRun(modelId);
+    return json(200, {
+      ok: true,
+      briefCount,
+      workItems,
+      completedKeys,
+      completedCount: completedKeys.length,
+      total: workItems.length,
+      canResume:
+        completedKeys.length > 0 && completedKeys.length < workItems.length,
+      scriptGenCostsSilence: buildScriptGenCostRows({
+        profiles: prev.profiles,
+        modelId,
+        cells,
+        mode: "silence",
+      }),
+      lengthAccuracy,
+      summary,
+      avgCharsByOptionLength,
+      budgets,
+      silenceFit: sf,
+      run,
+    });
+  }
+  if (action === "start-silence-haiku-costs") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const briefCount = coerceCalibrationBriefCount(
+      typeof body.calibrationBriefCount === "number"
+        ? body.calibrationBriefCount
+        : prev.scriptGeneration.calibrationBriefCount,
+      prev.scriptGeneration.calibrationBriefs.length || 10,
+    );
+    if (briefCount !== prev.scriptGeneration.calibrationBriefCount) {
+      await saveDeliveryProfileRecord({
+        profiles: prev.profiles,
+        scriptGeneration: {
+          ...prev.scriptGeneration,
+          calibrationBriefCount: briefCount,
+        },
+        by: admin.email?.trim() || admin.sub || "admin",
+        note: `Silence-haiku cost run n=${briefCount}`,
+      });
+    }
+    const run = await startSilenceHaikuCostRun({
+      modelId,
+      calibrationBriefCount: briefCount,
+      restart: body.restart !== false,
+    });
+    return json(200, { ok: true, run });
+  }
+  if (action === "stop-silence-haiku-costs") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    await stopSilenceHaikuCostRun(modelId);
+    const run = await loadSilenceHaikuCostRun(modelId);
+    return json(200, { ok: true, run });
+  }
+  if (action === "get-silence-haiku-calibration") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const cells = await loadSilenceHaikuCalibrationCells(modelId);
+    const briefs = activeCalibrationBriefs(prev.scriptGeneration);
+    const briefCount = coerceCalibrationBriefCount(
+      prev.scriptGeneration.calibrationBriefCount,
+      briefs.length,
+    );
+    const workItems = silenceHaikuWorkItems(briefCount);
+    const completedKeys = cells.map(
+      (c) =>
+        `${c.silenceFitOption ?? "guided"}#${c.minutes}#${c.briefIndex}`,
+    );
+    const sh = prev.scriptGeneration.silenceHaiku;
+    const avg = (nums: number[]) =>
+      nums.length
+        ? Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10
+        : null;
+    const avgFine = (nums: number[]) =>
+      nums.length
+        ? Math.round(
+            (nums.reduce((a, b) => a + b, 0) / nums.length) * 10000,
+          ) / 10000
+        : null;
+    const lengthAccuracy = SILENCE_FIT_OPTIONS.flatMap((option) =>
+      SILENCE_FIT_LENGTHS.map((len) => {
+        const minutes = Number(len);
+        const group = cells.filter(
+          (c) =>
+            c.silenceFitOption === option &&
+            c.minutes === minutes &&
+            !c.error &&
+            c.silenceHaikuAccuracy,
+        );
+        const snaps = group.map((c) => c.silenceHaikuAccuracy!).filter(Boolean);
+        const n = snaps.length;
+        const outside = snaps.filter((s) => s.outsideTolerance);
+        const inBand = snaps.filter((s) => s.insideSpeakingBand);
+        const afterPcts = snaps.map((s) =>
+          s.targetSeconds > 0
+            ? ((s.predictedSecondsAfter - s.targetSeconds) / s.targetSeconds) *
+              100
+            : 0,
+        );
+        const cellCfg = silenceFitCellFor(sh, option, minutes);
+        const whys = [
+          ...new Set(
+            snaps
+              .map((s) => s.why)
+              .filter(
+                (w): w is NonNullable<(typeof snaps)[number]["why"]> =>
+                  typeof w === "string" && !!w.trim(),
+              ),
+          ),
+        ];
+        const steps = snaps.map((s) => s.fitStep);
+        const stepMode =
+          steps.length === 0
+            ? null
+            : steps.every((s) => s === steps[0])
+              ? steps[0]
+              : "mixed";
+        const estimatedTotals = snaps.map((s) =>
+          typeof s.estimatedTotalAudioSeconds === "number" &&
+          Number.isFinite(s.estimatedTotalAudioSeconds)
+            ? s.estimatedTotalAudioSeconds
+            : silenceFitEstimatedTotalAudioSeconds(s.predictedSecondsAfter),
+        );
+        const haikuRan = snaps.filter((s) => s.haikuRan).length;
+        return {
+          option,
+          label: SILENCE_FIT_OPTION_LABEL[option],
+          minutes,
+          scripts: n,
+          speechShare: avgFine(snaps.map((s) => s.speechShare)),
+          speechShareSonnet: avgFine(
+            snaps.map((s) => s.speechShareSonnet ?? s.speechShare),
+          ),
+          speakingBandMin: silenceFitAutoSpeakingBands(
+            silenceFitSpeakingShare(prev.profiles, option),
+          ).speakingBandMin,
+          speakingBandMax: silenceFitAutoSpeakingBands(
+            silenceFitSpeakingShare(prev.profiles, option),
+          ).speakingBandMax,
+          beforeFitPct: avg(
+            snaps.map((s) =>
+              s.targetSeconds > 0
+                ? ((s.predictedSecondsBefore - s.targetSeconds) /
+                    s.targetSeconds) *
+                  100
+                : 0,
+            ),
+          ),
+          afterFitPct: avg(afterPcts),
+          wordsVsBudgetPct: avg(snaps.map((s) => s.wordsVsBudgetPct)),
+          wordsVsBudgetSonnetPct: avg(
+            snaps.map((s) => s.wordsVsBudgetSonnetPct ?? s.wordsVsBudgetPct),
+          ),
+          wordsVsBudgetSonnetMin: (() => {
+            const vals = snaps.map(
+              (s) => s.wordsVsBudgetSonnetPct ?? s.wordsVsBudgetPct,
+            );
+            return vals.length ? Math.min(...vals) : null;
+          })(),
+          wordsVsBudgetSonnetMax: (() => {
+            const vals = snaps.map(
+              (s) => s.wordsVsBudgetSonnetPct ?? s.wordsVsBudgetPct,
+            );
+            return vals.length ? Math.max(...vals) : null;
+          })(),
+          wordsSonnetUnderCount: snaps.filter(
+            (s) => (s.wordsVsBudgetSonnetPct ?? s.wordsVsBudgetPct) < 0,
+          ).length,
+          haikuRanCount: haikuRan,
+          haikuPhasesFixedAvg: avg(snaps.map((s) => s.phasesFixed)),
+          estimatedTotalAudioSeconds: avg(estimatedTotals),
+          fitStep: stepMode,
+          outsideCount: outside.length,
+          outsidePct:
+            n > 0 ? Math.round((outside.length / n) * 1000) / 10 : null,
+          inBandCount: inBand.length,
+          inBandPct:
+            n > 0 ? Math.round((inBand.length / n) * 1000) / 10 : null,
+          why:
+            whys.length === 1
+              ? whys[0]!
+              : whys.length > 1
+                ? whys.join("; ")
+                : null,
+          scriptsDetail: group.map((c) => {
+            const acc = c.silenceHaikuAccuracy;
+            const phases = acc?.phases ?? [];
+            const words = acc?.words;
+            const sentencesWritten = acc?.writtenSentenceTotal;
+            const wpsUsed = acc?.wordsPerSentence;
+            const sentenceBudget = acc?.sentenceBudget;
+            const wordsBudget =
+              typeof sentenceBudget === "number" &&
+              typeof wpsUsed === "number" &&
+              sentenceBudget > 0 &&
+              wpsUsed > 0
+                ? Math.round(sentenceBudget * wpsUsed)
+                : null;
+            const wpsActual =
+              typeof words === "number" &&
+              typeof sentencesWritten === "number" &&
+              sentencesWritten > 0
+                ? Math.round((words / sentencesWritten) * 10) / 10
+                : null;
+            const headerMinutes = phases.reduce(
+              (s, p) => s + (p.headerMinutes || 0),
+              0,
+            );
+            const chars = spokenCharCount(c.scriptText);
+            const claudeUsd = c.usage ? usdFromCell(c, modelId) : null;
+            const briefWords = countSpokenWords(c.brief || "");
+            const fixCalls = haikuFixCallExportFields(c);
+            return {
+              briefIndex: c.briefIndex,
+              brief: c.brief,
+              ...(acc ?? {}),
+              scriptTextAsWritten: c.scriptTextAsWritten,
+              scriptTextAfterHaiku:
+                c.scriptTextAfterHaiku ?? acc?.scriptAfterHaiku,
+              scriptText: c.scriptText,
+              wordsBudget,
+              wordsPerSentenceActual: wpsActual,
+              fixCallsModel: fixCalls.fixCallsModel,
+              fixCallsInputTokensTotal: fixCalls.fixCallsInputTokensTotal,
+              fixCallsCount: fixCalls.fixCallsCount,
+              phaseCount: phases.length,
+              headerMinutes: Math.round(headerMinutes * 10) / 10,
+              chars: chars > 0 ? chars : null,
+              claudeUsd,
+              briefWords: briefWords > 0 ? briefWords : null,
+            };
+          }),
+        };
+      }),
+    );
+    const okSnaps = cells
+      .map((c) => c.silenceHaikuAccuracy)
+      .filter(
+        Boolean,
+      ) as NonNullable<(typeof cells)[0]["silenceHaikuAccuracy"]>[];
+    const missPcts = okSnaps.map((s) =>
+      s.targetSeconds > 0
+        ? ((s.predictedSecondsAfter - s.targetSeconds) / s.targetSeconds) * 100
+        : 0,
+    );
+    const absMisses = missPcts.map((m) => Math.abs(m));
+    let largestMissPct: number | null = null;
+    if (missPcts.length) {
+      let best = missPcts[0]!;
+      for (const m of missPcts) {
+        if (Math.abs(m) > Math.abs(best)) best = m;
+      }
+      largestMissPct = Math.round(best * 10) / 10;
+    }
+    const summary = {
+      scripts: okSnaps.length,
+      withinTolerance: okSnaps.filter((s) => !s.outsideTolerance).length,
+      insideSpeakingBand: okSnaps.filter((s) => s.insideSpeakingBand).length,
+      avgMissAfterPct: avg(absMisses),
+      largestMissAfterPct: largestMissPct,
+      haikuRanCount: okSnaps.filter((s) => s.haikuRan).length,
+    };
+    const avgCharsByOptionLength = SILENCE_FIT_OPTIONS.flatMap((option) =>
+      SILENCE_FIT_LENGTHS.map((len) => {
+        const minutes = Number(len);
+        const group = cells.filter(
+          (c) =>
+            c.silenceFitOption === option &&
+            c.minutes === minutes &&
+            !c.error &&
+            c.scriptText,
+        );
+        const chars = group.map((c) =>
+          (c.scriptText || "").replace(/\[\[PAUSE[^\]]*\]\]/gi, "").length,
+        );
+        return {
+          option,
+          label: SILENCE_FIT_OPTION_LABEL[option],
+          minutes,
+          scripts: group.length,
+          avgChars: avg(chars),
+        };
+      }),
+    );
+    const budgets = SILENCE_FIT_OPTIONS.flatMap((option) =>
+      SILENCE_FIT_LENGTHS.map((len) => {
+        const minutes = Number(len);
+        const cellCfg = silenceFitCellFor(sh, option, minutes);
+        const scriptTimeSeconds = Math.max(30, minutes * 60 - 45);
+        const wpsRow = sh.wordsPerSentenceByOption[option];
+        const wps =
+          wpsRow.scriptCount > 0 ? wpsRow.wordsPerSentence : 12;
+        // Was: bottom of band / middle of band from stored speakingBandMin/Max.
+        // const speakingShareForBudget = cellCfg.speakingBandMin;
+        // const speakingShareForBudget =
+        //   (cellCfg.speakingBandMin + cellCfg.speakingBandMax) / 2;
+        const speakingShareForBudget = silenceFitSpeakingShare(
+          prev.profiles,
+          option,
+        );
+        const sentenceBudget = silenceFitSentenceBudget({
+          scriptTimeSeconds,
+          speakingBandMin: speakingShareForBudget,
+          effectiveWpm: CALIBRATION_MEDIAN_WPM,
+          wordsPerSentence: wps,
+        });
+        const minLongPauses = silenceFitMinLongPauses({
+          scriptTimeSeconds,
+          speakingBandMin: speakingShareForBudget,
+          longestSingleSilenceSeconds: cellCfg.longestSingleSilenceSeconds,
+        });
+        return {
+          option,
+          label: SILENCE_FIT_OPTION_LABEL[option],
+          minutes,
+          sentenceBudget,
+          minLongPauses,
+          wordsPerSentence: wps,
+          wpsScriptCount: wpsRow.scriptCount,
+          speakingShareForBudget,
+          speakingSeconds: Math.round(
+            scriptTimeSeconds * speakingShareForBudget,
+          ),
+        };
+      }),
+    );
+    const run = await loadSilenceHaikuCostRun(modelId);
+    return json(200, {
+      ok: true,
+      briefCount,
+      workItems,
+      completedKeys,
+      completedCount: completedKeys.length,
+      total: workItems.length,
+      canResume:
+        completedKeys.length > 0 && completedKeys.length < workItems.length,
+      scriptGenCostsSilenceHaiku: buildScriptGenCostRows({
+        profiles: prev.profiles,
+        modelId,
+        cells,
+        mode: "silence_haiku",
+      }),
+      lengthAccuracy,
+      summary,
+      avgCharsByOptionLength,
+      budgets,
+      silenceHaiku: sh,
+      run,
+    });
+  }
+  if (action === "start-silence-words-costs") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const briefCount = coerceCalibrationBriefCount(
+      typeof body.calibrationBriefCount === "number"
+        ? body.calibrationBriefCount
+        : prev.scriptGeneration.calibrationBriefCount,
+      prev.scriptGeneration.calibrationBriefs.length || 10,
+    );
+    if (briefCount !== prev.scriptGeneration.calibrationBriefCount) {
+      await saveDeliveryProfileRecord({
+        profiles: prev.profiles,
+        scriptGeneration: {
+          ...prev.scriptGeneration,
+          calibrationBriefCount: briefCount,
+        },
+        by: admin.email?.trim() || admin.sub || "admin",
+        note: `Silence-words cost run n=${briefCount}`,
+      });
+    }
+    const run = await startSilenceWordsCostRun({
+      modelId,
+      calibrationBriefCount: briefCount,
+      restart: body.restart !== false,
+    });
+    return json(200, { ok: true, run });
+  }
+  if (action === "stop-silence-words-costs") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    await stopSilenceWordsCostRun(modelId);
+    const run = await loadSilenceWordsCostRun(modelId);
+    return json(200, { ok: true, run });
+  }
+  if (action === "get-silence-words-calibration") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const cells = await loadSilenceWordsCalibrationCells(modelId);
+    const briefs = activeCalibrationBriefs(prev.scriptGeneration);
+    const briefCount = coerceCalibrationBriefCount(
+      prev.scriptGeneration.calibrationBriefCount,
+      briefs.length,
+    );
+    const workItems = silenceWordsWorkItems(briefCount);
+    const completedKeys = cells.map(
+      (c) =>
+        `${c.silenceFitOption ?? "guided"}#${c.minutes}#${c.briefIndex}`,
+    );
+    const sw = prev.scriptGeneration.silenceWords;
+    const fitSettings = silenceWordsAsFitSettings(sw);
+    const avg = (nums: number[]) =>
+      nums.length
+        ? Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10
+        : null;
+    const avgFine = (nums: number[]) =>
+      nums.length
+        ? Math.round(
+            (nums.reduce((a, b) => a + b, 0) / nums.length) * 10000,
+          ) / 10000
+        : null;
+    const lengthAccuracy = SILENCE_FIT_OPTIONS.flatMap((option) =>
+      SILENCE_FIT_LENGTHS.map((len) => {
+        const minutes = Number(len);
+        const group = cells.filter(
+          (c) =>
+            c.silenceFitOption === option &&
+            c.minutes === minutes &&
+            !c.error &&
+            c.silenceWordsAccuracy,
+        );
+        const snaps = group.map((c) => c.silenceWordsAccuracy!).filter(Boolean);
+        const n = snaps.length;
+        const outside = snaps.filter((s) => s.outsideTolerance);
+        const inBand = snaps.filter((s) => s.insideSpeakingBand);
+        const afterPcts = snaps.map((s) =>
+          s.targetSeconds > 0
+            ? ((s.predictedSecondsAfter - s.targetSeconds) / s.targetSeconds) *
+              100
+            : 0,
+        );
+        const cellCfg = silenceFitCellFor(fitSettings, option, minutes);
+        const whys = [
+          ...new Set(
+            snaps
+              .map((s) => s.why)
+              .filter(
+                (w): w is NonNullable<(typeof snaps)[number]["why"]> =>
+                  typeof w === "string" && !!w.trim(),
+              ),
+          ),
+        ];
+        const steps = snaps.map((s) => s.fitStep);
+        const stepMode =
+          steps.length === 0
+            ? null
+            : steps.every((s) => s === steps[0])
+              ? steps[0]
+              : "mixed";
+        const estimatedTotals = snaps.map((s) =>
+          typeof s.estimatedTotalAudioSeconds === "number" &&
+          Number.isFinite(s.estimatedTotalAudioSeconds)
+            ? s.estimatedTotalAudioSeconds
+            : silenceFitEstimatedTotalAudioSeconds(s.predictedSecondsAfter),
+        );
+        return {
+          option,
+          label: SILENCE_FIT_OPTION_LABEL[option],
+          minutes,
+          scripts: n,
+          speechShare: avgFine(snaps.map((s) => s.speechShare)),
+          speakingBandMin: silenceFitAutoSpeakingBands(
+            silenceFitSpeakingShare(prev.profiles, option),
+          ).speakingBandMin,
+          speakingBandMax: silenceFitAutoSpeakingBands(
+            silenceFitSpeakingShare(prev.profiles, option),
+          ).speakingBandMax,
+          beforeFitPct: avg(
+            snaps.map((s) =>
+              s.targetSeconds > 0
+                ? ((s.predictedSecondsBefore - s.targetSeconds) /
+                    s.targetSeconds) *
+                  100
+                : 0,
+            ),
+          ),
+          afterFitPct: avg(afterPcts),
+          wordsVsBudgetPct: avg(snaps.map((s) => s.wordsVsBudgetPct)),
+          estimatedTotalAudioSeconds: avg(estimatedTotals),
+          fitStep: stepMode,
+          outsideCount: outside.length,
+          outsidePct:
+            n > 0 ? Math.round((outside.length / n) * 1000) / 10 : null,
+          inBandCount: inBand.length,
+          inBandPct:
+            n > 0 ? Math.round((inBand.length / n) * 1000) / 10 : null,
+          why:
+            whys.length === 1
+              ? whys[0]!
+              : whys.length > 1
+                ? whys.join("; ")
+                : null,
+          scriptsDetail: group.map((c) => {
+            const acc = c.silenceWordsAccuracy;
+            const phases = acc?.phases ?? [];
+            const chars = spokenCharCount(c.scriptText);
+            const claudeUsd = c.usage ? usdFromCell(c, modelId) : null;
+            const briefWords = countSpokenWords(c.brief || "");
+            return {
+              briefIndex: c.briefIndex,
+              brief: c.brief,
+              ...(acc ?? {}),
+              scriptTextAsWritten: c.scriptTextAsWritten,
+              scriptText: c.scriptText,
+              wordBudget: acc?.wordBudget ?? null,
+              headerWords: acc?.headerWordTotal ?? null,
+              words: acc?.wordsWritten ?? acc?.words ?? null,
+              // Sentence columns left empty for this mode.
+              sentenceBudget: null,
+              headerSentenceTotal: null,
+              writtenSentenceTotal: null,
+              wordsPerSentence: null,
+              phaseCount: phases.length,
+              chars: chars > 0 ? chars : null,
+              claudeUsd,
+              briefWords: briefWords > 0 ? briefWords : null,
+            };
+          }),
+        };
+      }),
+    );
+    const okSnaps = cells
+      .map((c) => c.silenceWordsAccuracy)
+      .filter(
+        Boolean,
+      ) as NonNullable<(typeof cells)[0]["silenceWordsAccuracy"]>[];
+    const missPcts = okSnaps.map((s) =>
+      s.targetSeconds > 0
+        ? ((s.predictedSecondsAfter - s.targetSeconds) / s.targetSeconds) * 100
+        : 0,
+    );
+    const absMisses = missPcts.map((m) => Math.abs(m));
+    let largestMissPct: number | null = null;
+    if (missPcts.length) {
+      let best = missPcts[0]!;
+      for (const m of missPcts) {
+        if (Math.abs(m) > Math.abs(best)) best = m;
+      }
+      largestMissPct = Math.round(best * 10) / 10;
+    }
+    const summary = {
+      scripts: okSnaps.length,
+      withinTolerance: okSnaps.filter((s) => !s.outsideTolerance).length,
+      insideSpeakingBand: okSnaps.filter((s) => s.insideSpeakingBand).length,
+      avgMissAfterPct: avg(absMisses),
+      largestMissAfterPct: largestMissPct,
+    };
+    const budgets = SILENCE_FIT_OPTIONS.flatMap((option) =>
+      SILENCE_FIT_LENGTHS.map((len) => {
+        const minutes = Number(len);
+        const cellCfg = silenceFitCellFor(fitSettings, option, minutes);
+        const scriptTimeSeconds = Math.max(30, minutes * 60 - 45);
+        // Was: bottom of band / middle of band from stored speakingBandMin/Max.
+        // const speakingShareForBudget = cellCfg.speakingBandMin;
+        // const speakingShareForBudget =
+        //   (cellCfg.speakingBandMin + cellCfg.speakingBandMax) / 2;
+        const speakingShareForBudget = silenceFitSpeakingShare(
+          prev.profiles,
+          option,
+        );
+        const wordBudget = silenceWordsWordBudget({
+          scriptTimeSeconds,
+          speakingBandMin: speakingShareForBudget,
+          effectiveWpm: CALIBRATION_MEDIAN_WPM,
+        });
+        const minLongPauses = silenceFitMinLongPauses({
+          scriptTimeSeconds,
+          speakingBandMin: speakingShareForBudget,
+          longestSingleSilenceSeconds: cellCfg.longestSingleSilenceSeconds,
+        });
+        return {
+          option,
+          label: SILENCE_FIT_OPTION_LABEL[option],
+          minutes,
+          wordBudget,
+          minLongPauses,
+          speakingShareForBudget,
+          speakingSeconds: Math.round(
+            scriptTimeSeconds * speakingShareForBudget,
+          ),
+        };
+      }),
+    );
+    const run = await loadSilenceWordsCostRun(modelId);
+    return json(200, {
+      ok: true,
+      briefCount,
+      workItems,
+      completedKeys,
+      completedCount: completedKeys.length,
+      total: workItems.length,
+      canResume:
+        completedKeys.length > 0 && completedKeys.length < workItems.length,
+      scriptGenCostsSilenceWords: buildScriptGenCostRows({
+        profiles: prev.profiles,
+        modelId,
+        cells,
+        mode: "silence_words",
+      }),
+      lengthAccuracy,
+      summary,
+      budgets,
+      silenceWords: sw,
+      run,
+    });
+  }
+  if (action === "start-silence-words-haiku-costs") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const briefCount = coerceCalibrationBriefCount(
+      typeof body.calibrationBriefCount === "number"
+        ? body.calibrationBriefCount
+        : prev.scriptGeneration.calibrationBriefCount,
+      prev.scriptGeneration.calibrationBriefs.length || 10,
+    );
+    if (briefCount !== prev.scriptGeneration.calibrationBriefCount) {
+      await saveDeliveryProfileRecord({
+        profiles: prev.profiles,
+        scriptGeneration: {
+          ...prev.scriptGeneration,
+          calibrationBriefCount: briefCount,
+        },
+        by: admin.email?.trim() || admin.sub || "admin",
+        note: `Silence-words-haiku cost run n=${briefCount}`,
+      });
+    }
+    const run = await startSilenceWordsHaikuCostRun({
+      modelId,
+      calibrationBriefCount: briefCount,
+      restart: body.restart !== false,
+    });
+    return json(200, { ok: true, run });
+  }
+  if (action === "stop-silence-words-haiku-costs") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    await stopSilenceWordsHaikuCostRun(modelId);
+    const run = await loadSilenceWordsHaikuCostRun(modelId);
+    return json(200, { ok: true, run });
+  }
+  if (action === "get-silence-words-haiku-calibration") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const cells = await loadSilenceWordsHaikuCalibrationCells(modelId);
+    const briefs = activeCalibrationBriefs(prev.scriptGeneration);
+    const briefCount = coerceCalibrationBriefCount(
+      prev.scriptGeneration.calibrationBriefCount,
+      briefs.length,
+    );
+    const workItems = silenceWordsHaikuWorkItems(briefCount);
+    const completedKeys = cells.map(
+      (c) =>
+        `${c.silenceFitOption ?? "guided"}#${c.minutes}#${c.briefIndex}`,
+    );
+    const sw = prev.scriptGeneration.silenceWordsHaiku;
+    const fitSettings = silenceWordsAsFitSettings(sw);
+    const avg = (nums: number[]) =>
+      nums.length
+        ? Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10
+        : null;
+    const avgFine = (nums: number[]) =>
+      nums.length
+        ? Math.round(
+            (nums.reduce((a, b) => a + b, 0) / nums.length) * 10000,
+          ) / 10000
+        : null;
+    const lengthAccuracy = SILENCE_FIT_OPTIONS.flatMap((option) =>
+      SILENCE_FIT_LENGTHS.map((len) => {
+        const minutes = Number(len);
+        const group = cells.filter(
+          (c) =>
+            c.silenceFitOption === option &&
+            c.minutes === minutes &&
+            !c.error &&
+            c.silenceWordsHaikuAccuracy,
+        );
+        const snaps = group.map((c) => c.silenceWordsHaikuAccuracy!).filter(Boolean);
+        const n = snaps.length;
+        const outside = snaps.filter((s) => s.outsideTolerance);
+        const inBand = snaps.filter((s) => s.insideSpeakingBand);
+        const afterPcts = snaps.map((s) =>
+          s.targetSeconds > 0
+            ? ((s.predictedSecondsAfter - s.targetSeconds) / s.targetSeconds) *
+              100
+            : 0,
+        );
+        const cellCfg = silenceFitCellFor(fitSettings, option, minutes);
+        const whys = [
+          ...new Set(
+            snaps
+              .map((s) => s.why)
+              .filter(
+                (w): w is NonNullable<(typeof snaps)[number]["why"]> =>
+                  typeof w === "string" && !!w.trim(),
+              ),
+          ),
+        ];
+        const steps = snaps.map((s) => s.fitStep);
+        const stepMode =
+          steps.length === 0
+            ? null
+            : steps.every((s) => s === steps[0])
+              ? steps[0]
+              : "mixed";
+        const estimatedTotals = snaps.map((s) =>
+          typeof s.estimatedTotalAudioSeconds === "number" &&
+          Number.isFinite(s.estimatedTotalAudioSeconds)
+            ? s.estimatedTotalAudioSeconds
+            : silenceFitEstimatedTotalAudioSeconds(s.predictedSecondsAfter),
+        );
+        return {
+          option,
+          label: SILENCE_FIT_OPTION_LABEL[option],
+          minutes,
+          scripts: n,
+          speechShare: avgFine(snaps.map((s) => s.speechShare)),
+          speechShareSonnet: avgFine(
+            snaps.map((s) => s.speechShareSonnet ?? s.speechShare),
+          ),
+          speakingBandMin: silenceFitAutoSpeakingBands(
+            silenceFitSpeakingShare(prev.profiles, option),
+          ).speakingBandMin,
+          speakingBandMax: silenceFitAutoSpeakingBands(
+            silenceFitSpeakingShare(prev.profiles, option),
+          ).speakingBandMax,
+          beforeFitPct: avg(
+            snaps.map((s) =>
+              s.targetSeconds > 0
+                ? ((s.predictedSecondsBefore - s.targetSeconds) /
+                    s.targetSeconds) *
+                  100
+                : 0,
+            ),
+          ),
+          afterFitPct: avg(afterPcts),
+          wordsVsBudgetPct: avg(snaps.map((s) => s.wordsVsBudgetPct)),
+          wordsVsBudgetSonnetPct: avg(
+            snaps.map((s) => s.wordsVsBudgetSonnetPct ?? s.wordsVsBudgetPct),
+          ),
+          wordsVsBudgetSonnetMin: (() => {
+            const vals = snaps.map(
+              (s) => s.wordsVsBudgetSonnetPct ?? s.wordsVsBudgetPct,
+            );
+            return vals.length ? Math.min(...vals) : null;
+          })(),
+          wordsVsBudgetSonnetMax: (() => {
+            const vals = snaps.map(
+              (s) => s.wordsVsBudgetSonnetPct ?? s.wordsVsBudgetPct,
+            );
+            return vals.length ? Math.max(...vals) : null;
+          })(),
+          wordsSonnetUnderCount: snaps.filter(
+            (s) => (s.wordsVsBudgetSonnetPct ?? s.wordsVsBudgetPct) < 0,
+          ).length,
+          haikuRanCount: snaps.filter((s) => s.haikuRan).length,
+          haikuPhasesFixedAvg: avg(snaps.map((s) => s.phasesFixed)),
+          estimatedTotalAudioSeconds: avg(estimatedTotals),
+          fitStep: stepMode,
+          outsideCount: outside.length,
+          outsidePct:
+            n > 0 ? Math.round((outside.length / n) * 1000) / 10 : null,
+          inBandCount: inBand.length,
+          inBandPct:
+            n > 0 ? Math.round((inBand.length / n) * 1000) / 10 : null,
+          why:
+            whys.length === 1
+              ? whys[0]!
+              : whys.length > 1
+                ? whys.join("; ")
+                : null,
+          scriptsDetail: group.map((c) => {
+            const acc = c.silenceWordsHaikuAccuracy;
+            const phases = acc?.phases ?? [];
+            const chars = spokenCharCount(c.scriptText);
+            const claudeUsd = c.usage ? usdFromCell(c, modelId) : null;
+            const briefWords = countSpokenWords(c.brief || "");
+            const fixCalls = haikuFixCallExportFields(c);
+            return {
+              briefIndex: c.briefIndex,
+              brief: c.brief,
+              ...(acc ?? {}),
+              scriptTextAsWritten: c.scriptTextAsWritten,
+              scriptTextAfterHaiku:
+                c.scriptTextAfterHaiku ?? acc?.scriptAfterHaiku,
+              scriptText: c.scriptText,
+              wordBudget: acc?.wordBudget ?? null,
+              headerWords: acc?.headerWordTotal ?? null,
+              words: acc?.wordsWritten ?? acc?.words ?? null,
+              // Sentence columns left empty for this mode.
+              sentenceBudget: null,
+              headerSentenceTotal: null,
+              writtenSentenceTotal: null,
+              wordsPerSentence: null,
+              phaseCount: phases.length,
+              chars: chars > 0 ? chars : null,
+              claudeUsd,
+              briefWords: briefWords > 0 ? briefWords : null,
+              fixCallsModel: fixCalls.fixCallsModel,
+              fixCallsInputTokensTotal: fixCalls.fixCallsInputTokensTotal,
+              fixCallsCount: fixCalls.fixCallsCount,
+            };
+          }),
+        };
+      }),
+    );
+    const okSnaps = cells
+      .map((c) => c.silenceWordsHaikuAccuracy)
+      .filter(
+        Boolean,
+      ) as NonNullable<(typeof cells)[0]["silenceWordsHaikuAccuracy"]>[];
+    const missPcts = okSnaps.map((s) =>
+      s.targetSeconds > 0
+        ? ((s.predictedSecondsAfter - s.targetSeconds) / s.targetSeconds) * 100
+        : 0,
+    );
+    const absMisses = missPcts.map((m) => Math.abs(m));
+    let largestMissPct: number | null = null;
+    if (missPcts.length) {
+      let best = missPcts[0]!;
+      for (const m of missPcts) {
+        if (Math.abs(m) > Math.abs(best)) best = m;
+      }
+      largestMissPct = Math.round(best * 10) / 10;
+    }
+    const summary = {
+      scripts: okSnaps.length,
+      withinTolerance: okSnaps.filter((s) => !s.outsideTolerance).length,
+      insideSpeakingBand: okSnaps.filter((s) => s.insideSpeakingBand).length,
+      avgMissAfterPct: avg(absMisses),
+      largestMissAfterPct: largestMissPct,
+      haikuRanCount: okSnaps.filter((s) => s.haikuRan).length,
+    };
+    const budgets = SILENCE_FIT_OPTIONS.flatMap((option) =>
+      SILENCE_FIT_LENGTHS.map((len) => {
+        const minutes = Number(len);
+        const cellCfg = silenceFitCellFor(fitSettings, option, minutes);
+        const scriptTimeSeconds = Math.max(30, minutes * 60 - 45);
+        // Was: bottom of band / middle of band from stored speakingBandMin/Max.
+        // const speakingShareForBudget = cellCfg.speakingBandMin;
+        // const speakingShareForBudget =
+        //   (cellCfg.speakingBandMin + cellCfg.speakingBandMax) / 2;
+        const speakingShareForBudget = silenceFitSpeakingShare(
+          prev.profiles,
+          option,
+        );
+        const wordBudget = silenceWordsWordBudget({
+          scriptTimeSeconds,
+          speakingBandMin: speakingShareForBudget,
+          effectiveWpm: CALIBRATION_MEDIAN_WPM,
+        });
+        const minLongPauses = silenceFitMinLongPauses({
+          scriptTimeSeconds,
+          speakingBandMin: speakingShareForBudget,
+          longestSingleSilenceSeconds: cellCfg.longestSingleSilenceSeconds,
+        });
+        return {
+          option,
+          label: SILENCE_FIT_OPTION_LABEL[option],
+          minutes,
+          wordBudget,
+          minLongPauses,
+          speakingShareForBudget,
+          speakingSeconds: Math.round(
+            scriptTimeSeconds * speakingShareForBudget,
+          ),
+        };
+      }),
+    );
+    const run = await loadSilenceWordsHaikuCostRun(modelId);
+    return json(200, {
+      ok: true,
+      briefCount,
+      workItems,
+      completedKeys,
+      completedCount: completedKeys.length,
+      total: workItems.length,
+      canResume:
+        completedKeys.length > 0 && completedKeys.length < workItems.length,
+      scriptGenCostsSilenceWordsHaiku: buildScriptGenCostRows({
+        profiles: prev.profiles,
+        modelId,
+        cells,
+        mode: "silence_words_haiku",
+      }),
+      lengthAccuracy,
+      summary,
+      budgets,
+      silenceWordsHaiku: sw,
+      run,
+    });
+  }
   /** One of 90 calibration scripts (factors OFF). UI loops then finalize. */
   if (action === "calibrate-script-factors-cell") {
     const prev = await loadDeliveryProfileRecord();
@@ -1056,7 +2688,7 @@ async function handlePost(
         : null;
     const minutes = Number(body.minutes);
     const briefIndex = Number(body.briefIndex);
-    const briefs = prev.scriptGeneration.calibrationBriefs;
+    const briefs = activeCalibrationBriefs(prev.scriptGeneration);
     if (
       !delivery ||
       !CALIBRATE_MINUTES.includes(minutes as (typeof CALIBRATE_MINUTES)[number]) ||
@@ -1113,7 +2745,10 @@ async function handlePost(
     for (const c of storedCells) {
       byKey.set(calibrationCellKey(c.delivery, c.minutes, c.briefIndex), c);
     }
-    const cells = [...byKey.values()];
+    const { briefs, briefCount, cells } = runBriefsAndCells(
+      prev.scriptGeneration,
+      [...byKey.values()],
+    );
     if (cells.length < 1) {
       return json(400, {
         error: "No calibration cells found — run cells first (or resume).",
@@ -1133,7 +2768,8 @@ async function handlePost(
     const batch: StoredCalibrationBatch = {
       modelId,
       ranAt,
-      briefs: prev.scriptGeneration.calibrationBriefs,
+      briefs,
+      briefCount,
       medianWpm: 138.7 * 0.8,
       cells,
       factors,
@@ -1165,6 +2801,9 @@ async function handlePost(
       targetCorrection: saved.targetCorrection,
       scriptGeneration: saved.scriptGeneration,
       summary,
+      factorSpread: factorSpreadRows(cells, factors),
+      scriptFactors: perScriptFactorRows(cells),
+      sectionBreakdown: perScriptSectionBreakdown(cells),
       failures,
       diversions,
       batchMeta: { ranAt, modelId, cellCount: cells.length },
@@ -1180,19 +2819,225 @@ async function handlePost(
     const batch = await loadScriptCalibrationBatch(modelId, {
       includeCells: true,
     });
-    const cells = batch?.cells ?? (await loadScriptCalibrationCells(modelId));
-    const workItems = calibrationWorkItems(prev.scriptGeneration.calibrationBriefs);
+    const { briefs, briefCount, cells } = runBriefsAndCells(
+      prev.scriptGeneration,
+      batch?.cells ?? (await loadScriptCalibrationCells(modelId)),
+    );
+    const workItems = calibrationWorkItems(briefs);
     const completedKeys = cells.map((c) =>
       calibrationCellKey(c.delivery, c.minutes, c.briefIndex),
     );
+    const diversions = (
+      batch?.diversions && batch.diversions.length > 0
+        ? batch.diversions
+        : diversionsFromCells(cells)
+    ).filter((d) => d.briefIndex < briefCount);
+    const factors =
+      batch?.factors &&
+      correctionHasCalibratedSamples(batch.factors) &&
+      (batch.briefCount == null || batch.briefCount === briefCount)
+        ? batch.factors
+        : prev.scriptGeneration.targetCorrectionByModel[modelId] ||
+          prev.targetCorrection;
+    const summary = cells.length
+      ? CALIBRATE_DELIVERIES.flatMap((delivery) =>
+          CALIBRATE_MINUTES.map((minutes) =>
+            summarizeCalibrationCellGroup(cells, delivery, minutes, factors),
+          ),
+        )
+      : [];
+    const { cells: singleCells } = runBriefsAndCells(
+      prev.scriptGeneration,
+      await loadSingleCallCalibrationCells(modelId),
+    );
+    const { cells: timeCells } = runBriefsAndCells(
+      prev.scriptGeneration,
+      await loadTimeBasedCalibrationCells(modelId),
+    );
+    const scriptGenCosts = buildScriptGenCostRows({
+      profiles: prev.profiles,
+      modelId,
+      cells,
+      mode: "sections",
+    });
+    const scriptGenCostsSingle = buildScriptGenCostRows({
+      profiles: prev.profiles,
+      modelId,
+      cells: singleCells,
+      mode: "single",
+    });
+    const scriptGenCostsTime = buildScriptGenCostRows({
+      profiles: prev.profiles,
+      modelId,
+      cells: timeCells,
+      mode: "time",
+    });
     return json(200, {
       ok: true,
-      batch,
+      batch: batch
+        ? { ...batch, diversions, cells: undefined }
+        : cells.length
+          ? { diversions, ranAt: null }
+          : null,
+      diversions,
+      summary,
+      factorSpread: cells.length ? factorSpreadRows(cells, factors) : [],
+      scriptFactors: cells.length ? perScriptFactorRows(cells) : [],
+      sectionBreakdown: cells.length ? perScriptSectionBreakdown(cells) : [],
+      scriptGenCosts,
+      scriptGenCostsSingle,
+      scriptGenCostsTime,
+      briefCount,
       workItems,
       completedKeys,
       completedCount: completedKeys.length,
       total: workItems.length,
-      canResume: completedKeys.length > 0 && completedKeys.length < workItems.length,
+      canResume:
+        completedKeys.length > 0 && completedKeys.length < workItems.length,
+      // All cells saved but factors never written — Resume should finalize, not wipe.
+      needsFinalize:
+        workItems.length > 0 &&
+        completedKeys.length >= workItems.length &&
+        !(
+          batch?.factors &&
+          correctionHasCalibratedSamples(batch.factors) &&
+          (batch.briefCount == null || batch.briefCount === briefCount)
+        ),
+      run: await loadScriptCalibrationRun(modelId),
+    });
+  }
+  if (action === "get-script-gen-costs") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const [rawCells, rawSingle, rawTime, rawSilence] = await Promise.all([
+      loadScriptCalibrationCells(modelId),
+      loadSingleCallCalibrationCells(modelId),
+      loadTimeBasedCalibrationCells(modelId),
+      loadSilenceFitCalibrationCells(modelId),
+    ]);
+    const { briefCount, cells } = runBriefsAndCells(
+      prev.scriptGeneration,
+      rawCells,
+    );
+    const { cells: singleCells } = runBriefsAndCells(
+      prev.scriptGeneration,
+      rawSingle,
+    );
+    const { cells: timeCells } = runBriefsAndCells(
+      prev.scriptGeneration,
+      rawTime,
+    );
+    return json(200, {
+      ok: true,
+      modelId,
+      briefCount,
+      scriptGenCosts: buildScriptGenCostRows({
+        profiles: prev.profiles,
+        modelId,
+        cells,
+        mode: "sections",
+      }),
+      scriptGenCostsSingle: buildScriptGenCostRows({
+        profiles: prev.profiles,
+        modelId,
+        cells: singleCells,
+        mode: "single",
+      }),
+      scriptGenCostsTime: buildScriptGenCostRows({
+        profiles: prev.profiles,
+        modelId,
+        cells: timeCells,
+        mode: "time",
+      }),
+      // Same as get-silence-fit-calibration: show full last run, not clipped by n.
+      scriptGenCostsSilence: buildScriptGenCostRows({
+        profiles: prev.profiles,
+        modelId,
+        cells: rawSilence,
+        mode: "silence",
+      }),
+    });
+  }
+  /**
+   * Re-run fidelity on a chunk of stored calibration scripts (no script regen).
+   * UI loops offset until done — keeps under API Gateway time limits.
+   */
+  if (action === "rejudge-script-calibration-fidelity") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const cells = await loadScriptCalibrationCells(modelId);
+    if (!cells.length) {
+      return json(400, {
+        error: "No stored calibration scripts for this model — run calibration first.",
+      });
+    }
+    const offset = Math.max(0, Math.floor(Number(body.offset) || 0));
+    const limitRaw = Math.floor(Number(body.limit) || 8);
+    const limit = Math.max(1, Math.min(limitRaw, 12));
+    const slice = cells.slice(offset, offset + limit);
+    if (!slice.length) {
+      const diversions = diversionsFromCells(cells);
+      return json(200, {
+        ok: true,
+        done: true,
+        offset,
+        nextOffset: offset,
+        diversions,
+        judged: 0,
+        skipped: 0,
+        cellCount: cells.length,
+      });
+    }
+    const judged = await rejudgeCalibrationFidelity({
+      cells: slice,
+      concurrency: Math.min(6, slice.length),
+    });
+    // Merge judged slice back into full list and persist those cells.
+    const byKey = new Map(
+      cells.map((c) => [calibrationCellKey(c.delivery, c.minutes, c.briefIndex), c]),
+    );
+    for (const c of judged.cells) {
+      byKey.set(calibrationCellKey(c.delivery, c.minutes, c.briefIndex), c);
+      await saveScriptCalibrationCell({ modelId, cell: c });
+    }
+    const merged = [...byKey.values()];
+    const nextOffset = offset + slice.length;
+    const done = nextOffset >= cells.length;
+    const diversions = done ? diversionsFromCells(merged) : undefined;
+    if (done) {
+      const existing = await loadScriptCalibrationBatch(modelId, {
+        includeCells: false,
+      });
+      const ranAt = existing?.ranAt || new Date().toISOString();
+      await saveScriptCalibrationBatch({
+        modelId,
+        ranAt,
+        briefs: existing?.briefs?.length
+          ? existing.briefs
+          : prev.scriptGeneration.calibrationBriefs,
+        medianWpm: existing?.medianWpm || CALIBRATION_MEDIAN_WPM,
+        cells: merged,
+        factors: existing?.factors || prev.targetCorrection,
+        failures: existing?.failures || [],
+        diversions: diversions ?? [],
+      });
+    }
+    return json(200, {
+      ok: true,
+      done,
+      offset,
+      nextOffset,
+      diversions: diversions ?? null,
+      judged: judged.judged,
+      skipped: judged.skipped,
+      cellCount: cells.length,
+      chunkSize: slice.length,
     });
   }
   /** Run check: factors ON, length prediction (no TTS). One voice×delivery×length. */
@@ -1245,6 +3090,680 @@ async function handlePost(
       result: ran.result,
       targetCorrection: prev.targetCorrection,
       scriptGeneration: prev.scriptGeneration,
+    });
+  }
+  /** One delivery × length × brief for time-based cost measurement. */
+  if (action === "calibrate-time-based-cell") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const delivery =
+      body.delivery === "casual" ||
+      body.delivery === "guided" ||
+      body.delivery === "open_sits"
+        ? body.delivery
+        : null;
+    const minutes = Number(body.minutes);
+    const briefIndex = Number(body.briefIndex);
+    const briefs = singleCallCalibrationBriefs(prev.scriptGeneration);
+    if (
+      !delivery ||
+      !CALIBRATE_MINUTES.includes(minutes as (typeof CALIBRATE_MINUTES)[number]) ||
+      !Number.isInteger(briefIndex) ||
+      briefIndex < 0 ||
+      briefIndex >= briefs.length
+    ) {
+      return json(400, {
+        error: `delivery, minutes (5|10|20), and briefIndex (0..${briefs.length - 1}) required`,
+        workItems: singleCallWorkItems(briefs).length,
+        briefCount: briefs.length,
+      });
+    }
+    const result = await runTimeBasedScriptCell({
+      modelId,
+      delivery,
+      minutes,
+      briefIndex,
+      brief: briefs[briefIndex]!,
+      trimModelId: prev.scriptGeneration.styleInferModelId,
+    });
+    await saveTimeBasedCalibrationCell({ modelId, cell: result });
+    const { cells: savedCells } = runBriefsAndCells(
+      prev.scriptGeneration,
+      await loadTimeBasedCalibrationCells(modelId),
+    );
+    return json(200, {
+      ok: true,
+      result: {
+        delivery: result.delivery,
+        minutes: result.minutes,
+        briefIndex: result.briefIndex,
+        writtenWords: result.writtenWords,
+        error: result.error,
+        usage: result.usage,
+      },
+      total: singleCallWorkItems(briefs).length,
+      briefCount: briefs.length,
+      completedCount: savedCells.length,
+      completedKeys: savedCells.map((c) =>
+        calibrationCellKey(c.delivery, c.minutes, c.briefIndex),
+      ),
+      scriptGenCostsTime: buildScriptGenCostRows({
+        profiles: prev.profiles,
+        modelId,
+        cells: savedCells,
+        mode: "time",
+      }),
+    });
+  }
+  if (action === "get-time-based-calibration") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const { briefs, briefCount, cells } = runBriefsAndCells(
+      prev.scriptGeneration,
+      await loadTimeBasedCalibrationCells(modelId),
+    );
+    const workItems = singleCallWorkItems(briefs);
+    const completedKeys = cells.map((c) =>
+      calibrationCellKey(c.delivery, c.minutes, c.briefIndex),
+    );
+    // Avg sentences written vs header per delivery × length.
+    const sentenceAccuracy = CALIBRATE_DELIVERIES.flatMap((delivery) =>
+      CALIBRATE_MINUTES.map((minutes) => {
+        const group = cells.filter(
+          (c) =>
+            c.delivery === delivery &&
+            c.minutes === minutes &&
+            !c.error &&
+            (c.timePhases?.length ?? 0) > 0,
+        );
+        let header = 0;
+        let actual = 0;
+        let phaseCount = 0;
+        for (const c of group) {
+          for (const p of c.timePhases ?? []) {
+            if (!(p.headerSentences > 0)) continue;
+            header += p.headerSentences;
+            actual += p.actualSentences;
+            phaseCount += 1;
+          }
+        }
+        return {
+          delivery,
+          minutes,
+          scripts: group.length,
+          phases: phaseCount,
+          avgHeaderSentences:
+            phaseCount > 0 ? Math.round((header / phaseCount) * 10) / 10 : null,
+          avgActualSentences:
+            phaseCount > 0 ? Math.round((actual / phaseCount) * 10) / 10 : null,
+          avgActualVsHeaderPct:
+            header > 0
+              ? Math.round(((actual - header) / header) * 1000) / 10
+              : null,
+        };
+      }),
+    );
+    // Legacy count-only table (commented out on FE). Kept for older clients.
+    const lengthToleranceAccuracy = CALIBRATE_DELIVERIES.flatMap((delivery) =>
+      CALIBRATE_MINUTES.map((minutes) => {
+        const group = cells.filter(
+          (c) =>
+            c.delivery === delivery &&
+            c.minutes === minutes &&
+            !c.error &&
+            c.writtenWords > 0,
+        );
+        const outside = group.filter((c) => c.timeOutsideTolerance === true);
+        const tooShort = outside.filter(
+          (c) => c.timeOutsideReason === "too_short",
+        ).length;
+        const tooLong = outside.filter(
+          (c) => c.timeOutsideReason === "too_long",
+        ).length;
+        return {
+          delivery,
+          minutes,
+          scripts: group.length,
+          outsideCount: outside.length,
+          outsidePct:
+            group.length > 0
+              ? Math.round((outside.length / group.length) * 1000) / 10
+              : null,
+          tooShort,
+          tooLong,
+        };
+      }),
+    );
+    const avg = (nums: number[]) =>
+      nums.length
+        ? Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10
+        : null;
+    // Rich length accuracy · time-based (averages when n > 1).
+    const lengthAccuracy = CALIBRATE_DELIVERIES.flatMap((delivery) =>
+      CALIBRATE_MINUTES.map((minutes) => {
+        const group = cells.filter(
+          (c) =>
+            c.delivery === delivery &&
+            c.minutes === minutes &&
+            !c.error &&
+            c.timeLengthAccuracy,
+        );
+        const snaps = group
+          .map((c) => c.timeLengthAccuracy!)
+          .filter(Boolean);
+        const n = snaps.length;
+        const outside = snaps.filter((s) => s.outsideTolerance);
+        const whys = [
+          ...new Set(
+            outside
+              .map((s) => s.why)
+              .filter((w): w is string => typeof w === "string" && !!w.trim()),
+          ),
+        ];
+        const tol =
+          snaps[0]?.lengthTolerancePct ??
+          prev.profiles.shared.lengthTolerancePct ??
+          10;
+        return {
+          delivery,
+          minutes,
+          scripts: n,
+          targetSeconds: avg(snaps.map((s) => s.targetSeconds)),
+          predictedSecondsBefore: avg(
+            snaps.map((s) => s.predictedSecondsBefore),
+          ),
+          predictedSecondsAfter: avg(
+            snaps.map((s) => s.predictedSecondsAfter),
+          ),
+          speechSeconds: avg(snaps.map((s) => s.speechSeconds)),
+          silenceShareAfter: avg(snaps.map((s) => s.silenceShareAfter)),
+          spaceRangeMin: snaps[0]?.spaceRangeMin ?? null,
+          spaceRangeMax: snaps[0]?.spaceRangeMax ?? null,
+          words: avg(snaps.map((s) => s.words)),
+          roughSpeechWords: avg(snaps.map((s) => s.roughSpeechWords)),
+          extendableCount: avg(snaps.map((s) => s.extendableCount)),
+          extendableSecondsBefore: avg(
+            snaps.map((s) => s.extendableSecondsBefore),
+          ),
+          extendableSecondsAfter: avg(
+            snaps.map((s) => s.extendableSecondsAfter),
+          ),
+          outsideCount: outside.length,
+          outsidePct:
+            n > 0 ? Math.round((outside.length / n) * 1000) / 10 : null,
+          lengthTolerancePct: tol,
+          why: whys.length === 1 ? whys[0]! : whys.length > 1 ? whys.join("; ") : null,
+          scriptsDetail: group.map((c) => ({
+            briefIndex: c.briefIndex,
+            brief: c.brief,
+            ...(c.timeLengthAccuracy ?? {}),
+          })),
+        };
+      }),
+    );
+    const run = await loadTimeBasedCostRun(modelId);
+    return json(200, {
+      ok: true,
+      briefCount,
+      workItems,
+      completedKeys,
+      completedCount: completedKeys.length,
+      total: workItems.length,
+      canResume:
+        completedKeys.length > 0 && completedKeys.length < workItems.length,
+      scriptGenCostsTime: buildScriptGenCostRows({
+        profiles: prev.profiles,
+        modelId,
+        cells,
+        mode: "time",
+      }),
+      sentenceAccuracy,
+      lengthToleranceAccuracy,
+      lengthAccuracy,
+      run,
+    });
+  }
+  /** One of 27 single-call calibration scripts (factors OFF). */
+  if (action === "calibrate-single-call-cell") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const delivery =
+      body.delivery === "casual" ||
+      body.delivery === "guided" ||
+      body.delivery === "open_sits"
+        ? body.delivery
+        : null;
+    const minutes = Number(body.minutes);
+    const briefIndex = Number(body.briefIndex);
+    const briefs = singleCallCalibrationBriefs(prev.scriptGeneration);
+    if (
+      !delivery ||
+      !CALIBRATE_MINUTES.includes(minutes as (typeof CALIBRATE_MINUTES)[number]) ||
+      !Number.isInteger(briefIndex) ||
+      briefIndex < 0 ||
+      briefIndex >= briefs.length
+    ) {
+      return json(400, {
+        error: `delivery, minutes (5|10|20), and briefIndex (0..${briefs.length - 1}) required`,
+        workItems: singleCallWorkItems(briefs).length,
+        briefCount: briefs.length,
+      });
+    }
+    const result = await runSingleCallScriptCell({
+      modelId,
+      delivery,
+      minutes,
+      briefIndex,
+      brief: briefs[briefIndex]!,
+      correction: null,
+    });
+    await saveSingleCallCalibrationCell({ modelId, cell: result });
+    const { cells: savedCells } = runBriefsAndCells(
+      prev.scriptGeneration,
+      await loadSingleCallCalibrationCells(modelId),
+    );
+    return json(200, {
+      ok: true,
+      result,
+      total: singleCallWorkItems(briefs).length,
+      briefCount: briefs.length,
+      completedCount: savedCells.length,
+      completedKeys: savedCells.map((c) =>
+        calibrationCellKey(c.delivery, c.minutes, c.briefIndex),
+      ),
+    });
+  }
+  if (action === "calibrate-single-call-finalize") {
+    const by = admin.email?.trim() || admin.sub || "admin";
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const { cells } = runBriefsAndCells(
+      prev.scriptGeneration,
+      await loadSingleCallCalibrationCells(modelId),
+    );
+    if (cells.length < 1) {
+      return json(400, {
+        error: "No single-call cells found — run cells first (or resume).",
+      });
+    }
+    const ranAt = new Date().toISOString();
+    const factors = factorsFromSingleCallCells(cells, ranAt);
+    const failures = cells
+      .filter((c) => c.error)
+      .map((c) => ({
+        delivery: c.delivery,
+        minutes: c.minutes,
+        briefIndex: c.briefIndex,
+        error: c.error || "failed",
+      }));
+    await saveSingleCallCalibrationMeta({
+      modelId,
+      ranAt,
+      factors,
+      cellCount: cells.length,
+      failures,
+    });
+    const scriptGeneration = setSingleCallCorrectionForModel(
+      {
+        ...prev.scriptGeneration,
+        scriptModelId: modelId,
+      },
+      modelId,
+      factors,
+    );
+    const saved = await saveDeliveryProfileRecord({
+      profiles: prev.profiles,
+      scriptGeneration,
+      by,
+      note: `Single-call calibration ${modelId}: ${cells.length - failures.length}/${cells.length} scripts`,
+    });
+    const summary = CALIBRATE_DELIVERIES.flatMap((delivery) =>
+      CALIBRATE_MINUTES.map((minutes) =>
+        summarizeCalibrationCellGroup(cells, delivery, minutes, factors),
+      ),
+    );
+    return json(200, {
+      ok: true,
+      scriptGeneration: saved.scriptGeneration,
+      singleCallCorrection: singleCallCorrectionForModel(
+        saved.scriptGeneration,
+        modelId,
+      ),
+      summary,
+      factorSpread: factorSpreadRows(cells, factors),
+      scriptFactors: perScriptFactorRows(cells),
+      failures,
+      batchMeta: { ranAt, modelId, cellCount: cells.length },
+      hasCalibratedSamples: correctionHasCalibratedSamples(factors),
+    });
+  }
+  if (action === "get-single-call-calibration") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const { briefs, briefCount, cells } = runBriefsAndCells(
+      prev.scriptGeneration,
+      await loadSingleCallCalibrationCells(modelId),
+    );
+    const workItems = singleCallWorkItems(briefs);
+    const completedKeys = cells.map((c) =>
+      calibrationCellKey(c.delivery, c.minutes, c.briefIndex),
+    );
+    const factors = singleCallCorrectionForModel(prev.scriptGeneration, modelId);
+    const summary = cells.length
+      ? CALIBRATE_DELIVERIES.flatMap((delivery) =>
+          CALIBRATE_MINUTES.map((minutes) =>
+            summarizeCalibrationCellGroup(cells, delivery, minutes, factors),
+          ),
+        )
+      : [];
+    const scriptGenCostsSingle = buildScriptGenCostRows({
+      profiles: prev.profiles,
+      modelId,
+      cells,
+      mode: "single",
+    });
+    return json(200, {
+      ok: true,
+      // Resume keys only — full scripts stay server-side.
+      briefCount,
+      workItems,
+      completedKeys,
+      completedCount: completedKeys.length,
+      total: workItems.length,
+      canResume:
+        completedKeys.length > 0 && completedKeys.length < workItems.length,
+      singleCallCorrection: factors,
+      summary,
+      factorSpread: cells.length ? factorSpreadRows(cells, factors) : [],
+      scriptFactors: cells.length ? perScriptFactorRows(cells) : [],
+      scriptGenCostsSingle,
+    });
+  }
+  /** One of 27 comparison pairs (single + sectioned, factors ON). */
+  if (action === "compare-script-modes-cell") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const delivery =
+      body.delivery === "casual" ||
+      body.delivery === "guided" ||
+      body.delivery === "open_sits"
+        ? body.delivery
+        : null;
+    const minutes = Number(body.minutes);
+    const briefIndex = Number(body.briefIndex);
+    // Same briefs as sectioned / single-call calibration.
+    const briefs = singleCallCalibrationBriefs(prev.scriptGeneration);
+    if (
+      !delivery ||
+      !CALIBRATE_MINUTES.includes(minutes as (typeof CALIBRATE_MINUTES)[number]) ||
+      !Number.isInteger(briefIndex) ||
+      briefIndex < 0 ||
+      briefIndex >= briefs.length
+    ) {
+      return json(400, {
+        error: `delivery, minutes (5|10|20), and briefIndex (0..${briefs.length - 1}) required`,
+        workItems: singleCallWorkItems(briefs).length,
+        briefCount: briefs.length,
+      });
+    }
+    const sectionedCorrection = correctionForModel(
+      prev.scriptGeneration,
+      modelId,
+      prev.scriptGeneration.scriptModelId,
+    ).correction;
+    const singleCorrection = singleCallCorrectionForModel(
+      prev.scriptGeneration,
+      modelId,
+    );
+    const brief = briefs[briefIndex]!;
+    const [singleCell, sectionedCell] = await Promise.all([
+      runSingleCallScriptCell({
+        modelId,
+        delivery,
+        minutes,
+        briefIndex,
+        brief,
+        correction: singleCorrection,
+      }),
+      runSectionedScriptCell({
+        modelId,
+        delivery,
+        minutes,
+        briefIndex,
+        brief,
+        correction: sectionedCorrection,
+      }),
+    ]);
+    const medianWpm = CALIBRATION_MEDIAN_WPM;
+    const voiceWpms = CHECK_VOICES.map((v) => v.wpm);
+    const pair: ComparisonPairResult = {
+      delivery,
+      minutes,
+      briefIndex,
+      brief,
+      single: metricsFromCell(singleCell, medianWpm, voiceWpms),
+      sectioned: metricsFromCell(sectionedCell, medianWpm, voiceWpms),
+    };
+    await saveComparisonPair({
+      modelId,
+      pair: {
+        delivery,
+        minutes,
+        briefIndex,
+        brief,
+        single: pair.single,
+        sectioned: pair.sectioned,
+      },
+    });
+    const savedPairs = await loadComparisonPairs(modelId);
+    return json(200, {
+      ok: true,
+      pair,
+      total: singleCallWorkItems(briefs).length,
+      completedCount: savedPairs.length,
+      completedKeys: savedPairs.map((p) =>
+        calibrationCellKey(p.delivery, p.minutes, p.briefIndex),
+      ),
+    });
+  }
+  if (action === "compare-script-modes-finalize") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const stored = await loadComparisonPairs(modelId);
+    if (stored.length < 1) {
+      return json(400, {
+        error: "No comparison pairs found — run cells first (or resume).",
+      });
+    }
+    const pairs: ComparisonPairResult[] = stored.map((p) => ({
+      delivery: p.delivery,
+      minutes: p.minutes,
+      briefIndex: p.briefIndex,
+      brief: p.brief,
+      single: p.single as ComparisonPairResult["single"],
+      sectioned: p.sectioned as ComparisonPairResult["sectioned"],
+    }));
+    const table = buildComparisonTable(pairs);
+    const ranAt = new Date().toISOString();
+    await saveComparisonMeta({
+      modelId,
+      ranAt,
+      table,
+      pairCount: pairs.length,
+    });
+    return json(200, {
+      ok: true,
+      table,
+      pairs,
+      batchMeta: { ranAt, modelId, pairCount: pairs.length },
+    });
+  }
+  if (action === "get-script-mode-comparison") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const briefs = singleCallCalibrationBriefs(prev.scriptGeneration);
+    const pairs = await loadComparisonPairs(modelId);
+    const meta = await loadComparisonMeta(modelId);
+    const workItems = singleCallWorkItems(briefs);
+    const completedKeys = pairs.map((p) =>
+      calibrationCellKey(p.delivery, p.minutes, p.briefIndex),
+    );
+    return json(200, {
+      ok: true,
+      pairs,
+      table: meta?.table ?? null,
+      ranAt: meta?.ranAt ?? null,
+      workItems,
+      completedKeys,
+      completedCount: completedKeys.length,
+      total: workItems.length,
+      canResume:
+        completedKeys.length > 0 && completedKeys.length < workItems.length,
+      briefs,
+      scriptWriteMode: prev.scriptGeneration.scriptWriteMode,
+    });
+  }
+  if (action === "save-script-write-modes") {
+    const by = admin.email?.trim() || admin.sub || "admin";
+    const prev = await loadDeliveryProfileRecord();
+    const scriptWriteMode =
+      body.scriptWriteMode === "single" || body.scriptWriteMode === "sections"
+        ? body.scriptWriteMode
+        : prev.scriptGeneration.scriptWriteMode;
+    const userScriptFidelityCheck =
+      typeof body.userScriptFidelityCheck === "boolean"
+        ? body.userScriptFidelityCheck
+        : prev.scriptGeneration.userScriptFidelityCheck === true;
+    const coerced = coerceScriptGenerationSettings(
+      {
+        ...prev.scriptGeneration,
+        scriptWriteMode,
+        userScriptFidelityCheck,
+      },
+      prev.targetCorrection,
+    );
+    const saved = await saveDeliveryProfileRecord({
+      profiles: prev.profiles,
+      scriptGeneration: coerced,
+      by,
+      note: `Script write mode → ${scriptWriteMode}; user fidelity → ${userScriptFidelityCheck ? "on" : "off"}`,
+    });
+    return json(200, {
+      ok: true,
+      scriptGeneration: saved.scriptGeneration,
+    });
+  }
+  if (action === "length-preview") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const delivery =
+      body.delivery === "casual" ||
+      body.delivery === "guided" ||
+      body.delivery === "open_sits"
+        ? body.delivery
+        : null;
+    const minutes = Number(body.minutes);
+    const brief =
+      typeof body.brief === "string" && body.brief.trim()
+        ? body.brief.trim()
+        : prev.scriptGeneration.comparisonBriefs[0] ||
+          prev.scriptGeneration.calibrationBriefs[0] ||
+          "";
+    const mode =
+      body.mode === "single" ||
+      body.mode === "sections" ||
+      body.mode === "time"
+        ? body.mode
+        : undefined;
+    if (
+      !delivery ||
+      !CALIBRATE_MINUTES.includes(minutes as (typeof CALIBRATE_MINUTES)[number]) ||
+      !brief
+    ) {
+      return json(400, {
+        error: "delivery, minutes (5|10|20), and brief required",
+      });
+    }
+    const preview = await runLengthPreview({
+      settings: prev.scriptGeneration,
+      modelId,
+      delivery,
+      minutes,
+      mode,
+      brief,
+      title: typeof body.title === "string" ? body.title : "A short practice.",
+    });
+    const id = `${Date.now()}-${delivery}-${minutes}`;
+    const ranAt = new Date().toISOString();
+    await saveLengthPreviewLog({
+      id,
+      ranAt,
+      delivery,
+      minutes,
+      mode: preview.mode,
+      modelId,
+      medianPctVsRequested: preview.medianPctVsRequested,
+      voices: preview.voices.map((v) => ({
+        modelId: v.modelId,
+        name: v.name,
+        pctVsRequested: v.pctVsRequested,
+        predictedTotalSeconds: v.predictedTotalSeconds,
+        actualTotalSeconds: null,
+      })),
+      avgAbsPredictionErrorPct: null,
+    });
+    const history = await loadLengthPreviewLogs(40);
+    return json(200, {
+      ok: true,
+      preview: {
+        ...preview,
+        scriptText: preview.cell.scriptText,
+        clocks: {
+          scriptTarget: fmtClock(preview.scriptTargetSeconds),
+          aroundTotal: fmtClock(preview.around.aroundTotalSeconds),
+          leadIn: fmtClock(preview.around.leadInSeconds),
+          fadeOut: fmtClock(preview.around.fadeOutSeconds),
+          titleSpeech: fmtClock(preview.around.titleSpeechSeconds),
+          titlePauses: fmtClock(preview.around.titlePauseRendered),
+        },
+      },
+      history: history.logs,
+      avgAbsPredictionErrorPct: history.avgAbsPredictionErrorPct,
+    });
+  }
+  if (action === "get-length-preview-logs") {
+    const history = await loadLengthPreviewLogs(40);
+    return json(200, {
+      ok: true,
+      history: history.logs,
+      avgAbsPredictionErrorPct: history.avgAbsPredictionErrorPct,
     });
   }
   if (action === "save-calibration-config") {

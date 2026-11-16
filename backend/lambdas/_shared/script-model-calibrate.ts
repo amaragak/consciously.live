@@ -9,9 +9,12 @@ import {
   defaultDeliveryProfiles,
   pauseRulesForPrompt,
   pauseRulesForSectionPrompt,
+  sessionAroundFromProfiles,
+  sectionSilenceSharesFor,
   silenceShareFor,
   type DeliveryId,
 } from "./delivery-profiles";
+import { resolveStyleGuideAttachment } from "./infer-meditation-style";
 import {
   countSpokenWords,
   fitLongPauseScaleWithPlan,
@@ -20,6 +23,7 @@ import {
   PRE_AUDIO_SCALE_MAX,
   PRE_AUDIO_SCALE_MIN,
   predictStemLength,
+  titleIntroPauseSecondsWritten,
 } from "./meditation-length-fit";
 import { buildMeditationScriptGenerationPrompt } from "./meditation-script-generate-prompt";
 import {
@@ -40,11 +44,15 @@ import {
   sessionTotals,
   writeScriptSections,
 } from "./script-section-generate";
+import { sectionWordCapForDelivery } from "./script-sections";
 import {
   sumPauseMarkerSeconds,
   withSpokenMeditationTitleIntro,
 } from "./script-pause-bands";
-import { CHECK_VOICES } from "./script-calibration-batch";
+import {
+  CALIBRATION_MEDIAN_WPM,
+  CHECK_VOICES,
+} from "./script-calibration-batch";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
@@ -62,7 +70,9 @@ export const CALIBRATE_DELIVERIES: DeliveryId[] = [
 ];
 
 const MEDIAN_WPM = 138.7 * 0.8;
+/** @deprecated Prefer sessionAroundFromProfiles. */
 const LEAD = 20;
+/** @deprecated Prefer sessionAroundFromProfiles. */
 const TAIL = 20;
 
 export type CalibrateCellResult = {
@@ -149,7 +159,10 @@ export async function calibrateScriptModelCell(params: {
   const correction = seeded.correction;
   const cellF = factorsFor(correction, params.delivery, params.minutes);
   const silenceShare = silenceShareFor(profiles, params.delivery);
-  const stem = params.minutes * 60 - LEAD - TAIL;
+  const around = sessionAroundFromProfiles(profiles);
+  const lead = around.leadInSeconds || LEAD;
+  const tail = around.fadeOutSeconds || TAIL;
+  const stem = params.minutes * 60 - lead - tail;
   const totals = sessionTotals({
     stemSeconds: stem,
     silenceShare,
@@ -158,9 +171,21 @@ export async function calibrateScriptModelCell(params: {
     pauseScale: 1.12,
     commaBreakSeconds: 0.55,
     titleIntro: true,
+    titlePauseSecondsWritten: titleIntroPauseSecondsWritten(around),
   });
-  const useSections = totals.totalWords >= profiles.shared.planMinWords;
+  // Always-sections v2: check path always plans (no short-session single call).
+  // const useSections = totals.totalWords >= profiles.shared.planMinWords;
+  const useSections = true;
+  void profiles.shared.planMinWords;
   const apiKey = await getClaudeApiKey();
+  const guide = await resolveStyleGuideAttachment({
+    apiKey,
+    styleInferModelId: settings.styleInferModelId,
+    transcript: CHECK_TRANSCRIPT,
+    meditationStyle: "",
+    journalMode: false,
+    usageSource: "admin",
+  });
   let script = "";
   let firstWords = 0;
   let finalWords = 0;
@@ -173,9 +198,10 @@ export async function calibrateScriptModelCell(params: {
   let plannedPauseForScale = totals.totalPauseSeconds;
 
   if (!useSections) {
+    // Kept for reference — short-session single-call shortcut removed.
     const prompt = buildMeditationScriptGenerationPrompt({
       transcript: CHECK_TRANSCRIPT,
-      meditationStyle: "Breathing",
+      meditationStyle: "",
       journalMode: false,
       targetMinutes: params.minutes,
       speechSpeed: 1,
@@ -183,6 +209,11 @@ export async function calibrateScriptModelCell(params: {
       deliveryStyle: params.delivery,
       pacing: { wpm: params.voiceWpm, speechShare: 1 - silenceShare },
       pauseRules: pauseRulesForPrompt(profiles, params.delivery),
+      styleGuideContext: {
+        silenceShare,
+        longestPauseSeconds: profiles.casual.longestPause,
+      },
+      styleGuideStyle: guide.styleGuideStyle ?? undefined,
       lengthFit: {
         effectiveWpm: params.voiceWpm,
         silenceSharePct: silenceShare * 100,
@@ -208,13 +239,20 @@ export async function calibrateScriptModelCell(params: {
   } else {
     const shared = {
       transcript: CHECK_TRANSCRIPT,
-      meditationStyle: "Breathing",
+      meditationStyle: "",
       journalMode: false,
       targetMinutes: params.minutes,
       speechSpeed: 1,
       deliveryStyle: params.delivery,
       pacing: { wpm: params.voiceWpm, speechShare: 1 - silenceShare },
       pauseRules: pauseRulesForSectionPrompt(params.delivery),
+      styleGuideContext: {
+        silenceShare,
+        longestPauseSeconds: profiles.casual.longestPause,
+      },
+      styleGuideStyle: guide.styleGuideStyle ?? undefined,
+      usageSource: "admin" as const,
+      usageReasonPrefix: "script-check",
       lengthFit: {
         effectiveWpm: params.voiceWpm,
         silenceSharePct: silenceShare * 100,
@@ -222,13 +260,25 @@ export async function calibrateScriptModelCell(params: {
         pauseSecondsWritten: totals.totalPauseSeconds,
       },
     };
+    const deliveryWordCap = sectionWordCapForDelivery({
+      hardCap: profiles.shared.sectionWordCap,
+      maxSectionMinutes: profiles.shared.maxSectionMinutes,
+      medianWpm: CALIBRATION_MEDIAN_WPM,
+      silenceShare,
+    });
+    const edgeSilence = sectionSilenceSharesFor(profiles, params.delivery);
     const planned = await planScriptSections({
       apiKey,
       model,
       shared,
       totals,
-      wordCap: profiles.shared.sectionWordCap,
+      wordCap: deliveryWordCap,
       wordMin: profiles.shared.sectionWordMin,
+      medianWpm: CALIBRATION_MEDIAN_WPM,
+      silenceShare: edgeSilence.middle,
+      firstSilenceShare: edgeSilence.first,
+      lastSilenceShare: edgeSilence.last,
+      maxSectionMinutes: profiles.shared.maxSectionMinutes,
     });
     planMs = planned.ms;
     sectionCount = planned.plan.sections.length;
@@ -313,8 +363,8 @@ export async function calibrateScriptModelCell(params: {
     pred.speechSeconds +
     pred.fixedPauseSeconds +
     pred.longPauseSeconds * fitted.scale +
-    LEAD +
-    TAIL;
+    lead +
+    tail;
 
   return {
     settings,

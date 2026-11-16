@@ -5,6 +5,8 @@
  */
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
+  BatchWriteCommand,
+  DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
@@ -50,6 +52,23 @@ const CONFIG_SK = "calibration-config";
 const SCRIPT_CALIBRATION_SK_PREFIX = "script-calibration#";
 /** One row per cell: script-calibration-cell#{model}#{delivery}#{minutes}#{briefIndex} */
 const SCRIPT_CALIBRATION_CELL_SK_PREFIX = "script-calibration-cell#";
+/** Single-call calibration cells (own factors). */
+const SCRIPT_SINGLE_CELL_SK_PREFIX = "script-single-cell#";
+/** Time-based cost / check cells (no factors). */
+const SCRIPT_TIME_CELL_SK_PREFIX = "script-time-cell#";
+/** Silence-fit cost / accuracy cells. */
+const SCRIPT_SILENCE_CELL_SK_PREFIX = "script-silence-cell#";
+/** Silence-fit + Haiku cost / accuracy cells. */
+const SCRIPT_SILENCE_HAIKU_CELL_SK_PREFIX = "script-silence-haiku-cell#";
+/** Silence-fit · words cost / accuracy cells. */
+const SCRIPT_SILENCE_WORDS_CELL_SK_PREFIX = "script-silence-words-cell#";
+const SCRIPT_SILENCE_WORDS_HAIKU_CELL_SK_PREFIX =
+  "script-silence-words-haiku-cell#";
+/** Head-to-head comparison pair rows. */
+const SCRIPT_COMPARE_PAIR_SK_PREFIX = "script-compare-pair#";
+const SCRIPT_SINGLE_META_SK_PREFIX = "script-single-calibration#";
+const SCRIPT_COMPARE_META_SK_PREFIX = "script-compare-meta#";
+const SCRIPT_LENGTH_PREVIEW_SK_PREFIX = "script-length-preview#";
 
 export const DEFAULT_TARGET_WPM = 100;
 
@@ -810,6 +829,60 @@ export async function loadScriptCalibrationCells(
   });
 }
 
+/**
+ * Delete all sectioned calibration cells + meta for a model (fresh Run calibration).
+ */
+export async function clearScriptCalibrationForModel(
+  modelId: string,
+): Promise<{ deletedCells: number }> {
+  const table = tableName();
+  if (!table) return { deletedCells: 0 };
+  const id = coerceClaudeModel(modelId);
+  const prefix = `${SCRIPT_CALIBRATION_CELL_SK_PREFIX}${id}#`;
+  const keys: Array<{ pk: string; sk: string }> = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const page = await ddb.send(
+      new QueryCommand({
+        TableName: table,
+        KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": VOICE_SETTINGS_PK,
+          ":sk": prefix,
+        },
+        ProjectionExpression: "pk, sk",
+        ExclusiveStartKey: startKey,
+      }),
+    );
+    for (const item of page.Items ?? []) {
+      if (typeof item.pk === "string" && typeof item.sk === "string") {
+        keys.push({ pk: item.pk, sk: item.sk });
+      }
+    }
+    startKey = page.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey);
+
+  for (let i = 0; i < keys.length; i += 25) {
+    const chunk = keys.slice(i, i + 25);
+    await ddb.send(
+      new BatchWriteCommand({
+        RequestItems: {
+          [table]: chunk.map((Key) => ({ DeleteRequest: { Key } })),
+        },
+      }),
+    );
+  }
+
+  await ddb.send(
+    new DeleteCommand({
+      TableName: table,
+      Key: { pk: VOICE_SETTINGS_PK, sk: scriptCalibrationSk(id) },
+    }),
+  );
+
+  return { deletedCells: keys.length };
+}
+
 export type CalibrationProgress = {
   completedKeys: string[];
   completedCount: number;
@@ -822,6 +895,595 @@ export function calibrationCellKey(
   briefIndex: number,
 ): string {
   return `${delivery}|${minutes}|${briefIndex}`;
+}
+
+async function loadCellsByPrefix(
+  modelId: string,
+  prefixBase: string,
+): Promise<CalibrationCellResult[]> {
+  const table = tableName();
+  if (!table) return [];
+  const id = coerceClaudeModel(modelId);
+  const prefix = `${prefixBase}${id}#`;
+  const cells: CalibrationCellResult[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const page = await ddb.send(
+      new QueryCommand({
+        TableName: table,
+        KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": VOICE_SETTINGS_PK,
+          ":sk": prefix,
+        },
+        ExclusiveStartKey: startKey,
+      }),
+    );
+    for (const item of page.Items ?? []) {
+      if (item.cell && typeof item.cell === "object") {
+        cells.push(item.cell as CalibrationCellResult);
+      }
+    }
+    startKey = page.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey);
+  return cells.sort((a, b) => {
+    const ka = `${a.delivery}|${String(a.minutes).padStart(2, "0")}|${a.briefIndex}`;
+    const kb = `${b.delivery}|${String(b.minutes).padStart(2, "0")}|${b.briefIndex}`;
+    return ka.localeCompare(kb);
+  });
+}
+
+export async function saveSingleCallCalibrationCell(params: {
+  modelId: string;
+  cell: CalibrationCellResult;
+}): Promise<void> {
+  const modelId = coerceClaudeModel(params.modelId);
+  const cell = params.cell;
+  await ddb.send(
+    new PutCommand({
+      TableName: requireTable(),
+      Item: {
+        pk: VOICE_SETTINGS_PK,
+        sk: `${SCRIPT_SINGLE_CELL_SK_PREFIX}${modelId}#${cell.delivery}#${cell.minutes}#${cell.briefIndex}`,
+        modelId,
+        delivery: cell.delivery,
+        minutes: cell.minutes,
+        briefIndex: cell.briefIndex,
+        cell,
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+}
+
+export async function loadSingleCallCalibrationCells(
+  modelId: string,
+): Promise<CalibrationCellResult[]> {
+  return loadCellsByPrefix(modelId, SCRIPT_SINGLE_CELL_SK_PREFIX);
+}
+
+async function clearCellsByPrefix(
+  modelId: string,
+  cellPrefix: string,
+  metaSk?: string,
+): Promise<{ deletedCells: number }> {
+  const table = tableName();
+  if (!table) return { deletedCells: 0 };
+  const id = coerceClaudeModel(modelId);
+  const prefix = `${cellPrefix}${id}#`;
+  const keys: Array<{ pk: string; sk: string }> = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const page = await ddb.send(
+      new QueryCommand({
+        TableName: table,
+        KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": VOICE_SETTINGS_PK,
+          ":sk": prefix,
+        },
+        ProjectionExpression: "pk, sk",
+        ExclusiveStartKey: startKey,
+      }),
+    );
+    for (const item of page.Items ?? []) {
+      if (typeof item.pk === "string" && typeof item.sk === "string") {
+        keys.push({ pk: item.pk, sk: item.sk });
+      }
+    }
+    startKey = page.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey);
+
+  for (let i = 0; i < keys.length; i += 25) {
+    const chunk = keys.slice(i, i + 25);
+    await ddb.send(
+      new BatchWriteCommand({
+        RequestItems: {
+          [table]: chunk.map((Key) => ({ DeleteRequest: { Key } })),
+        },
+      }),
+    );
+  }
+
+  if (metaSk) {
+    await ddb.send(
+      new DeleteCommand({
+        TableName: table,
+        Key: { pk: VOICE_SETTINGS_PK, sk: `${metaSk}${id}` },
+      }),
+    );
+  }
+
+  return { deletedCells: keys.length };
+}
+
+/** Wipe single-call calibration cells + meta for a fresh per-run measure. */
+export async function clearSingleCallCalibrationForModel(
+  modelId: string,
+): Promise<{ deletedCells: number }> {
+  return clearCellsByPrefix(
+    modelId,
+    SCRIPT_SINGLE_CELL_SK_PREFIX,
+    SCRIPT_SINGLE_META_SK_PREFIX,
+  );
+}
+
+export async function saveTimeBasedCalibrationCell(params: {
+  modelId: string;
+  cell: CalibrationCellResult;
+}): Promise<void> {
+  const modelId = coerceClaudeModel(params.modelId);
+  const cell = params.cell;
+  await ddb.send(
+    new PutCommand({
+      TableName: requireTable(),
+      Item: {
+        pk: VOICE_SETTINGS_PK,
+        sk: `${SCRIPT_TIME_CELL_SK_PREFIX}${modelId}#${cell.delivery}#${cell.minutes}#${cell.briefIndex}`,
+        modelId,
+        delivery: cell.delivery,
+        minutes: cell.minutes,
+        briefIndex: cell.briefIndex,
+        cell,
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+}
+
+export async function loadTimeBasedCalibrationCells(
+  modelId: string,
+): Promise<CalibrationCellResult[]> {
+  return loadCellsByPrefix(modelId, SCRIPT_TIME_CELL_SK_PREFIX);
+}
+
+/** Wipe time-based cost cells for a fresh per-run measure. */
+export async function clearTimeBasedCalibrationForModel(
+  modelId: string,
+): Promise<{ deletedCells: number }> {
+  return clearCellsByPrefix(modelId, SCRIPT_TIME_CELL_SK_PREFIX);
+}
+
+export function silenceFitCellKey(params: {
+  option: string;
+  minutes: number;
+  briefIndex: number;
+}): string {
+  return `${params.option}#${params.minutes}#${params.briefIndex}`;
+}
+
+export async function saveSilenceFitCalibrationCell(params: {
+  modelId: string;
+  cell: CalibrationCellResult;
+}): Promise<void> {
+  const modelId = coerceClaudeModel(params.modelId);
+  const cell = params.cell;
+  const option = cell.silenceFitOption ?? "guided";
+  await ddb.send(
+    new PutCommand({
+      TableName: requireTable(),
+      Item: {
+        pk: VOICE_SETTINGS_PK,
+        sk: `${SCRIPT_SILENCE_CELL_SK_PREFIX}${modelId}#${option}#${cell.minutes}#${cell.briefIndex}`,
+        modelId,
+        option,
+        delivery: cell.delivery,
+        minutes: cell.minutes,
+        briefIndex: cell.briefIndex,
+        cell,
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+}
+
+export async function loadSilenceFitCalibrationCells(
+  modelId: string,
+): Promise<CalibrationCellResult[]> {
+  return loadCellsByPrefix(modelId, SCRIPT_SILENCE_CELL_SK_PREFIX);
+}
+
+export async function clearSilenceFitCalibrationForModel(
+  modelId: string,
+): Promise<{ deletedCells: number }> {
+  return clearCellsByPrefix(modelId, SCRIPT_SILENCE_CELL_SK_PREFIX);
+}
+
+export function silenceHaikuCellKey(params: {
+  option: string;
+  minutes: number;
+  briefIndex: number;
+}): string {
+  return `${params.option}#${params.minutes}#${params.briefIndex}`;
+}
+
+export async function saveSilenceHaikuCalibrationCell(params: {
+  modelId: string;
+  cell: CalibrationCellResult;
+}): Promise<void> {
+  const modelId = coerceClaudeModel(params.modelId);
+  const cell = params.cell;
+  const option = cell.silenceFitOption ?? "guided";
+  await ddb.send(
+    new PutCommand({
+      TableName: requireTable(),
+      Item: {
+        pk: VOICE_SETTINGS_PK,
+        sk: `${SCRIPT_SILENCE_HAIKU_CELL_SK_PREFIX}${modelId}#${option}#${cell.minutes}#${cell.briefIndex}`,
+        modelId,
+        option,
+        delivery: cell.delivery,
+        minutes: cell.minutes,
+        briefIndex: cell.briefIndex,
+        cell,
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+}
+
+export async function loadSilenceHaikuCalibrationCells(
+  modelId: string,
+): Promise<CalibrationCellResult[]> {
+  return loadCellsByPrefix(modelId, SCRIPT_SILENCE_HAIKU_CELL_SK_PREFIX);
+}
+
+export async function clearSilenceHaikuCalibrationForModel(
+  modelId: string,
+): Promise<{ deletedCells: number }> {
+  return clearCellsByPrefix(modelId, SCRIPT_SILENCE_HAIKU_CELL_SK_PREFIX);
+}
+
+export function silenceWordsCellKey(params: {
+  option: string;
+  minutes: number;
+  briefIndex: number;
+}): string {
+  return `${params.option}#${params.minutes}#${params.briefIndex}`;
+}
+
+export async function saveSilenceWordsCalibrationCell(params: {
+  modelId: string;
+  cell: CalibrationCellResult;
+}): Promise<void> {
+  const modelId = coerceClaudeModel(params.modelId);
+  const cell = params.cell;
+  const option = cell.silenceFitOption ?? "guided";
+  await ddb.send(
+    new PutCommand({
+      TableName: requireTable(),
+      Item: {
+        pk: VOICE_SETTINGS_PK,
+        sk: `${SCRIPT_SILENCE_WORDS_CELL_SK_PREFIX}${modelId}#${option}#${cell.minutes}#${cell.briefIndex}`,
+        modelId,
+        option,
+        delivery: cell.delivery,
+        minutes: cell.minutes,
+        briefIndex: cell.briefIndex,
+        cell,
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+}
+
+export async function loadSilenceWordsCalibrationCells(
+  modelId: string,
+): Promise<CalibrationCellResult[]> {
+  return loadCellsByPrefix(modelId, SCRIPT_SILENCE_WORDS_CELL_SK_PREFIX);
+}
+
+export async function clearSilenceWordsCalibrationForModel(
+  modelId: string,
+): Promise<{ deletedCells: number }> {
+  return clearCellsByPrefix(modelId, SCRIPT_SILENCE_WORDS_CELL_SK_PREFIX);
+}
+
+export function silenceWordsHaikuCellKey(params: {
+  option: string;
+  minutes: number;
+  briefIndex: number;
+}): string {
+  return `${params.option}#${params.minutes}#${params.briefIndex}`;
+}
+
+export async function saveSilenceWordsHaikuCalibrationCell(params: {
+  modelId: string;
+  cell: CalibrationCellResult;
+}): Promise<void> {
+  const modelId = coerceClaudeModel(params.modelId);
+  const cell = params.cell;
+  const option = cell.silenceFitOption ?? "guided";
+  await ddb.send(
+    new PutCommand({
+      TableName: requireTable(),
+      Item: {
+        pk: VOICE_SETTINGS_PK,
+        sk: `${SCRIPT_SILENCE_WORDS_HAIKU_CELL_SK_PREFIX}${modelId}#${option}#${cell.minutes}#${cell.briefIndex}`,
+        modelId,
+        option,
+        delivery: cell.delivery,
+        minutes: cell.minutes,
+        briefIndex: cell.briefIndex,
+        cell,
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+}
+
+export async function loadSilenceWordsHaikuCalibrationCells(
+  modelId: string,
+): Promise<CalibrationCellResult[]> {
+  return loadCellsByPrefix(modelId, SCRIPT_SILENCE_WORDS_HAIKU_CELL_SK_PREFIX);
+}
+
+export async function clearSilenceWordsHaikuCalibrationForModel(
+  modelId: string,
+): Promise<{ deletedCells: number }> {
+  return clearCellsByPrefix(modelId, SCRIPT_SILENCE_WORDS_HAIKU_CELL_SK_PREFIX);
+}
+
+export async function saveSingleCallCalibrationMeta(params: {
+  modelId: string;
+  ranAt: string;
+  factors: ScriptTargetCorrection;
+  cellCount: number;
+  failures: StoredCalibrationBatch["failures"];
+}): Promise<void> {
+  const modelId = coerceClaudeModel(params.modelId);
+  await ddb.send(
+    new PutCommand({
+      TableName: requireTable(),
+      Item: {
+        pk: VOICE_SETTINGS_PK,
+        sk: `${SCRIPT_SINGLE_META_SK_PREFIX}${modelId}`,
+        modelId,
+        ranAt: params.ranAt,
+        factors: params.factors,
+        cellCount: params.cellCount,
+        failures: params.failures,
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+}
+
+export type StoredComparisonPair = {
+  delivery: DeliveryId;
+  minutes: number;
+  briefIndex: number;
+  brief: string;
+  single: unknown;
+  sectioned: unknown;
+};
+
+export async function saveComparisonPair(params: {
+  modelId: string;
+  pair: StoredComparisonPair;
+}): Promise<void> {
+  const modelId = coerceClaudeModel(params.modelId);
+  const p = params.pair;
+  await ddb.send(
+    new PutCommand({
+      TableName: requireTable(),
+      Item: {
+        pk: VOICE_SETTINGS_PK,
+        sk: `${SCRIPT_COMPARE_PAIR_SK_PREFIX}${modelId}#${p.delivery}#${p.minutes}#${p.briefIndex}`,
+        modelId,
+        ...p,
+        // Keep full script text on the pair row (one brief × combo ≈ fine).
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+}
+
+export async function loadComparisonPairs(
+  modelId: string,
+): Promise<StoredComparisonPair[]> {
+  const table = tableName();
+  if (!table) return [];
+  const id = coerceClaudeModel(modelId);
+  const prefix = `${SCRIPT_COMPARE_PAIR_SK_PREFIX}${id}#`;
+  const pairs: StoredComparisonPair[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const page = await ddb.send(
+      new QueryCommand({
+        TableName: table,
+        KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": VOICE_SETTINGS_PK,
+          ":sk": prefix,
+        },
+        ExclusiveStartKey: startKey,
+      }),
+    );
+    for (const item of page.Items ?? []) {
+      if (
+        typeof item.delivery === "string" &&
+        typeof item.minutes === "number" &&
+        typeof item.briefIndex === "number"
+      ) {
+        pairs.push({
+          delivery: item.delivery as DeliveryId,
+          minutes: item.minutes,
+          briefIndex: item.briefIndex,
+          brief: typeof item.brief === "string" ? item.brief : "",
+          single: item.single,
+          sectioned: item.sectioned,
+        });
+      }
+    }
+    startKey = page.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey);
+  return pairs;
+}
+
+export async function saveComparisonMeta(params: {
+  modelId: string;
+  ranAt: string;
+  table: unknown;
+  pairCount: number;
+}): Promise<void> {
+  const modelId = coerceClaudeModel(params.modelId);
+  await ddb.send(
+    new PutCommand({
+      TableName: requireTable(),
+      Item: {
+        pk: VOICE_SETTINGS_PK,
+        sk: `${SCRIPT_COMPARE_META_SK_PREFIX}${modelId}`,
+        modelId,
+        ranAt: params.ranAt,
+        table: params.table,
+        pairCount: params.pairCount,
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+}
+
+export async function loadComparisonMeta(modelId: string): Promise<{
+  ranAt: string;
+  table: unknown;
+  pairCount: number;
+} | null> {
+  const table = tableName();
+  if (!table) return null;
+  const out = await ddb.send(
+    new GetCommand({
+      TableName: table,
+      Key: {
+        pk: VOICE_SETTINGS_PK,
+        sk: `${SCRIPT_COMPARE_META_SK_PREFIX}${coerceClaudeModel(modelId)}`,
+      },
+    }),
+  );
+  const item = out.Item;
+  if (!item) return null;
+  return {
+    ranAt: typeof item.ranAt === "string" ? item.ranAt : "",
+    table: item.table,
+    pairCount: typeof item.pairCount === "number" ? item.pairCount : 0,
+  };
+}
+
+export type StoredLengthPreviewLog = {
+  id: string;
+  ranAt: string;
+  delivery: string;
+  minutes: number;
+  mode: string;
+  modelId: string;
+  medianPctVsRequested: number;
+  voices: Array<{
+    modelId: string;
+    name: string;
+    pctVsRequested: number;
+    predictedTotalSeconds: number;
+    actualTotalSeconds?: number | null;
+  }>;
+  avgAbsPredictionErrorPct: number | null;
+};
+
+export async function saveLengthPreviewLog(
+  log: StoredLengthPreviewLog,
+): Promise<void> {
+  await ddb.send(
+    new PutCommand({
+      TableName: requireTable(),
+      Item: {
+        pk: VOICE_SETTINGS_PK,
+        sk: `${SCRIPT_LENGTH_PREVIEW_SK_PREFIX}${log.id}`,
+        ...log,
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+}
+
+export async function loadLengthPreviewLogs(limit = 40): Promise<{
+  logs: StoredLengthPreviewLog[];
+  avgAbsPredictionErrorPct: number | null;
+}> {
+  const table = tableName();
+  if (!table) return { logs: [], avgAbsPredictionErrorPct: null };
+  const page = await ddb.send(
+    new QueryCommand({
+      TableName: table,
+      KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
+      ExpressionAttributeValues: {
+        ":pk": VOICE_SETTINGS_PK,
+        ":sk": SCRIPT_LENGTH_PREVIEW_SK_PREFIX,
+      },
+      ScanIndexForward: false,
+      Limit: Math.max(1, Math.min(100, limit)),
+    }),
+  );
+  const logs: StoredLengthPreviewLog[] = [];
+  const errors: number[] = [];
+  for (const item of page.Items ?? []) {
+    if (typeof item.id !== "string") continue;
+    const voices = Array.isArray(item.voices) ? item.voices : [];
+    for (const v of voices) {
+      if (
+        v &&
+        typeof v === "object" &&
+        typeof (v as { actualTotalSeconds?: unknown }).actualTotalSeconds ===
+          "number" &&
+        typeof (v as { predictedTotalSeconds?: unknown }).predictedTotalSeconds ===
+          "number"
+      ) {
+        const a = (v as { actualTotalSeconds: number }).actualTotalSeconds;
+        const p = (v as { predictedTotalSeconds: number }).predictedTotalSeconds;
+        if (a > 0 && p > 0) {
+          errors.push(Math.abs((p / a - 1) * 100));
+        }
+      }
+    }
+    logs.push({
+      id: item.id,
+      ranAt: typeof item.ranAt === "string" ? item.ranAt : "",
+      delivery: typeof item.delivery === "string" ? item.delivery : "",
+      minutes: typeof item.minutes === "number" ? item.minutes : 0,
+      mode: typeof item.mode === "string" ? item.mode : "",
+      modelId: typeof item.modelId === "string" ? item.modelId : "",
+      medianPctVsRequested:
+        typeof item.medianPctVsRequested === "number"
+          ? item.medianPctVsRequested
+          : 0,
+      voices: voices as StoredLengthPreviewLog["voices"],
+      avgAbsPredictionErrorPct:
+        typeof item.avgAbsPredictionErrorPct === "number"
+          ? item.avgAbsPredictionErrorPct
+          : null,
+    });
+  }
+  const avgAbsPredictionErrorPct = errors.length
+    ? Math.round(errors.reduce((a, n) => a + n, 0) / errors.length)
+    : null;
+  return { logs, avgAbsPredictionErrorPct };
 }
 
 /** Load last calibration batch meta (+ optional cells from per-cell rows). */

@@ -5420,19 +5420,47 @@ export type AdminAiProviderCard = {
   fishLiveError: string | null;
 };
 
+export type AdminAiClaudeEvent = {
+  createdAt: string;
+  feature: string;
+  model: string | null;
+  source: "admin" | "user" | "system" | null;
+  reason: string | null;
+  userId: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  thinkingTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  usd: number;
+};
+
 export type AdminAiCostsSnapshot = {
   generatedAt: string;
   providers: AdminAiProviderCard[];
   trackedTotalUsd: number;
   notes: string[];
+  claudeEventsDay?: string;
+  claudeEventsDayUsd?: number;
+  claudeEvents?: AdminAiClaudeEvent[];
 };
 
-export async function getAdminAiCosts(): Promise<AdminAiCostsSnapshot> {
+export async function getAdminAiCosts(opts?: {
+  day?: string;
+  limit?: number;
+}): Promise<AdminAiCostsSnapshot> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
-  const res = await medimadeFetch(`${base}/admin/ai-costs`, {
-    headers: medimadeApiAuthHeaders(),
-  });
+  const q = new URLSearchParams();
+  if (opts?.day) q.set("day", opts.day);
+  if (opts?.limit) q.set("limit", String(opts.limit));
+  const qs = q.toString();
+  const res = await medimadeFetch(
+    `${base}/admin/ai-costs${qs ? `?${qs}` : ""}`,
+    {
+      headers: medimadeApiAuthHeaders(),
+    },
+  );
   const data = (await res.json()) as Partial<AdminAiCostsSnapshot> & {
     error?: string;
     detail?: string;
@@ -5452,6 +5480,15 @@ export async function getAdminAiCosts(): Promise<AdminAiCostsSnapshot> {
       typeof data.trackedTotalUsd === "number" ? data.trackedTotalUsd : 0,
     notes: Array.isArray(data.notes)
       ? data.notes.filter((n): n is string => typeof n === "string")
+      : [],
+    claudeEventsDay:
+      typeof data.claudeEventsDay === "string" ? data.claudeEventsDay : undefined,
+    claudeEventsDayUsd:
+      typeof data.claudeEventsDayUsd === "number"
+        ? data.claudeEventsDayUsd
+        : undefined,
+    claudeEvents: Array.isArray(data.claudeEvents)
+      ? (data.claudeEvents as AdminAiClaudeEvent[])
       : [],
   };
 }
@@ -6458,9 +6495,25 @@ export async function postAdminVoice<T>(body: Record<string, unknown>): Promise<
     headers: medimadeJsonHeaders(),
     body: JSON.stringify(body),
   });
-  const data = (await res.json()) as T & { error?: string; detail?: string };
+  const text = await res.text();
+  let data: (T & { error?: string; detail?: string }) | null = null;
+  try {
+    data = text ? (JSON.parse(text) as T & { error?: string; detail?: string }) : null;
+  } catch {
+    data = null;
+  }
   if (!res.ok) {
-    throw new Error(data.detail ?? data.error ?? res.statusText);
+    const msg =
+      data?.detail ??
+      data?.error ??
+      (text && text.length < 200 ? text : null) ??
+      `Request failed (${res.status})`;
+    const err = new Error(msg) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  if (!data) {
+    throw new Error("Empty response from admin voice");
   }
   return data;
 }

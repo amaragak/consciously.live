@@ -29,7 +29,13 @@ import {
   GLOBAL_MEDITATION_USER_ID,
   meditationUserPk,
 } from "./_shared/meditation-user-pk";
-import { coerceClaudeModel, parseAnthropicMessageUsage, withClaudeThinkingOff } from "./_shared/anthropic-pricing";
+import {
+  coerceClaudeModel,
+  parseAnthropicMessageUsage,
+  withClaudeThinkingOff,
+  claudeUsdFromUsage,
+} from "./_shared/anthropic-pricing";
+import { buildScriptGenerationCachedBody } from "./_shared/anthropic-prompt-cache";
 import {
   recordClaudeUsage,
   recordFishTtsUsage,
@@ -46,6 +52,7 @@ import {
   buildLengthRevisionPrompt,
   buildMeditationScriptGenerationPrompt,
 } from "./_shared/meditation-script-generate-prompt";
+import { expandShortPauseMarkers } from "./_shared/script-pause-short";
 import {
   fixFurthestSections,
   furthestSectionFixes,
@@ -60,6 +67,12 @@ import {
   type SessionTotals,
 } from "./_shared/script-section-generate";
 import {
+  isEdgeSectionIndex,
+  middlePlannedPauseSeconds,
+  sectionWordCapForDelivery,
+} from "./_shared/script-sections";
+import { CALIBRATION_MEDIAN_WPM } from "./_shared/script-calibration-batch";
+import {
   countSpokenWords,
   fitLongPauseScale,
   fitLongPauseScaleWithPlan,
@@ -73,6 +86,9 @@ import {
   PRE_AUDIO_SCALE_MIN,
   productionSlowing,
   resolveVoicePace,
+  titleIntroPauseSecondsWritten,
+  titleSpeechSecondsFromWords,
+  type SessionAroundScript,
   type VoicePace,
 } from "./_shared/meditation-length-fit";
 import {
@@ -89,14 +105,32 @@ import {
   defaultScriptGenerationSettings,
   // markModelCalibrated,
   resolveScriptModelId,
+  scriptWriteModeFor,
+  singleCallCorrectionForModel,
+  wordsPerSentenceForDelivery,
   type ScriptGenerationSettings,
 } from "./_shared/script-generation-settings";
+import { generateTimeBasedScript } from "./_shared/script-time-based-generate";
+import { generateSilenceFitScript } from "./_shared/script-silence-fit-generate";
+import { generateSilenceHaikuScript } from "./_shared/script-silence-haiku-generate";
+import { generateSilenceWordsScript } from "./_shared/script-silence-words-generate";
+import { generateSilenceWordsHaikuScript } from "./_shared/script-silence-words-haiku-generate";
+import {
+  silenceFitOptionFromDelivery,
+  timePacingForSilenceOption,
+} from "./_shared/script-silence-fit-settings";
+import { checkBriefFidelity } from "./_shared/script-calibration-batch";
+import {
+  resolveStyleGuideAttachment,
+  type StyleInferResult,
+} from "./_shared/infer-meditation-style";
 import {
   fishPauseTagStyleForModel,
   parseScriptIntoSegments,
   replacePauseMarkersWithFishNative,
   stripPauseMarkers as spokenPlainWithoutPauses,
   sumPauseMarkerSeconds,
+  spokenTitleForTts,
   withSpokenMeditationTitleIntro,
 } from "./_shared/script-pause-bands";
 import {
@@ -133,6 +167,8 @@ import {
   pauseRulesForSectionPrompt,
   defaultDeliveryProfiles,
   sentenceBreakMs as deliverySentenceBreakMs,
+  sessionAroundFromProfiles,
+  sectionSilenceSharesFor,
   silenceShareFor,
   speechShareFor,
   type DeliveryId,
@@ -947,6 +983,11 @@ async function generateScriptFromClaude(params: {
   deliveryStyle?: "casual" | "guided" | "open_sits";
   pacing?: { wpm: number; speechShare: number; bandFraction?: number };
   pauseRules?: string;
+  styleGuideContext?: {
+    silenceShare: number;
+    longestPauseSeconds: number;
+  };
+  styleGuideStyle?: string;
   lengthFit?: Parameters<typeof buildMeditationScriptGenerationPrompt>[0]["lengthFit"];
 }): Promise<{
   script: string;
@@ -963,9 +1004,14 @@ async function generateScriptFromClaude(params: {
     deliveryStyle: params.deliveryStyle,
     pacing: params.pacing,
     pauseRules: params.pauseRules,
+    styleGuideContext: params.styleGuideContext,
+    styleGuideStyle: params.styleGuideStyle,
     lengthFit: params.lengthFit,
   });
 
+  // Single-call keeps default effort (no effortLow). Dual-cache layout matches plan/sections.
+  // Legacy:
+  // withClaudeThinkingOff({ model, max_tokens, system: [{ type:"text", text: prompt.system, cache_control:{type:"ephemeral"} }], messages:[{role:"user", content: prompt.userContent}] })
   const upstream = await fetch(ANTHROPIC_URL, {
     method: "POST",
     headers: {
@@ -973,12 +1019,16 @@ async function generateScriptFromClaude(params: {
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
-    body: JSON.stringify(withClaudeThinkingOff({
-      model: params.model,
-      max_tokens: prompt.maxTokens,
-      system: prompt.system,
-      messages: [{ role: "user", content: prompt.userContent } satisfies ChatTurn],
-    })),
+    body: JSON.stringify(
+      buildScriptGenerationCachedBody({
+        model: params.model,
+        maxTokens: prompt.maxTokens,
+        systemStable: prompt.systemStable,
+        meditationContext: prompt.meditationContext,
+        meditationContextExtra: prompt.meditationContextExtra || undefined,
+        taskContent: prompt.taskContent,
+      }),
+    ),
   });
 
   const responseText = await upstream.text();
@@ -1006,14 +1056,29 @@ async function generateScriptFromClaude(params: {
   }
   const usage = parseAnthropicMessageUsage(responseText);
   if (usage) {
+    console.log(
+      JSON.stringify({
+        tag: "script-gen-usage",
+        label: "single-call",
+        model: params.model,
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
+        cache_read_input_tokens: usage.cache_read_input_tokens ?? 0,
+        cache_creation_5m_input_tokens: usage.cache_creation_5m_input_tokens ?? 0,
+        cache_creation_1h_input_tokens: usage.cache_creation_1h_input_tokens ?? 0,
+        usd: Math.round(claudeUsdFromUsage(params.model, usage) * 1e6) / 1e6,
+      }),
+    );
     void recordClaudeUsage({
       model: params.model,
-      inputTokens: usage.input_tokens,
-      outputTokens: usage.output_tokens,
       feature: "meditation-script",
+      source: "user",
+      reason: "script-single-call",
+      usage,
     });
   }
-  return { script: text, usage };
+  return { script: expandShortPauseMarkers(text), usage };
 }
 
 /** One length revision: shorten or extend the spoken words, keeping details, structure and pause markers. */
@@ -1057,12 +1122,13 @@ async function reviseScriptLengthFromClaude(params: {
   if (usage) {
     void recordClaudeUsage({
       model: params.model,
-      inputTokens: usage.input_tokens,
-      outputTokens: usage.output_tokens,
       feature: "meditation-script",
+      source: "user",
+      reason: "script-length-revise",
+      usage,
     });
   }
-  return { script: text, usage };
+  return { script: expandShortPauseMarkers(text), usage };
 }
 
 /** Keep DynamoDB item under 400 KB (UTF-8 bytes, incl. other attributes). */
@@ -1936,7 +2002,9 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   const sharedDefaults = defaultDeliveryProfiles().shared;
   let sectionWordCap = sharedDefaults.sectionWordCap;
   let sectionWordMin = sharedDefaults.sectionWordMin;
+  let maxSectionMinutes = sharedDefaults.maxSectionMinutes;
   let planMinWords = sharedDefaults.planMinWords;
+  let deliveryProfiles = defaultDeliveryProfiles();
   let scriptGeneration: ScriptGenerationSettings = defaultScriptGenerationSettings();
   let targetCorrection: ScriptTargetCorrection =
     scriptGeneration.targetCorrectionByModel[scriptGeneration.scriptModelId]!;
@@ -1944,6 +2012,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   // let calibratedSpeechRate: number | null = null;
   try {
     const profileRecord = await loadDeliveryProfileRecord();
+    deliveryProfiles = profileRecord.profiles;
     const bandFraction = profileRecord.profiles.shared.lengthTolerancePct / 100;
     const wpm = defaultWpmFor(profileRecord.profiles, pacingDelivery);
     const speechShare = speechShareFor(profileRecord.profiles, pacingDelivery);
@@ -1958,6 +2027,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     silenceShare = silenceShareFor(profileRecord.profiles, pacingDelivery);
     sectionWordCap = profileRecord.profiles.shared.sectionWordCap;
     sectionWordMin = profileRecord.profiles.shared.sectionWordMin;
+    maxSectionMinutes = profileRecord.profiles.shared.maxSectionMinutes;
     planMinWords = profileRecord.profiles.shared.planMinWords;
     scriptGeneration = profileRecord.scriptGeneration;
     targetCorrection = profileRecord.targetCorrection;
@@ -2115,15 +2185,22 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   }
   console.log("voice pace", { ...voicePace, silenceShare, lengthTolerancePct });
 
-  // Requested length is the whole session: lead-in, voice stem, then the bed tail.
+  // Requested length is the whole session: lead-in, title, script, bed tail.
+  // Script planning uses script time = requested − parts around the script.
+  const aroundParts: SessionAroundScript =
+    sessionAroundFromProfiles(deliveryProfiles);
   const sessionLeadInSeconds =
     typeof body.leadInSeconds === "number" &&
     Number.isFinite(body.leadInSeconds) &&
     body.leadInSeconds >= 0
       ? body.leadInSeconds
-      : 1.5;
+      : aroundParts.leadInSeconds;
   const sessionTailSeconds =
-    backgroundLayers.length > 0 && body.fadeOut !== false ? 20 : 0;
+    backgroundLayers.length > 0 && body.fadeOut !== false
+      ? aroundParts.fadeOutSeconds
+      : 0;
+  // Voice stem target still = requested − lead − fade; title is netted inside
+  // lengthPlan / sessionTotals so the script body fills script time.
   const lengthTargetSeconds = Math.max(
     60,
     targetMinutes * 60 - sessionLeadInSeconds - sessionTailSeconds,
@@ -2131,6 +2208,20 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   const commaBreakSeconds =
     ttsProvider === "speechify" ? SPEECHIFY_COMMA_BREAK_MS / 1000 : 0;
   const fitPauseBands = await loadPauseBandSeconds().catch(() => undefined);
+  const titleWords = countSpokenWords(
+    spokenTitleForTts(
+      typeof body.title === "string"
+        ? body.title
+        : typeof jobItem.title === "string"
+          ? jobItem.title
+          : "",
+    ),
+  );
+  const titleSpeechSec = titleSpeechSecondsFromWords(
+    titleWords,
+    voicePace.effectiveWpm,
+  );
+  const titlePauseWritten = titleIntroPauseSecondsWritten(aroundParts);
   const plan = lengthPlan({
     targetSeconds: lengthTargetSeconds,
     silenceShare,
@@ -2138,7 +2229,11 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     pauseScale: pauseRenderScale,
     commaBreakSeconds,
     titleIntro: true,
+    titleSpeechSeconds: titleSpeechSec,
+    titlePauseSecondsWritten: titlePauseWritten,
   });
+  // Word budgets use median×slowing (same script for every voice); pause
+  // fill uses this voice's effective WPM (includes pace adjustment).
   const totals: SessionTotals = sessionTotals({
     stemSeconds: lengthTargetSeconds,
     silenceShare,
@@ -2150,6 +2245,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     pauseScale: pauseRenderScale,
     commaBreakSeconds,
     titleIntro: true,
+    titleSpeechSeconds: titleSpeechSec,
+    titlePauseSecondsWritten: titlePauseWritten,
   });
   console.log("length plan", {
     targetMinutes,
@@ -2163,6 +2260,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     planMinWords,
   });
   let sectionsUsed = false;
+  /** Time-based mode already fitted extendable pauses in the script text. */
+  let timeBasedUsed = false;
   let sectionPlan: ScriptSectionPlan | null = null;
   let sectionTexts: ScriptSectionText[] = [];
   let sectionFirstDraft: SectionMeasure[] | null = null;
@@ -2196,6 +2295,43 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     if (shouldGenerateScript) {
       const scriptStarted = Date.now();
       const claudeKey = await getClaudeApiKey();
+      // Infer a style for the writer's guide only when the creator didn't pick one.
+      // Never saved as their choice; does not change what they see.
+      // Shared helper keeps admin calibration / cost estimates on the same rules.
+      const guideAttach = await resolveStyleGuideAttachment({
+        apiKey: claudeKey,
+        styleInferModelId: scriptGeneration.styleInferModelId,
+        transcript,
+        meditationStyle,
+        journalMode: journalModeFromJob,
+        usageSource: "user",
+      });
+      const styleGuideStyle = guideAttach.styleGuideStyle ?? undefined;
+      const styleInfer: StyleInferResult | null = guideAttach.infer;
+      if (styleInfer) {
+        console.log("style infer", {
+          style: styleInfer.style,
+          rawStyle: styleInfer.rawStyle,
+          confidence: styleInfer.confidence,
+          reason: styleInfer.reason,
+          useGuide: styleInfer.useGuide,
+          failed: styleInfer.failed,
+          modelId: styleInfer.modelId,
+          ms: styleInfer.ms,
+          guideAttached: guideAttach.guideAttached,
+        });
+      } else {
+        console.log("style infer skipped", {
+          reason: journalModeFromJob
+            ? "journal"
+            : guideAttach.source === "creator"
+              ? "creator-selected-style"
+              : "none",
+          style: styleTrimmed || null,
+          guideAttached: guideAttach.guideAttached,
+          guideStyle: guideAttach.guideStyle,
+        });
+      }
       const lengthFit = {
         effectiveWpm: voicePace.effectiveWpm,
         silenceSharePct: silenceShare * 100,
@@ -2203,18 +2339,292 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         pauseSecondsWritten: totals.totalPauseSeconds,
         ...(fitPauseBands ? { pauseBands: fitPauseBands } : {}),
       };
-      const useSections = totals.totalWords >= planMinWords;
-      if (!useSections) {
-        // v5: short sessions skip plan/split — one call with the v7 Length paragraph.
-        console.log("generating script from Claude (single call; under planMinWords)", {
+      const writeMode = scriptWriteModeFor(
+        scriptGeneration,
+        pacingDelivery,
+        targetMinutes,
+      );
+      // Admin mode wins: time → one call + fit; single → legacy one call;
+      // sections → always plan + sections.
+      // Previously: sections still skipped plan under planMinWords.
+      // const useSections =
+      //   writeMode === "sections" && totals.totalWords >= planMinWords;
+      const useSections = writeMode === "sections";
+      void planMinWords; // kept on profiles; no longer gates the sections flow
+      const singleCallCorrection = singleCallCorrectionForModel(
+        scriptGeneration,
+        claudeModel,
+      );
+      if (writeMode === "silence_words_haiku") {
+        const scriptTimeSeconds = Math.max(
+          30,
+          lengthTargetSeconds - titleSpeechSec - titlePauseWritten,
+        );
+        const option = silenceFitOptionFromDelivery(pacingDelivery);
+        console.log("generating script from Claude (silence-fit · words + Haiku)", {
+          meditationStylePresent: Boolean(meditationStyle?.trim()),
+          targetMinutes,
+          scriptTimeSeconds,
+          option,
+          writeMode,
+          reason: "admin-mode-silence-words-haiku",
+        });
+        const generated = await generateSilenceWordsHaikuScript({
+          apiKey: claudeKey,
+          model: claudeModel,
+          haikuModelId: scriptGeneration.styleInferModelId,
+          transcript,
+          meditationStyle,
+          styleGuideStyle,
+          option,
+          minutes: targetMinutes,
+          profiles: deliveryProfiles,
+          silenceWordsHaiku: scriptGeneration.silenceWordsHaiku,
+          scriptTimeSeconds,
+          effectiveWpm: voicePace.effectiveWpm,
+          lengthTolerancePct:
+            deliveryProfiles.shared.lengthTolerancePct ?? 10,
+          journalMode: journalModeFromJob,
+          source: "user",
+        });
+        for (const u of generated.usages) {
+          claudeWorkerInputTokens += u.input_tokens;
+          claudeWorkerOutputTokens += u.output_tokens;
+        }
+        scriptTextUsed = generated.script;
+        timeBasedUsed = true;
+        generationTimings.phases.scriptMs = elapsedMs(scriptStarted);
+        console.log("generated script", {
+          chars: scriptTextUsed.length,
+          targetMinutes,
+          scriptMs: generationTimings.phases.scriptMs,
+          path: "silence_words_haiku",
+          option,
+          wordBudget: generated.wordBudget,
+          fitStep: generated.fit.fitStep,
+          outsideTolerance: generated.fit.outsideTolerance,
+          why: generated.fit.why,
+          haikuRan: generated.haiku.haikuRan,
+          phasesFixed: generated.haiku.phasesFixed,
+          callCount: generated.usages.length,
+        });
+      } else if (writeMode === "silence_words") {
+        const scriptTimeSeconds = Math.max(
+          30,
+          lengthTargetSeconds - titleSpeechSec - titlePauseWritten,
+        );
+        const option = silenceFitOptionFromDelivery(pacingDelivery);
+        console.log("generating script from Claude (silence-fit · words)", {
+          meditationStylePresent: Boolean(meditationStyle?.trim()),
+          targetMinutes,
+          scriptTimeSeconds,
+          option,
+          writeMode,
+          reason: "admin-mode-silence-words",
+        });
+        const generated = await generateSilenceWordsScript({
+          apiKey: claudeKey,
+          model: claudeModel,
+          transcript,
+          meditationStyle,
+          styleGuideStyle,
+          option,
+          minutes: targetMinutes,
+          profiles: deliveryProfiles,
+          silenceWords: scriptGeneration.silenceWords,
+          scriptTimeSeconds,
+          effectiveWpm: voicePace.effectiveWpm,
+          lengthTolerancePct:
+            deliveryProfiles.shared.lengthTolerancePct ?? 10,
+          journalMode: journalModeFromJob,
+          source: "user",
+        });
+        for (const u of generated.usages) {
+          claudeWorkerInputTokens += u.input_tokens;
+          claudeWorkerOutputTokens += u.output_tokens;
+        }
+        scriptTextUsed = generated.script;
+        timeBasedUsed = true;
+        generationTimings.phases.scriptMs = elapsedMs(scriptStarted);
+        console.log("generated script", {
+          chars: scriptTextUsed.length,
+          targetMinutes,
+          scriptMs: generationTimings.phases.scriptMs,
+          path: "silence_words",
+          option,
+          wordBudget: generated.wordBudget,
+          fitStep: generated.fit.fitStep,
+          outsideTolerance: generated.fit.outsideTolerance,
+          why: generated.fit.why,
+          callCount: generated.usages.length,
+        });
+      } else if (writeMode === "silence" || writeMode === "silence_haiku") {
+        const scriptTimeSeconds = Math.max(
+          30,
+          lengthTargetSeconds - titleSpeechSec - titlePauseWritten,
+        );
+        const option = silenceFitOptionFromDelivery(pacingDelivery);
+        const useHaiku = writeMode === "silence_haiku";
+        const sf = useHaiku
+          ? scriptGeneration.silenceHaiku
+          : scriptGeneration.silenceFit;
+        const own = sf.wordsPerSentenceByOption[option];
+        let wps = 12;
+        if (own.scriptCount > 0 && own.wordsPerSentence > 0) {
+          wps = own.wordsPerSentence;
+        } else {
+          wps = wordsPerSentenceForDelivery(
+            scriptGeneration,
+            timePacingForSilenceOption(option),
+          );
+        }
+        console.log(
+          useHaiku
+            ? "generating script from Claude (silence-fit + Haiku)"
+            : "generating script from Claude (silence-fit)",
+          {
+            meditationStylePresent: Boolean(meditationStyle?.trim()),
+            targetMinutes,
+            scriptTimeSeconds,
+            option,
+            writeMode,
+            reason: useHaiku
+              ? "admin-mode-silence-haiku"
+              : "admin-mode-silence",
+          },
+        );
+        const generated = useHaiku
+          ? await generateSilenceHaikuScript({
+              apiKey: claudeKey,
+              model: claudeModel,
+              haikuModelId: scriptGeneration.styleInferModelId,
+              transcript,
+              meditationStyle,
+              styleGuideStyle,
+              option,
+              minutes: targetMinutes,
+              profiles: deliveryProfiles,
+              silenceHaiku: scriptGeneration.silenceHaiku,
+              scriptTimeSeconds,
+              effectiveWpm: voicePace.effectiveWpm,
+              lengthTolerancePct:
+                deliveryProfiles.shared.lengthTolerancePct ?? 10,
+              wordsPerSentence: wps,
+              journalMode: journalModeFromJob,
+              source: "user",
+            })
+          : await generateSilenceFitScript({
+              apiKey: claudeKey,
+              model: claudeModel,
+              transcript,
+              meditationStyle,
+              styleGuideStyle,
+              option,
+              minutes: targetMinutes,
+              profiles: deliveryProfiles,
+              silenceFit: scriptGeneration.silenceFit,
+              scriptTimeSeconds,
+              effectiveWpm: voicePace.effectiveWpm,
+              lengthTolerancePct:
+                deliveryProfiles.shared.lengthTolerancePct ?? 10,
+              wordsPerSentence: wps,
+              journalMode: journalModeFromJob,
+              source: "user",
+            });
+        for (const u of generated.usages) {
+          claudeWorkerInputTokens += u.input_tokens;
+          claudeWorkerOutputTokens += u.output_tokens;
+        }
+        scriptTextUsed = generated.script;
+        timeBasedUsed = true; // skip sectioned length-fit / factors
+        generationTimings.phases.scriptMs = elapsedMs(scriptStarted);
+        console.log("generated script", {
+          chars: scriptTextUsed.length,
+          targetMinutes,
+          scriptMs: generationTimings.phases.scriptMs,
+          path: useHaiku ? "silence_haiku" : "silence",
+          option,
+          fitStep: generated.fit.fitStep,
+          outsideTolerance: generated.fit.outsideTolerance,
+          why: generated.fit.why,
+          callCount: generated.usages.length,
+          ...(useHaiku
+            ? {
+                haikuRan: (generated as { haiku: { haikuRan: boolean } })
+                  .haiku.haikuRan,
+                phasesFixed: (
+                  generated as { haiku: { phasesFixed: number } }
+                ).haiku.phasesFixed,
+              }
+            : {}),
+        });
+      } else if (writeMode === "time") {
+        const scriptTimeSeconds = Math.max(
+          30,
+          lengthTargetSeconds - titleSpeechSec - titlePauseWritten,
+        );
+        console.log("generating script from Claude (time-based)", {
+          meditationStylePresent: Boolean(meditationStyle?.trim()),
+          targetMinutes,
+          scriptTimeSeconds,
+          writeMode,
+          reason: "admin-mode-time",
+        });
+        const generated = await generateTimeBasedScript({
+          apiKey: claudeKey,
+          model: claudeModel,
+          trimModel: scriptGeneration.styleInferModelId || claudeModel,
+          transcript,
+          meditationStyle,
+          styleGuideStyle,
+          delivery: pacingDelivery,
+          profiles: deliveryProfiles,
+          scriptTimeSeconds,
+          effectiveWpm: voicePace.effectiveWpm,
+          lengthTolerancePct:
+            deliveryProfiles.shared.lengthTolerancePct ?? 10,
+          wordsPerSentence: wordsPerSentenceForDelivery(
+            scriptGeneration,
+            pacingDelivery,
+          ),
+          journalMode: journalModeFromJob,
+          source: "user",
+        });
+        for (const u of generated.usages) {
+          claudeWorkerInputTokens += u.input_tokens;
+          claudeWorkerOutputTokens += u.output_tokens;
+        }
+        scriptTextUsed = generated.script;
+        timeBasedUsed = true;
+        generationTimings.phases.scriptMs = elapsedMs(scriptStarted);
+        console.log("generated script", {
+          chars: scriptTextUsed.length,
+          targetMinutes,
+          scriptMs: generationTimings.phases.scriptMs,
+          path: "time",
+          phases: generated.phases,
+          sentencesPerMinute: generated.sentencesPerMinute,
+          continued: generated.continued,
+          trimmed: generated.trimmed,
+          outsideTolerance: generated.outsideTolerance,
+          outsideReason: generated.outsideReason,
+          silenceShareAfter: generated.silenceShareAfter,
+          callCount: generated.usages.length,
+        });
+      } else if (!useSections) {
+        // Legacy single-call path (writeMode === "single").
+        const factorsSource = singleCallCorrection;
+        console.log("generating script from Claude (single call)", {
           meditationStylePresent: Boolean(meditationStyle?.trim()),
           targetMinutes,
           longerBreaks,
           totalWords: totals.totalWords,
           planMinWords,
+          writeMode,
+          reason: "admin-mode-single",
         });
         const cellFactors = factorsFor(
-          targetCorrection,
+          factorsSource,
           pacingDelivery,
           targetMinutes,
         );
@@ -2241,6 +2651,11 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           deliveryStyle,
           pacing: scriptPacing,
           pauseRules: scriptPauseRules,
+          styleGuideContext: {
+            silenceShare,
+            longestPauseSeconds: deliveryProfiles.casual.longestPause,
+          },
+          styleGuideStyle,
           lengthFit: singleLengthFit,
         });
         if (generated.usage) {
@@ -2266,6 +2681,10 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           totalWords: totals.totalWords,
           planMinWords,
         });
+        const styleGuideContext = {
+          silenceShare,
+          longestPauseSeconds: deliveryProfiles.casual.longestPause,
+        };
         const sharedPrompt = {
           transcript,
           meditationStyle,
@@ -2276,6 +2695,12 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           deliveryStyle,
           pacing: scriptPacing,
           pauseRules: pauseRulesForSectionPrompt(pacingDelivery),
+          styleGuideContext,
+          styleGuideStyle,
+          usageSource: "user" as const,
+          usageReasonPrefix: "create",
+          userId:
+            typeof jobItem.userId === "string" ? jobItem.userId : null,
           lengthFit,
         };
         let styleInOrder = false;
@@ -2287,13 +2712,28 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         } catch {
           /* */
         }
+        const deliveryWordCap = sectionWordCapForDelivery({
+          hardCap: sectionWordCap,
+          maxSectionMinutes,
+          medianWpm: CALIBRATION_MEDIAN_WPM,
+          silenceShare,
+        });
+        const edgeSilence = sectionSilenceSharesFor(
+          deliveryProfiles,
+          pacingDelivery,
+        );
         const planned = await planScriptSections({
           apiKey: claudeKey,
           model: claudeModel,
           shared: sharedPrompt,
           totals,
-          wordCap: sectionWordCap,
+          wordCap: deliveryWordCap,
           wordMin: sectionWordMin,
+          medianWpm: CALIBRATION_MEDIAN_WPM,
+          silenceShare: edgeSilence.middle,
+          firstSilenceShare: edgeSilence.first,
+          lastSilenceShare: edgeSilence.last,
+          maxSectionMinutes,
         });
         planMs = planned.ms;
         if (planned.usage) {
@@ -2358,6 +2798,42 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           sectionsWriteMs,
           sections: sectionTexts.length,
           path: "sections",
+        });
+      }
+
+      // Optional: Haiku brief-fidelity on user scripts (default off). Calibration always checks.
+      if (scriptGeneration.userScriptFidelityCheck === true && scriptTextUsed) {
+        const brief =
+          createPromptFromProvenance(creationProvenance)?.trim() ||
+          (typeof meditationStyle === "string" ? meditationStyle.trim() : "") ||
+          "(no brief)";
+        const fidelitySections =
+          sectionsUsed && sectionPlan && sectionTexts.length
+            ? sectionPlan.sections.map((s, i) => ({
+                name: s.name,
+                intention: s.intention,
+                targetWords: s.words,
+                writtenWords: 0,
+                plannedPauseSeconds: s.pauseSeconds,
+                writtenPauseSeconds: 0,
+                text: sectionTexts[i]?.text ?? "",
+              }))
+            : [];
+        const fidelity = await checkBriefFidelity({
+          apiKey: claudeKey,
+          brief,
+          delivery: pacingDelivery,
+          minutes: targetMinutes,
+          path: sectionsUsed ? "sections" : "single",
+          scriptText: scriptTextUsed,
+          sections: fidelitySections,
+        });
+        console.log("user script brief fidelity", {
+          diverted: fidelity.diverted,
+          notes: fidelity.notes,
+          divertedSections: fidelity.divertedSections,
+          checkMs: fidelity.checkMs,
+          model: fidelity.model,
         });
       }
     }
@@ -2523,6 +2999,12 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   /** Set when the script is > 10% short on words: pauses may not cover missing words. */
   let maxLongPauseScale: number | undefined;
   let scriptShort = false;
+  // Time-based: extendable pauses already fitted in script text; do not re-scale
+  // long pauses (would move ordinary fixed pauses). Post-TTS same lock.
+  if (timeBasedUsed) {
+    preAudioPauseScale = 1;
+    maxLongPauseScale = 1;
+  }
   const predictBody = (bodyScript: string) => {
     const tts = withSpokenMeditationTitleIntro(bodyScript, libraryTitle);
     const lead = fixedLeadSegments(tts, bodyScript, fitPauseBands);
@@ -2538,14 +3020,43 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       }),
     };
   };
-  const plannedLongPauseSeconds = () =>
-    Math.max(0, (sectionPlan?.totalPauseSeconds ?? totals.totalPauseSeconds) * pauseRenderScale);
+  /** Own-silence: plan-scale uses middle planned pauses only when sections exist. */
+  const plannedLongPauseSeconds = () => {
+    if (sectionPlan && sectionPlan.sections.length > 2) {
+      return Math.max(0, middlePlannedPauseSeconds(sectionPlan.sections) * pauseRenderScale);
+    }
+    return Math.max(0, (sectionPlan?.totalPauseSeconds ?? totals.totalPauseSeconds) * pauseRenderScale);
+  };
+  /**
+   * Edge section long pauses stay at scale 1; fold them into fixed so
+   * fitLongPauseScaleWithPlan only moves middle long pauses.
+   */
+  const edgeLongPauseLock = (): number => {
+    if (!sectionsUsed || !sectionTexts.length || sectionTexts.length <= 2) return 0;
+    let edge = 0;
+    const n = sectionTexts.length;
+    for (let i = 0; i < n; i++) {
+      if (!isEdgeSectionIndex(i, n)) continue;
+      const p = predictStemLength({
+        ttsScript: sectionTexts[i]!.text,
+        effectiveWpm: voicePace.effectiveWpm,
+        pauseBands: fitPauseBands,
+        pauseScale: pauseRenderScale,
+        fixedSegments: 0,
+        commaBreakSeconds,
+      });
+      edge += p.longPauseSeconds;
+    }
+    return Math.max(0, edge);
+  };
   const scaleFor = (pred: ReturnType<typeof predictStemLength>) => {
     const bandMax = Math.min(PRE_AUDIO_SCALE_MAX, maxLongPauseScale ?? PRE_AUDIO_SCALE_MAX);
+    const edgeLock = edgeLongPauseLock();
+    const middleLong = Math.max(0, pred.longPauseSeconds - edgeLock);
     const fitted = fitLongPauseScaleWithPlan({
       speechSeconds: pred.speechSeconds,
-      fixedPauseSeconds: pred.fixedPauseSeconds,
-      longPauseSeconds: pred.longPauseSeconds,
+      fixedPauseSeconds: pred.fixedPauseSeconds + edgeLock,
+      longPauseSeconds: middleLong,
       plannedLongPauseSeconds: plannedLongPauseSeconds(),
       targetSeconds: lengthTargetSeconds,
       bandMin: PRE_AUDIO_SCALE_MIN,
@@ -2553,8 +3064,11 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     });
     return fitted.scale;
   };
-  const atScale = (pred: ReturnType<typeof predictStemLength>, scale: number) =>
-    pred.speechSeconds + pred.fixedPauseSeconds + pred.longPauseSeconds * scale;
+  const atScale = (pred: ReturnType<typeof predictStemLength>, scale: number) => {
+    const edgeLock = edgeLongPauseLock();
+    const middleLong = Math.max(0, pred.longPauseSeconds - edgeLock);
+    return pred.speechSeconds + pred.fixedPauseSeconds + edgeLock + middleLong * scale;
+  };
   try {
     let { lead, pred } = predictBody(scriptTextUsed);
     const firstPredicted = pred.predictedSeconds;
@@ -2564,12 +3078,14 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       // v9: pause scaling toward the plan has no floor; 60–160% only beyond the plan.
     }
     // v9: fix sections only when pause scaling cannot bring length inside ±tolerance.
-    if (sectionsUsed && sectionPlan && sectionFirstDraft && shouldGenerateScript) {
+      if (sectionsUsed && sectionPlan && sectionFirstDraft && shouldGenerateScript) {
       const bandMax = Math.min(PRE_AUDIO_SCALE_MAX, maxLongPauseScale ?? PRE_AUDIO_SCALE_MAX);
+      const edgeLock = edgeLongPauseLock();
+      const middleLong = Math.max(0, pred.longPauseSeconds - edgeLock);
       const salvage = fitLongPauseScaleWithPlan({
         speechSeconds: pred.speechSeconds,
-        fixedPauseSeconds: pred.fixedPauseSeconds,
-        longPauseSeconds: pred.longPauseSeconds,
+        fixedPauseSeconds: pred.fixedPauseSeconds + edgeLock,
+        longPauseSeconds: middleLong,
         plannedLongPauseSeconds: plannedLongPauseSeconds(),
         targetSeconds: lengthTargetSeconds,
         bandMin: PRE_AUDIO_SCALE_MIN,
@@ -2619,7 +3135,10 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       }
     }
     const speechOff = !lengthWithin(pred.speechSeconds, plan.speechSeconds, lengthTolerancePct);
-    if (!lengthWithin(pred.predictedSeconds, lengthTargetSeconds, lengthTolerancePct)) {
+    if (
+      !timeBasedUsed &&
+      !lengthWithin(pred.predictedSeconds, lengthTargetSeconds, lengthTolerancePct)
+    ) {
       preAudioPauseScale = scaleFor(pred);
     }
     const totalOff = !lengthWithin(
@@ -2628,7 +3147,14 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       lengthTolerancePct,
     );
     // Whole-script revision only when the section markers were missing (the section fix replaces it).
-    if (!sectionsUsed && (speechOff || totalOff) && shouldGenerateScript && pred.words > 0) {
+    // Time-based: already fitted extendable pauses; skip length-revision path.
+    if (
+      !timeBasedUsed &&
+      !sectionsUsed &&
+      (speechOff || totalOff) &&
+      shouldGenerateScript &&
+      pred.words > 0
+    ) {
       const revisionTargets = lengthRevisionTargets({
         pred,
         plan,
@@ -2785,7 +3311,16 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           ...(maxLongPauseScale != null ? { maxScale: maxLongPauseScale } : {}),
         },
       };
-      const runOla = async (script: string, opts?: { encodeAac?: boolean; lengthFit?: typeof olaFit.lengthFit | null; fixedLead?: number }) => {
+      const runOla = async (
+        script: string,
+        opts?: {
+          encodeAac?: boolean;
+          lengthFit?: typeof olaFit.lengthFit | null;
+          fixedLead?: number;
+          /** Override pre-audio long-pause scale (own-silence: edge = 1). */
+          longPauseScale?: number;
+        },
+      ) => {
         const fit =
           opts && "lengthFit" in opts
             ? opts.lengthFit === null
@@ -2801,7 +3336,10 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           applyFx: !skipVoiceFxEarly,
           voiceFxDial,
           speechTempo: olaFit.speechTempo,
-          longPauseScale: olaFit.longPauseScale,
+          longPauseScale:
+            typeof opts?.longPauseScale === "number" && Number.isFinite(opts.longPauseScale)
+              ? opts.longPauseScale
+              : olaFit.longPauseScale,
           ...(fit
             ? {
                 lengthFit: {
@@ -2840,12 +3378,16 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
             ? withSpokenMeditationTitleIntro(sec.text, libraryTitle)
             : sec.text,
         );
+        // Own-silence: plan-scale middle only; edge sections keep written pauses
+        // (overall ±10% lengthFit re-run below may still touch everything).
+        const nSec = sectionScripts.length;
         const parts = await Promise.all(
           sectionScripts.map((script, i) =>
             runOla(script, {
               encodeAac: false,
               lengthFit: null,
               fixedLead: i === 0 ? fitLeadSegments : 0,
+              longPauseScale: isEdgeSectionIndex(i, nSec) ? 1 : preAudioPauseScale,
             }),
           ),
         );

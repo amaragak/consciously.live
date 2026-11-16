@@ -5,6 +5,7 @@ import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambda_nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as cr from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
 import type { ConsciouslyConfigNestedStack } from "./config-nested-stack";
 import type { ConsciouslyDatabaseNestedStack } from "./database-nested-stack";
@@ -302,14 +303,15 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       ),
     });
 
-    // Self-invoke for async AAC bake. Wildcard ARNs avoid CFN cycles with the
-    // shared Lambda role (grantInvoke(role) → circular dep across ApiAdmin).
+    // Self-invoke for async AAC bake + script calibration ticks. Wildcard ARNs
+    // avoid CFN cycles with the shared Lambda role (grantInvoke(role) → cycle).
     role.addToPolicy(
       new iam.PolicyStatement({
         actions: ["lambda:InvokeFunction"],
         resources: [
           `arn:aws:lambda:${this.region}:${this.account}:function:*AdminSoundsTrim*`,
           `arn:aws:lambda:${this.region}:${this.account}:function:*AdminSoundsEq*`,
+          `arn:aws:lambda:${this.region}:${this.account}:function:*AdminVoice*`,
         ],
       }),
     );
@@ -677,7 +679,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
       handler: "handler",
       runtime: lambda.Runtime.NODEJS_20_X,
       // Speechify sample ladder = admin rate ±5 (11 TTS + FX bakes).
-      // Script calibration batch = up to 27 Claude calls.
+      // Script calibration batch = up to 90 self-chained ticks.
       timeout: cdk.Duration.minutes(15),
       memorySize: 2048,
       ephemeralStorageSize: cdk.Size.mebibytes(1024),
@@ -700,6 +702,32 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
         CONSCIOUSLY_API_URL: httpApi.apiEndpoint,
       },
+    });
+    // Calibration ticks self-invoke AdminVoice. AWS default RecursiveLoop=Terminate
+    // silently drops the 16th hop (stuck at 15/90). Allow intentional chaining.
+    const allowAdminVoiceRecursion = {
+      service: "Lambda",
+      action: "putFunctionRecursionConfig",
+      parameters: {
+        FunctionName: adminVoice.functionName,
+        RecursiveLoop: "Allow",
+      },
+      physicalResourceId: cr.PhysicalResourceId.of(
+        "AdminVoiceFunctionRecursionAllow",
+      ),
+    } as const;
+    new cr.AwsCustomResource(this, "AdminVoiceAllowRecursion", {
+      onCreate: { ...allowAdminVoiceRecursion },
+      onUpdate: { ...allowAdminVoiceRecursion },
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          actions: [
+            "lambda:PutFunctionRecursionConfig",
+            "lambda:GetFunctionRecursionConfig",
+          ],
+          resources: [adminVoice.functionArn],
+        }),
+      ]),
     });
     addNestHttpRoutes(this, httpApi, {
       id: "AdminVoiceRoute",

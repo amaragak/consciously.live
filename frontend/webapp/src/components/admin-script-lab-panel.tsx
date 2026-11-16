@@ -1099,7 +1099,9 @@ export function AdminScriptLabPanel() {
 
   return (
     <div className="space-y-6">
-      <AdminPauseLengthsPanel />
+      {/* Named-band pause lengths retired — Claude sets every pause in seconds.
+          Kept in store for old scripts; panel hidden from Settings. */}
+      {/* <AdminPauseLengthsPanel /> */}
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       <audio

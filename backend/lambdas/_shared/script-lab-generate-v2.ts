@@ -29,6 +29,7 @@ import {
   SLEEP_CLOSING_TAGS,
   SLEEP_CONNECTIVE_TAGS,
 } from "./script-lab-shared-prompt-rules";
+import { styleGuidePromptBlock } from "./style-guide-for-prompt";
 import {
   selectSegmentVariant,
   type SegmentTagMeta,
@@ -607,6 +608,11 @@ export function buildPassTwoPrompt(params: {
   renderedSkeleton: ScriptLabBeat[];
   focusDepth: "light" | "medium" | "deep" | null;
   additionalContext?: string;
+  deliveryStyle?: "casual" | "guided" | "open_sits";
+  styleGuideContext?: {
+    silenceShare: number;
+    longestPauseSeconds: number;
+  };
 }): { system: string; userContent: string } {
   const depth = params.focusDepth ?? "medium";
   const additional =
@@ -648,6 +654,22 @@ export function buildPassTwoPrompt(params: {
     );
   }
 
+  const delivery =
+    params.deliveryStyle === "casual" || params.deliveryStyle === "open_sits"
+      ? params.deliveryStyle
+      : "guided";
+  const guideBlock =
+    !params.journalMode && params.meditationStyle.trim()
+      ? styleGuidePromptBlock({
+          meditationStyle: params.meditationStyle,
+          delivery,
+          silenceShare: params.styleGuideContext?.silenceShare ?? 0.5,
+          longestPauseSeconds: params.styleGuideContext?.longestPauseSeconds ?? 4,
+          stripPauses: delivery === "casual",
+          omitSectionSilenceTarget: true,
+        })
+      : null;
+
   return {
     system: [
       "You are completing a meditation script (Script Lab V2 pass 2).",
@@ -655,7 +677,8 @@ export function buildPassTwoPrompt(params: {
       "Your job is to make this script feel written for this specific person, not for a generic user of this meditation type.",
       "Personalized custom beats are what make the script worth generating fresh.",
       "Free-text additional context (when present) is equal weight to structured fields and must drive distinctive personalization — never treat it as secondary.",
-    ].join(" "),
+      ...(guideBlock ? ["", guideBlock] : []),
+    ].join(guideBlock ? "\n" : " "),
     userContent: [
       ...personalizationLead,
       "",
@@ -987,6 +1010,11 @@ export async function generateScriptLabScriptV2(params: {
   }>;
   contextTags?: string[];
   recentVariantIds?: readonly string[];
+  deliveryStyle?: "casual" | "guided" | "open_sits";
+  styleGuideContext?: {
+    silenceShare: number;
+    longestPauseSeconds: number;
+  };
 }): Promise<{
   beats: ScriptLabBeat[];
   beatsBeforeVerification: ScriptLabBeat[];
@@ -1105,6 +1133,8 @@ export async function generateScriptLabScriptV2(params: {
     renderedSkeleton: passOneRendered,
     focusDepth: focusSlot?.kind === "focus_anchor" ? focusSlot.depth : null,
     additionalContext,
+    deliveryStyle: params.deliveryStyle,
+    styleGuideContext: params.styleGuideContext,
   });
   const pass2 = await callAnthropicTool({
     apiKey: params.apiKey,
