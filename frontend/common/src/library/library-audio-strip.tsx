@@ -104,27 +104,16 @@ export function trackFromBlogNarration(url: string, title: string): LibraryActiv
   };
 }
 
-function siblingStemUrl(
-  audioUrl: string,
-  kind: "dry" | "wet",
-): string | undefined {
-  const src = audioUrl.trim();
-  if (!src) return undefined;
-  try {
-    const u = new URL(src);
-    if (!/\.(mp3|wav|opus|m4a)$/i.test(u.pathname)) return undefined;
-    u.pathname = u.pathname.replace(/\.(mp3|wav|opus|m4a)$/i, `-${kind}.m4a`);
-    return u.toString();
-  } catch {
-    return undefined;
-  }
-}
-
 export function trackFromLibraryItem(
   m: LibraryMeditationFields,
 ): LibraryActiveTrack {
   const cover = m.coverImageUrl?.trim();
   const speaker = m.speakerName?.trim();
+  // Only use locked dry/wet when the API has real stem URLs. Inventing
+  // `-dry.m4a` / `-wet.m4a` siblings makes DualStem fetch 404s on modern
+  // baked-only gens (FX is already dial-baked into `audioUrl`).
+  const dry = (m.dryAudioUrl ?? "").trim();
+  const wet = (m.wetAudioUrl ?? "").trim();
   return {
     url: voiceStemPlaybackUrl(m.audioUrl),
     title: m.title,
@@ -138,8 +127,8 @@ export function trackFromLibraryItem(
     musicGain: m.backgroundMusicGain ?? 50,
     drumsGain: m.backgroundDrumsGain ?? 40,
     noiseGain: m.backgroundNoiseGain ?? 10,
-    dryUrl: m.dryAudioUrl || siblingStemUrl(m.audioUrl, "dry"),
-    wetUrl: m.wetAudioUrl || siblingStemUrl(m.audioUrl, "wet"),
+    dryUrl: dry || undefined,
+    wetUrl: wet || undefined,
     voiceFxDial: m.voiceFxDial ?? 100,
     durationSeconds:
       typeof m.durationSeconds === "number" && m.durationSeconds > 0
@@ -181,6 +170,8 @@ export function liveMixTrack(
   },
 ): LibraryActiveTrack {
   const cover = m.coverImageUrl?.trim();
+  const dry = (m.dryAudioUrl ?? "").trim();
+  const wet = (m.wetAudioUrl ?? "").trim();
   return {
     url: voiceStemPlaybackUrl(m.audioUrl),
     title: m.title,
@@ -194,8 +185,8 @@ export function liveMixTrack(
     musicGain: mix.musicGain,
     drumsGain: mix.drumsGain,
     noiseGain: mix.noiseGain,
-    dryUrl: m.dryAudioUrl || siblingStemUrl(m.audioUrl, "dry"),
-    wetUrl: m.wetAudioUrl || siblingStemUrl(m.audioUrl, "wet"),
+    dryUrl: dry || undefined,
+    wetUrl: wet || undefined,
     voiceFxDial: mix.voiceFxDial ?? m.voiceFxDial ?? 100,
     durationSeconds:
       typeof m.durationSeconds === "number" && m.durationSeconds > 0
@@ -767,12 +758,18 @@ export function LibraryAudioStrip({
         applySpeechElementVolume(el);
         // The composition has played through the lead-in; keep it there.
         syncSoundscapeToVoice(0);
-        void el.play().catch(() => {});
+        void el.play().catch(() => {
+          setPlaying(false);
+          onPlayingChange?.(track.s3Key, false);
+        });
       }, voiceIntroSeconds() * 1000);
       return;
     }
     syncSoundscapeToVoice(el.currentTime);
-    void el.play().catch(() => {});
+    void el.play().catch(() => {
+      setPlaying(false);
+      onPlayingChange?.(track.s3Key, false);
+    });
   }
 
   function pausePlayback() {

@@ -21,13 +21,16 @@ export function voiceStemPlaybackUrl(url: string): string {
 }
 
 /**
- * User-facing stems are AAC-in-MP4 only (phase-locked dry/FX from one ffmpeg
- * encode). Catalog keys may still end in `.wav` — remap via
- * `voiceStemPlaybackUrl`; never fall back to WAV/MP3 for playback.
+ * Prefer AAC-in-MP4 (Safari-safe). Catalog keys may still end in `.wav` /
+ * `.mp3` — remap via `voiceStemPlaybackUrl`.
  *
  * Speechify Create Sound asks for paced keys (`r0-loud-dry.m4a`, …). When those
  * are not on the CDN yet, fall back to the legacy centre stems
  * (`loud-dry.m4a` / `loud-fx.m4a`) so audition still plays.
+ *
+ * Last resort: legacy `.mp3` sibling for baked library mixes (pre-backfill /
+ * missing AAC). Dry/FX stems are AAC-only in practice; the mp3 candidate is
+ * harmless when absent.
  */
 export function voiceStemPlaybackCandidates(url: string): string[] {
   const trimmed = url.trim();
@@ -40,10 +43,12 @@ export function voiceStemPlaybackCandidates(url: string): string[] {
     "/loud-$1.m4a",
   );
   if (legacySpeechify !== m4a) out.push(legacySpeechify);
+  const mp3 = m4a.replace(/\.m4a(?=\?|$)/i, ".mp3");
+  if (mp3 !== m4a && !out.includes(mp3)) out.push(mp3);
   return out;
 }
 
-/** Same as voice stems — AAC delivery only. */
+/** Same candidate order as voice stems (AAC first, then legacy MP3). */
 export function mediaPlaybackCandidates(url: string): string[] {
   return voiceStemPlaybackCandidates(url);
 }

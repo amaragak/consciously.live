@@ -16,6 +16,7 @@ import {
   IconHeart,
   IconMixer,
 } from "@/components/library-meditation-card";
+import { CardActionsMenuSurface } from "@/components/card-actions-menu-surface";
 import { useLibraryPlayer } from "@/components/library-player-provider";
 import { PRIMARY_ACCENT_FILL_STYLE } from "@/components/primary-create-button";
 import {
@@ -80,6 +81,17 @@ export type MeditationDetailProps = {
   onOpenMix?: (anchorEl: HTMLElement) => void;
   mixOpen?: boolean;
   onCloseMix?: () => void;
+  /** Native offline download — omit on web. */
+  offlineDownload?: {
+    downloaded: boolean;
+    stale?: boolean;
+    soundscapeName?: string | null;
+    sizeLabel?: string;
+    busy?: boolean;
+    onDownload: () => void;
+    onRemove: () => void;
+    onUpdate?: () => void;
+  } | null;
 };
 
 const SECTION_LABEL =
@@ -263,6 +275,7 @@ function DetailMenu({
   mixOpen,
   onCloseMix,
   onHowMade,
+  offlineDownload,
 }: Pick<
   MeditationDetailProps,
   | "item"
@@ -274,26 +287,13 @@ function DetailMenu({
   | "onOpenMix"
   | "mixOpen"
   | "onCloseMix"
+  | "offlineDownload"
 > & { onHowMade: () => void }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const btnRef = useRef<HTMLButtonElement | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  // Outside / Escape handled by CardActionsMenuSurface.
 
   const own = source === "own";
   const canShare = Boolean(onShare);
@@ -301,12 +301,26 @@ function DetailMenu({
   const canHowMade = own;
   const canPublic = own && Boolean(item.sk) && Boolean(onPublicChange);
   const canArchive = own && Boolean(item.sk) && Boolean(onArchive);
-  if (!canShare && !canMix && !canHowMade && !canPublic && !canArchive) {
+  const canOffline = Boolean(offlineDownload && item.audioUrl);
+  if (
+    !canShare &&
+    !canMix &&
+    !canHowMade &&
+    !canPublic &&
+    !canArchive &&
+    !canOffline
+  ) {
     return null;
   }
 
   const itemCls =
-    "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-background";
+    "flex w-full min-h-12 cursor-pointer items-center gap-2.5 px-4 py-3 text-left text-[15px] text-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-0 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm";
+  const switchRowCls =
+    "flex min-h-12 items-center justify-between gap-3 px-4 py-3 sm:min-h-0 sm:px-3 sm:py-2";
+
+  /* Old fixed flyout — replaced by CardActionsMenuSurface:
+   * <div role="menu" className="absolute right-0 top-full z-[90] mt-1 min-w-[12.5rem] …">
+   */
 
   return (
     <div ref={rootRef} className="relative shrink-0">
@@ -318,91 +332,113 @@ function DetailMenu({
       >
         <MoreHorizontal className="size-[18px]" strokeWidth={2} aria-hidden />
       </IconCircleButton>
-      {open ? (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-[90] mt-1 min-w-[12.5rem] overflow-hidden rounded-xl border border-border bg-card py-1 shadow-xl isolate"
-        >
-          {canMix ? (
-            <button
-              type="button"
-              role="menuitem"
-              className={itemCls}
-              onClick={() => {
-                setOpen(false);
-                if (mixOpen) onCloseMix?.();
-                else if (btnRef.current) onOpenMix?.(btnRef.current);
-              }}
+      <CardActionsMenuSurface
+        open={open}
+        onClose={() => setOpen(false)}
+        title={item.title}
+        anchorRef={btnRef}
+      >
+        {canMix ? (
+          <button
+            type="button"
+            role="menuitem"
+            className={itemCls}
+            onClick={() => {
+              setOpen(false);
+              if (mixOpen) onCloseMix?.();
+              else if (btnRef.current) onOpenMix?.(btnRef.current);
+            }}
+          >
+            <IconMixer className="h-4 w-4" />
+            {mixOpen ? "Close mix" : "Edit mix"}
+          </button>
+        ) : null}
+        {canHowMade ? (
+          <button
+            type="button"
+            role="menuitem"
+            className={itemCls}
+            onClick={() => {
+              setOpen(false);
+              onHowMade();
+            }}
+          >
+            How this was made
+          </button>
+        ) : null}
+        {canOffline && offlineDownload ? (
+          <button
+            type="button"
+            role="menuitem"
+            disabled={offlineDownload.busy}
+            className={itemCls}
+            onClick={() => {
+              if (offlineDownload.downloaded && offlineDownload.stale) {
+                if (offlineDownload.onUpdate) offlineDownload.onUpdate();
+                else offlineDownload.onDownload();
+              } else if (offlineDownload.downloaded) {
+                offlineDownload.onRemove();
+              } else {
+                offlineDownload.onDownload();
+              }
+              setOpen(false);
+            }}
+          >
+            {offlineDownload.downloaded && offlineDownload.stale
+              ? "Update download"
+              : offlineDownload.downloaded
+                ? "Remove download"
+                : "Download"}
+          </button>
+        ) : null}
+        {canShare ? (
+          <button
+            type="button"
+            role="menuitem"
+            className={itemCls}
+            onClick={() => {
+              onShare?.();
+              setOpen(false);
+            }}
+          >
+            {shareCopied ? "Copied!" : "Share"}
+          </button>
+        ) : null}
+        {canPublic ? (
+          <div role="menuitem" className={switchRowCls}>
+            <span
+              className={`text-[15px] sm:text-sm ${
+                item.isPublic === true ? "text-accent-link" : "text-foreground"
+              }`}
             >
-              <IconMixer className="h-4 w-4" />
-              {mixOpen ? "Close mix" : "Edit mix"}
-            </button>
-          ) : null}
-          {canHowMade ? (
-            <button
-              type="button"
-              role="menuitem"
-              className={itemCls}
-              onClick={() => {
-                setOpen(false);
-                onHowMade();
-              }}
+              Public
+            </span>
+            <Switch.Root
+              checked={item.isPublic === true}
+              onCheckedChange={(v) => onPublicChange?.(Boolean(v))}
+              aria-label={
+                item.isPublic ? "Remove from community library" : "Make public"
+              }
+              className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button"
             >
-              How this was made
-            </button>
-          ) : null}
-          {canShare ? (
-            <button
-              type="button"
-              role="menuitem"
-              className={itemCls}
-              onClick={() => {
-                onShare?.();
-                setOpen(false);
-              }}
-            >
-              {shareCopied ? "Copied!" : "Share"}
-            </button>
-          ) : null}
-          {canPublic ? (
-            <div
-              role="menuitem"
-              className="flex items-center justify-between gap-3 px-3 py-2"
-            >
-              <span
-                className={`text-sm ${
-                  item.isPublic === true ? "text-accent-link" : "text-foreground"
-                }`}
-              >
-                Public
-              </span>
-              <Switch.Root
-                checked={item.isPublic === true}
-                onCheckedChange={(v) => onPublicChange?.(Boolean(v))}
-                aria-label={
-                  item.isPublic ? "Remove from community library" : "Make public"
-                }
-                className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button"
-              >
-                <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
-              </Switch.Root>
-            </div>
-          ) : null}
-          {canArchive ? (
-            <button
-              type="button"
-              role="menuitem"
-              className={`${itemCls} text-muted`}
-              onClick={() => {
-                setOpen(false);
-                onArchive?.();
-              }}
-            >
-              Archive
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+              <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
+            </Switch.Root>
+          </div>
+        ) : null}
+        {canArchive ? (
+          <button
+            type="button"
+            role="menuitem"
+            className={`${itemCls} text-muted`}
+            onClick={() => {
+              setOpen(false);
+              onArchive?.();
+            }}
+          >
+            Archive
+          </button>
+        ) : null}
+      </CardActionsMenuSurface>
     </div>
   );
 }
@@ -906,6 +942,7 @@ export default function MeditationDetail(props: MeditationDetailProps) {
       onOpenMix={props.onOpenMix}
       mixOpen={props.mixOpen}
       onCloseMix={props.onCloseMix}
+      offlineDownload={props.offlineDownload}
       onHowMade={() => setHowMadeOpen(true)}
     />
   );

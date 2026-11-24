@@ -4324,6 +4324,11 @@ export async function createMeditationAudioJob(params: {
   claudeModel?: string;
   /** Dev: Fish qualitative tags vs ffmpeg silence chunks. Default segmented. */
   fishPauseMode?: FishPauseMode;
+  /**
+   * Dev: silence_words_haiku — Haiku each phase toward its target (no
+   * whole-script gate). When omitted, worker uses admin streamPhasesToTts.
+   */
+  streamPhasesToTts?: boolean;
   /** Dev: also render Speechify warm + calm emotion stems (serial). */
   speechifyEmotionVariants?: boolean;
   /** Dev: skip wet Voice FX bounce entirely (dry stem only). */
@@ -4403,6 +4408,9 @@ export async function createMeditationAudioJob(params: {
     ...(params.claudeModel ? { claudeModel: params.claudeModel } : {}),
     ...(params.fishPauseMode === "native" || params.fishPauseMode === "segmented"
       ? { fishPauseMode: params.fishPauseMode }
+      : {}),
+    ...(typeof params.streamPhasesToTts === "boolean"
+      ? { streamPhasesToTts: params.streamPhasesToTts }
       : {}),
     ...(params.speechifyEmotionVariants === true
       ? { speechifyEmotionVariants: true }

@@ -62,7 +62,10 @@ import {
   writeMeditationDeliveryPref,
   type MeditationDelivery,
 } from "@/lib/meditation-delivery";
-import { estimateMeditationCredits } from "@/lib/meditation-credits";
+import {
+  estimateMeditationCredits,
+  type MeditationCreditEstimate,
+} from "@/lib/meditation-credits";
 import {
   factoryPresetToMix,
   type MixerFactoryPreset,
@@ -217,6 +220,8 @@ export type CreateSoundStepJobExtras = {
   fadeOut: boolean;
   claudeModel?: string;
   fishPauseMode?: FishPauseMode;
+  /** Dev: Haiku each phase (no whole-script gate) for silence_words_haiku. */
+  streamPhasesToTts?: boolean;
   skipVoiceFx?: boolean;
   skipSpeechifyLoudnorm?: boolean;
   speechifyEmotionVariants?: boolean;
@@ -286,6 +291,10 @@ type CreateSoundStepProps = {
   lengthMinutes?: number;
   /** Remaining user credits; omit to hide the "· N left" half of the cost line. */
   creditBalance?: number | null;
+  /** Live credit estimate for the bottom Create bar (number + breakdown factors). */
+  onCreditEstimateChange?: (
+    estimate: MeditationCreditEstimate & { needsMoreCredits: boolean },
+  ) => void;
   /**
    * Ignore create-flow sound lock + last-used; start on a random Our Pick
    * (Manifesto Story Narrate).
@@ -590,6 +599,7 @@ export const CreateSoundStep = forwardRef<
     hideMainUi = false,
     lengthMinutes = 10,
     creditBalance = null,
+    onCreditEstimateChange,
     freshOurPickSound = false,
     onPickLabelsChange,
   },
@@ -648,6 +658,7 @@ export const CreateSoundStep = forwardRef<
   );
   const [fishPauseMode, setFishPauseMode] =
     useState<FishPauseMode>("segmented");
+  const [streamPhasesToTts, setStreamPhasesToTts] = useState(true);
   const [speakerFxPreviewOn, setSpeakerFxPreviewOn] = useState(true);
   const [speechifyEmotionVariants, setSpeechifyEmotionVariants] =
     useState(false);
@@ -2194,6 +2205,7 @@ export const CreateSoundStep = forwardRef<
             ? {
                 claudeModel: claudeModelChoice,
                 fishPauseMode,
+                streamPhasesToTts,
                 ...(skipVoiceFx ? { skipVoiceFx: true as const } : {}),
                 ...(skipSpeechifyLoudnorm
                   ? { skipSpeechifyLoudnorm: true as const }
@@ -2333,6 +2345,13 @@ export const CreateSoundStep = forwardRef<
       : null;
   const needsMoreCredits =
     creditsShort != null && creditEstimate.credits > creditsShort;
+
+  useEffect(() => {
+    onCreditEstimateChange?.({
+      ...creditEstimate,
+      needsMoreCredits,
+    });
+  }, [creditEstimate, needsMoreCredits, onCreditEstimateChange]);
   const selectedSound =
     compositions.find((c) => c.key === compositionKey) ?? null;
   const mixLayerBits = [
@@ -2843,6 +2862,33 @@ export const CreateSoundStep = forwardRef<
             <div
               className="inline-flex h-8 shrink-0 overflow-hidden rounded-lg border border-border bg-background"
               role="group"
+              aria-label="Stream Haiku phases"
+              title="On: after Sonnet, Haiku each phase toward its word target. Off: Haiku only if the whole script is outside the admin script trigger %."
+            >
+              {(
+                [
+                  [false, "Haiku if miss"],
+                  [true, "Haiku stream"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setStreamPhasesToTts(value)}
+                  className={`cursor-pointer px-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    streamPhasesToTts === value
+                      ? "bg-accent-soft text-foreground"
+                      : "text-muted hover:bg-accent-soft/40 hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div
+              className="inline-flex h-8 shrink-0 overflow-hidden rounded-lg border border-border bg-background"
+              role="group"
               aria-label="Voice FX"
             >
               {(
@@ -2955,38 +3001,16 @@ export const CreateSoundStep = forwardRef<
       */}
       <div className="grid grid-cols-1 items-stretch justify-items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:justify-items-stretch xl:gap-4">
         <section className="flex w-full max-w-[34rem] flex-col gap-3.5 rounded-2xl border border-border bg-card px-5 pb-[18px] pt-4 xl:max-w-none">
+          {/* Separate DELIVERY / VOICE eyebrows — replaced by single Voice heading
+              (create-desktop-fixes-v3). Delivery is now a labelled row under the divider.
           <div className="flex flex-col gap-2">
             <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
               Delivery
             </p>
-            <div
-              className="inline-flex w-full rounded-xl bg-background p-[3px]"
-              role="group"
-              aria-label="Delivery style"
-            >
-              {MEDITATION_DELIVERY_OPTIONS.map((opt) => {
-                const on = delivery === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    disabled={soundControlsDisabled}
-                    onClick={() => setDeliveryAndRemember(opt.id)}
-                    className={`min-w-0 flex-1 cursor-pointer rounded-[9px] px-2 py-[7px] text-[13px] ${
-                      on
-                        ? "border border-border bg-card font-semibold text-foreground"
-                        : "border border-transparent text-muted"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-[12.5px] leading-snug text-muted">
-              {deliveryDescription(delivery)}
-            </p>
+            …
           </div>
+          <p className="text-[11px] …">Voice</p>
+          */}
           <div className="flex items-start justify-between gap-2">
             <p className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
               Voice
@@ -3114,6 +3138,40 @@ export const CreateSoundStep = forwardRef<
             })}
           </div>
           <div className="mt-auto h-px bg-border" />
+          <div className="flex items-start gap-3">
+            <span className="w-16 shrink-0 pt-1.5 text-[13px] font-semibold text-foreground">
+              Delivery
+            </span>
+            <div className="min-w-0 flex-1">
+              <div
+                className="inline-flex w-full rounded-xl bg-background p-[3px]"
+                role="group"
+                aria-label="Delivery style"
+              >
+                {MEDITATION_DELIVERY_OPTIONS.map((opt) => {
+                  const on = delivery === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      disabled={soundControlsDisabled}
+                      onClick={() => setDeliveryAndRemember(opt.id)}
+                      className={`min-w-0 flex-1 cursor-pointer rounded-[9px] px-2 py-[7px] text-[13px] ${
+                        on
+                          ? "border border-border bg-card font-semibold text-foreground"
+                          : "border border-transparent text-muted"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-[12.5px] leading-snug text-muted">
+                {deliveryDescription(delivery)}
+              </p>
+            </div>
+          </div>
           <div className="flex items-start gap-3">
             <span className="w-16 shrink-0 pt-0.5 text-[13px] font-semibold text-foreground">
               Echo
@@ -3544,31 +3602,13 @@ export const CreateSoundStep = forwardRef<
           </div>
         </section>
       </div>
-      <div
-        className={`mt-4 flex flex-wrap items-center justify-between gap-2 rounded-full border px-4 py-2.5 text-[13px] ${
-          needsMoreCredits
-            ? "border-destructive/40 bg-destructive/10 text-destructive"
-            : "border-border bg-card text-foreground"
-        }`}
-      >
-        <span className="font-semibold">
-          {needsMoreCredits
-            ? `Needs ${creditEstimate.credits} credit${creditEstimate.credits === 1 ? "" : "s"}`
-            : `Uses ${creditEstimate.credits} credit${creditEstimate.credits === 1 ? "" : "s"}`}
-          {creditsShort != null ? (
-            <span className="font-normal text-muted">
-              {" "}
-              · {creditsShort} left
-            </span>
-          ) : null}
-          {creditEstimate.isProVoice ? (
-            <span className="font-normal text-muted"> · Pro voice</span>
-          ) : null}
-        </span>
-        <span className="text-[12.5px] font-semibold text-accent-link">
-          {needsMoreCredits ? "Get credits" : "How it's worked out"}
-        </span>
+      {/* Full-width "Uses N credits · How it's worked out" row — moved into the
+          bottom Create bar (create-desktop-fixes-v3).
+      <div className={`mt-4 flex … ${needsMoreCredits ? "…" : "…"}`}>
+        <span>Uses {creditEstimate.credits} credits · {creditsShort} left</span>
+        <span>How it's worked out</span>
       </div>
+      */}
       </>
       ) : null}
 

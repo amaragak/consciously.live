@@ -20,6 +20,7 @@ import {
   MEDITATION_SPEECHIFY_EMOTION,
   SPEECHIFY_COMMA_BREAK_MS,
   SPEECHIFY_PERIOD_BREAK_MS,
+  speechifyTtsConcurrency,
   speechifyTtsPcm24k,
   type SpeechifyEmotionTag,
 } from "./speechify-tts";
@@ -35,6 +36,12 @@ import {
   pcm24kS16leToAac44100,
   VOICE_FX_PCM_SR,
 } from "./voice-fx-ffmpeg-chain";
+import { mapWithConcurrency } from "./script-segment-audio";
+
+/** Fish can fan out harder; Speechify Free caps concurrent at 3. */
+const PCM_OLA_FISH_TTS_CONCURRENCY = 6;
+/** Local ffmpeg IR FX — modest parallelism to avoid CPU thrash on Lambda. */
+const PCM_OLA_FX_CONCURRENCY = 4;
 
 export type SpeechifyPcmFxOlaSectionTiming = {
   i: number;
@@ -69,9 +76,9 @@ export type SpeechifyPcmFxOlaResult = {
       ttsPipelineMs?: number;
       /** loadCommittedVoiceFxContext (IR + settings). */
       fxLoadMs?: number;
-      /** Wall: first TTS → last per-seg FX done (TTS∥FX). */
+      /** Wall: parallel TTS → parallel FX done. */
       ttsFxLoopMs?: number;
-      /** Sum of per-seg ffmpeg FX (overlaps TTS in the loop). */
+      /** Sum of per-seg ffmpeg FX (CPU work; overlaps across workers). */
       fxMs?: number;
       /** Float bus finalize + dial mix (cheap). */
       olaMs?: number;
@@ -309,9 +316,13 @@ export type PcmLengthFitResult = {
 };
 
 /**
- * TTS segment N+1 overlaps FX on segment N. Speech is placed on the timeline
- * only once every segment exists, so long pauses can be fitted to the real
- * speech length. Pauses are zero samples on the dry/wet buses (tails decay into them).
+ * Pause-split speech chunks: TTS in parallel (bounded), then FX in parallel,
+ * then one OLA layout. Speech is placed on the timeline only once every
+ * segment exists, so long pauses can be fitted to the real speech length.
+ * Pauses are zero samples on the dry/wet buses (tails decay into them).
+ *
+ * Previously: serial TTS with FX overlapping the next TTS. Parallel TTS is
+ * the main wall-clock win for gated / full-script OLA.
  */
 export async function synthesizePcmFxOla(params: {
   s3: S3Client;
@@ -334,6 +345,11 @@ export async function synthesizePcmFxOla(params: {
   lengthFit?: { targetSeconds: number; tolerancePct: number; fixedSegments: number; maxScale?: number };
   /** When false, skip the final AAC encode and return mixedPcm for stitching. */
   encodeAac?: boolean;
+  /**
+   * Parallel TTS workers for pause-split chunks. Speechify Free = 3 concurrent;
+   * omit to use provider default (Speechify via speechifyTtsConcurrency, Fish 6).
+   */
+  ttsConcurrency?: number;
 }): Promise<SpeechifyPcmFxOlaResult & { lengthFit: PcmLengthFitResult }> {
   const pipelineStarted = Date.now();
   const pauseScale =
@@ -343,6 +359,10 @@ export async function synthesizePcmFxOla(params: {
   const speechTempo =
     typeof params.speechTempo === "number" && params.speechTempo > 0 ? params.speechTempo : 1;
   const fixedSegments = params.lengthFit?.fixedSegments ?? 0;
+  const ttsConcurrency = Math.max(
+    1,
+    params.ttsConcurrency ?? PCM_OLA_FISH_TTS_CONCURRENCY,
+  );
   const parsed = parseScriptIntoSegments(params.script, params.pauseBands);
   const segments: ScriptSegment[] =
     parsed.length > 0 ? parsed : [{ text: params.script, pauseSeconds: 0 }];
@@ -367,51 +387,81 @@ export async function synthesizePcmFxOla(params: {
   const rendered = new Map<number, Rendered>();
   /** Section timing row for each segment index. */
   const sectionForSegment = new Map<number, number>();
-  let fxInFlight: Promise<void> | null = null;
 
-  const runFx = async (segIndex: number, sectionIndex: number, pcm: Buffer) => {
-    if (!fxCtx) {
-      rendered.set(segIndex, { sectionIndex, dry: pcm, wet: pcm });
-      return;
-    }
-    const fx = await applyVoiceFxPcmSegment24k({
-      dryPcm: pcm,
-      settings: fxCtx.settings,
-      irWav: fxCtx.irWav,
-    });
-    fxTotalMs += fx.ms;
-    const sec = sectionTimings[sectionIndex];
-    if (sec) sec.fxMs = fx.ms;
-    rendered.set(segIndex, { sectionIndex, dry: pcm, wet: fx.wetPcm });
+  type SpeechJob = {
+    segIndex: number;
+    sectionIndex: number;
+    clean: string;
+    utf8Bytes: number;
   };
+  const speechJobs: SpeechJob[] = [];
 
-  const loopStarted = Date.now();
+  // Stable section indices in script order, then fan out TTS.
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i]!;
     const clean = sanitizeScriptForTts(seg.text);
     if (clean) {
       const utf8Bytes = Buffer.byteLength(clean, "utf8");
       totalBytes += utf8Bytes;
-      const ttsStarted = Date.now();
-      let pcm = await params.synthesizePcm24k(clean);
-      if (pcm.byteLength % 2 !== 0) {
-        throw new Error(
-          `${params.providerLabel ?? "TTS"} PCM length is not s16le-aligned`,
-        );
-      }
-      pcm = await atempoPcm24kS16le(pcm, speechTempo);
       const sectionIndex = sectionTimings.length;
-      sectionTimings.push({ i: sectionIndex, ttsMs: elapsedMs(ttsStarted), utf8Bytes });
+      sectionTimings.push({ i: sectionIndex, ttsMs: 0, utf8Bytes });
       sectionForSegment.set(i, sectionIndex);
-      if (fxInFlight) await fxInFlight;
-      fxInFlight = runFx(i, sectionIndex, pcm);
+      speechJobs.push({ segIndex: i, sectionIndex, clean, utf8Bytes });
     } else if (seg.pauseSeconds > 0) {
       const sectionIndex = sectionTimings.length;
       sectionTimings.push({ i: sectionIndex, ttsMs: 0, utf8Bytes: 0 });
       sectionForSegment.set(i, sectionIndex);
     }
   }
-  if (fxInFlight) await fxInFlight;
+
+  const loopStarted = Date.now();
+  const ttsResults = await mapWithConcurrency(
+    speechJobs,
+    ttsConcurrency,
+    async (job) => {
+      const ttsStarted = Date.now();
+      let pcm = await params.synthesizePcm24k(job.clean);
+      if (pcm.byteLength % 2 !== 0) {
+        throw new Error(
+          `${params.providerLabel ?? "TTS"} PCM length is not s16le-aligned`,
+        );
+      }
+      pcm = await atempoPcm24kS16le(pcm, speechTempo);
+      const ttsMs = elapsedMs(ttsStarted);
+      const sec = sectionTimings[job.sectionIndex];
+      if (sec) sec.ttsMs = ttsMs;
+      return { ...job, pcm, ttsMs };
+    },
+  );
+
+  const fxMsList = await mapWithConcurrency(
+    ttsResults,
+    PCM_OLA_FX_CONCURRENCY,
+    async (job) => {
+      if (!fxCtx) {
+        rendered.set(job.segIndex, {
+          sectionIndex: job.sectionIndex,
+          dry: job.pcm,
+          wet: job.pcm,
+        });
+        return 0;
+      }
+      const fx = await applyVoiceFxPcmSegment24k({
+        dryPcm: job.pcm,
+        settings: fxCtx.settings,
+        irWav: fxCtx.irWav,
+      });
+      const sec = sectionTimings[job.sectionIndex];
+      if (sec) sec.fxMs = fx.ms;
+      rendered.set(job.segIndex, {
+        sectionIndex: job.sectionIndex,
+        dry: job.pcm,
+        wet: fx.wetPcm,
+      });
+      return fx.ms;
+    },
+  );
+  fxTotalMs = fxMsList.reduce((a, b) => a + b, 0);
   const ttsFxLoopMs = elapsedMs(loopStarted);
 
   let speechSamples = 0;
@@ -544,6 +594,7 @@ type LengthFitOptions = {
   longPauseScale?: number;
   lengthFit?: { targetSeconds: number; tolerancePct: number; fixedSegments: number; maxScale?: number };
   encodeAac?: boolean;
+  ttsConcurrency?: number;
 };
 
 export type PcmFxOlaWithFit = SpeechifyPcmFxOlaResult & { lengthFit: PcmLengthFitResult };
@@ -577,6 +628,8 @@ export async function synthesizeSpeechifyPcmFxOla(params: {
     longPauseScale: params.longPauseScale,
     lengthFit: params.lengthFit,
     encodeAac: params.encodeAac,
+    // Free: 3 concurrent / 1 rps (burst 10). Starter+: raise SPEECHIFY_TTS_CONCURRENCY.
+    ttsConcurrency: params.ttsConcurrency ?? speechifyTtsConcurrency(),
     providerLabel: "Speechify",
     synthesizePcm24k: (text) =>
       speechifyTtsPcm24k({

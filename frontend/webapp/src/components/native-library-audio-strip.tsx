@@ -15,6 +15,7 @@ import {
   isMelodicMusicKey,
   isSoundscapeKey,
   mediaFileUrl,
+  mediaPlaybackCandidates,
   soundscapeListenVolume,
   type BackgroundAudioItem,
   type BedVolumeChannel,
@@ -26,6 +27,10 @@ import { nativeAudioLog } from "@/lib/native/native-audio-log";
 import { NativeMixSession, type NativeBedSpec, type NativeMixSpec } from "@/lib/native/native-mix-session";
 import { nativeRuntimeFileUri, nowPlayingArtwork } from "@/lib/native/native-runtime-files";
 import { offlineAudioUri } from "@/lib/native/offline-audio";
+import {
+  getMeditationDownload,
+  getSoundscapeDownload,
+} from "@/lib/native/offline-downloads";
 
 const NOW_PLAYING_ARTIST = "Consciously";
 const CHANNELS: BedVolumeChannel[] = ["nature", "music", "drums", "noise"];
@@ -119,6 +124,7 @@ export default function NativeLibraryAudioStrip({
   const seekingRef = useRef(false);
   const pendingSeekRef = useRef<number | null>(null);
   const leadInTimerRef = useRef<number | null>(null);
+  const leadInStartedMsRef = useRef(0);
   const outroTimerRef = useRef<number | null>(null);
   const outroStartMsRef = useRef(0);
   const lastReportedRef = useRef(-Infinity);
@@ -190,9 +196,32 @@ export default function NativeLibraryAudioStrip({
     // Native side already holds then fades the beds; mirror it on the timeline.
     phaseRef.current = "outro";
     outroStartMsRef.current = Date.now();
-    reportTime(voiceLen);
+    reportTime(leadInSeconds + voiceLen);
     clearOutro();
     outroTimerRef.current = window.setTimeout(finish, outroPadSeconds * 1000);
+  }
+
+  async function startVoiceAfterLeadIn(session: NativeMixSession) {
+    if (phaseRef.current !== "leadIn") return;
+    phaseRef.current = "voice";
+    try {
+      await session.play({ restartSoundscape: true });
+      // Plugin play() can resolve while the primary never buffered (bad AAC).
+      const playingNow = await session.isPlaying().catch(() => false);
+      if (!playingNow) {
+        throw new Error("primary did not enter playing state after lead-in");
+      }
+      const t = await session.currentTime().catch(() => 0);
+      reportTime(leadInSeconds + t);
+    } catch (e) {
+      nativeAudioLog(
+        "error",
+        `voice after lead-in failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      await session.pause().catch(() => {});
+      phaseRef.current = "idle";
+      setPlaying(false);
+    }
   }
 
   async function start() {
@@ -209,19 +238,25 @@ export default function NativeLibraryAudioStrip({
       const at = await session.currentTime();
       if (session.hasBeds && leadInSeconds > 0 && at < 0.08) {
         phaseRef.current = "leadIn";
+        leadInStartedMsRef.current = Date.now();
+        reportTime(0);
         await session.playBedsOnly();
         leadInTimerRef.current = window.setTimeout(() => {
           leadInTimerRef.current = null;
-          if (phaseRef.current !== "leadIn") return;
-          phaseRef.current = "voice";
-          void session.play({ restartSoundscape: true });
+          void startVoiceAfterLeadIn(session);
         }, leadInSeconds * 1000);
         return;
       }
       phaseRef.current = "voice";
       await session.play();
+      const playingNow = await session.isPlaying().catch(() => false);
+      if (!playingNow) {
+        throw new Error("primary did not enter playing state");
+      }
     } catch (e) {
       nativeAudioLog("error", `play failed: ${e instanceof Error ? e.message : String(e)}`);
+      await session.pause().catch(() => {});
+      phaseRef.current = "idle";
       setPlaying(false);
     }
   }
@@ -247,23 +282,47 @@ export default function NativeLibraryAudioStrip({
     const session = sessionRef.current;
     if (!session || ambientMix) return;
     const voiceLen = durationRef.current;
-    const t = Math.max(0, voiceLen > 0 ? Math.min(v, voiceLen - 0.5) : v);
-    reportTime(t);
+    const timeline = Math.max(0, v);
+    // Scrubber includes lead-in pre-roll; native seek is voice-clock only.
+    if (timeline < leadInSeconds - 0.05 && leadInSeconds > 0) {
+      reportTime(timeline);
+      if (phaseRef.current !== "leadIn") {
+        clearOutro();
+        clearLeadIn();
+        phaseRef.current = "leadIn";
+        leadInStartedMsRef.current = Date.now() - timeline * 1000;
+        await session.pause().catch(() => {});
+        await session.seek(0).catch(() => {});
+        await session.playBedsOnly();
+        leadInTimerRef.current = window.setTimeout(() => {
+          leadInTimerRef.current = null;
+          void startVoiceAfterLeadIn(session);
+        }, Math.max(0, (leadInSeconds - timeline) * 1000));
+      }
+      return;
+    }
+    const voiceT = Math.max(
+      0,
+      voiceLen > 0
+        ? Math.min(timeline - leadInSeconds, voiceLen - 0.5)
+        : timeline - leadInSeconds,
+    );
+    reportTime(leadInSeconds + voiceT);
     if (phaseRef.current === "outro") {
       clearOutro();
       phaseRef.current = "voice";
-      await session.seek(t);
+      await session.seek(voiceT);
       await session.play();
       return;
     }
     if (phaseRef.current === "leadIn") {
       clearLeadIn();
       phaseRef.current = "voice";
-      await session.seek(t);
+      await session.seek(voiceT);
       await session.play();
       return;
     }
-    await session.seek(t);
+    await session.seek(voiceT);
   }
 
   const seekRef = useRef(seek);
@@ -279,15 +338,33 @@ export default function NativeLibraryAudioStrip({
     let created: NativeMixSession | null = null;
 
     void (async () => {
+      const offlineOnly =
+        typeof navigator !== "undefined" && navigator.onLine === false;
+      const meditationSaved = getMeditationDownload(track.s3Key);
+      const soundscapeSaved = ambientSoundscape
+        ? getSoundscapeDownload(track.musicKey ?? track.s3Key)
+        : null;
+      // Prefer CDN while online unless this item was explicitly downloaded —
+      // opportunistic bed cache from other downloads can be incomplete/stale.
+      const preferLocal = offlineOnly || Boolean(meditationSaved) || Boolean(soundscapeSaved);
+
       const beds: NativeBedSpec[] = [];
       if (!ambientSoundscape && mediaBase) {
         for (const channel of CHANNELS) {
           const key = keys[channel];
           if (!key) continue;
           const isSoundscape = channel === "music" && soundscapeBed;
+          const remote = mediaFileUrl(
+            mediaBase,
+            backgroundAudioPlaybackKey(key),
+            track.mediaCacheBust,
+          );
+          const localBed = preferLocal
+            ? await offlineAudioUri(remote).catch(() => null)
+            : null;
           beds.push({
             channel,
-            url: mediaFileUrl(mediaBase, backgroundAudioPlaybackKey(key), track.mediaCacheBust),
+            url: localBed || remote,
             volume: isSoundscape
               ? soundscapeListenVolume(gainsRef.current.music)
               : bedElementVolume(gainsRef.current[channel]),
@@ -300,18 +377,25 @@ export default function NativeLibraryAudioStrip({
       let primaryUrl = track.url;
       if (ambientMix) {
         primaryUrl = await nativeRuntimeFileUri("silence.m4a");
-      } else {
+      } else if (preferLocal) {
         const local = await offlineAudioUri(track.url).catch(() => null);
         if (local) {
           primaryUrl = local;
           nativeAudioLog("session", "using downloaded copy");
+        } else {
+          primaryUrl = mediaPlaybackCandidates(track.url)[0] ?? track.url;
         }
+      } else {
+        // Online: AAC first, MP3 sibling last (mediaPlaybackCandidates).
+        primaryUrl = mediaPlaybackCandidates(track.url)[0] ?? track.url;
       }
 
       const spec: NativeMixSpec = {
         primary: {
           url: primaryUrl,
-          volume: ambientSoundscape ? soundscapeListenVolume(gainsRef.current.music) : SPEECH_ELEMENT_VOLUME,
+          volume: ambientSoundscape
+            ? soundscapeListenVolume(gainsRef.current.music)
+            : SPEECH_ELEMENT_VOLUME,
           loop: ambientMix,
           seekable: !ambientMix,
           title: track.title,
@@ -328,7 +412,11 @@ export default function NativeLibraryAudioStrip({
         onStatus: (status) => {
           if (cancelled) return;
           if (status === "playing") {
-            if (phaseRef.current !== "outro") phaseRef.current = "voice";
+            // Don't clobber lead-in — beds-only never fires this; voice start
+            // sets phase itself before play().
+            if (phaseRef.current !== "outro" && phaseRef.current !== "leadIn") {
+              phaseRef.current = "voice";
+            }
             setPlaying(true);
           } else if (status === "paused") {
             // Lock screen / Control Centre / interruption pause.
@@ -352,7 +440,11 @@ export default function NativeLibraryAudioStrip({
         if (!cancelled && d > 0) setDuration(d);
       }
       if (autoplayRef.current) void startRef.current();
-    })().catch(() => {
+    })().catch((e) => {
+      nativeAudioLog(
+        "error",
+        `session setup failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
       if (!cancelled) setPlaying(false);
     });
 
@@ -375,14 +467,26 @@ export default function NativeLibraryAudioStrip({
       const phase = phaseRef.current;
       if (phase === "outro") {
         const into = (Date.now() - outroStartMsRef.current) / 1000;
-        reportTime(durationRef.current + Math.min(outroPadSeconds, into));
+        reportTime(
+          leadInSeconds + durationRef.current + Math.min(outroPadSeconds, into),
+        );
         return;
       }
-      if (phase === "leadIn") return;
+      if (phase === "leadIn") {
+        // Pre-roll on the scrubber so a 20s bed intro doesn't look stuck at 0.
+        const into = Math.min(
+          leadInSeconds,
+          (Date.now() - leadInStartedMsRef.current) / 1000,
+        );
+        reportTime(into);
+        return;
+      }
       const session = sessionRef.current;
       if (!session) return;
       void session.currentTime().then((t) => {
-        if (phaseRef.current === phase && !seekingRef.current) reportTime(t);
+        if (phaseRef.current === phase && !seekingRef.current) {
+          reportTime(leadInSeconds + t);
+        }
       }, () => {});
       if (durationRef.current <= 0) {
         void session.duration().then((d) => {
@@ -391,7 +495,7 @@ export default function NativeLibraryAudioStrip({
       }
     }, 250);
     return () => window.clearInterval(id);
-  }, [ambientMix, outroPadSeconds, reportTime]);
+  }, [ambientMix, leadInSeconds, outroPadSeconds, reportTime]);
 
   // Returning from background: re-read play state the web view missed.
   useEffect(() => {
@@ -449,7 +553,11 @@ export default function NativeLibraryAudioStrip({
       track={track}
       playing={playing}
       current={current}
-      timelineDuration={duration + (duration > 0 ? outroPadSeconds : 0)}
+      timelineDuration={
+        (duration > 0 ? leadInSeconds : 0) +
+        duration +
+        (duration > 0 ? outroPadSeconds : 0)
+      }
       canSeek={!ambientMix}
       onTogglePlay={toggle}
       onSkip={(delta) => void seek(current + delta)}

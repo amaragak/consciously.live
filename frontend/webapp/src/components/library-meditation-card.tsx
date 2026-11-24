@@ -25,6 +25,7 @@ import { stripPauseMarkers } from "@/lib/meditation-analytics";
 import { CoverArtThumb, TypewriterReveal } from "@consciously/common";
 import { BookOpen, SquarePen } from "lucide-react";
 import { isLocalDevHost } from "@/lib/dev-ui-settings";
+import { CardActionsMenuSurface } from "@/components/card-actions-menu-surface";
 
 function isPendingMetaReady(raw: string | null | undefined): boolean {
   const t = (raw ?? "").trim();
@@ -407,6 +408,19 @@ export type LibraryMeditationCardProps = {
   detailHref?: string;
   /** Runs just before navigating to the detail page (e.g. remember scroll). */
   onOpenDetail?: () => void;
+  /** Native offline download — omit on web. */
+  offlineDownload?: {
+    downloaded: boolean;
+    stale?: boolean;
+    soundscapeName?: string | null;
+    sizeLabel?: string;
+    busy?: boolean;
+    onDownload: () => void;
+    onRemove: () => void;
+    onUpdate?: () => void;
+  } | null;
+  /** Native offline: grey out when the device is offline and this row isn't downloaded. */
+  offlineUnavailable?: boolean;
 };
 
 export function LibraryMeditationCard({
@@ -454,6 +468,8 @@ export function LibraryMeditationCard({
   devRefreshBusy = null,
   speechifyEmotion = "neutral",
   onSpeechifyEmotionChange,
+  offlineDownload = null,
+  offlineUnavailable = false,
 }: LibraryMeditationCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [howMadeOpen, setHowMadeOpen] = useState(false);
@@ -465,27 +481,7 @@ export function LibraryMeditationCard({
   const mobileMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileMenuButtonRef = useRef<HTMLButtonElement | null>(null);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onDoc(e: MouseEvent) {
-      const t = e.target as Node;
-      if (
-        !menuRef.current?.contains(t) &&
-        !mobileMenuRef.current?.contains(t)
-      ) {
-        setMenuOpen(false);
-      }
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setMenuOpen(false);
-    }
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [menuOpen]);
+  // Outside / Escape for the ⋯ menu are handled by CardActionsMenuSurface.
 
   if (isPendingRow(item)) {
     const isFailed = item.status === "failed";
@@ -798,6 +794,7 @@ export function LibraryMeditationCard({
       item.creationProvenance ??
       null
     : null;
+  const canOffline = Boolean(offlineDownload && m.audioUrl);
   const hasMenuItems =
     canFavourite ||
     (canEditMix && Boolean(onOpenMix)) ||
@@ -807,6 +804,7 @@ export function LibraryMeditationCard({
     canShare ||
     canScript ||
     canHowMade ||
+    canOffline ||
     canDevRefresh ||
     canSpeechifyEmotion;
 
@@ -855,274 +853,321 @@ export function LibraryMeditationCard({
     </button>
   );
 
+  // Responsive row: ≥48px on the mobile sheet, compact on the desktop flyout.
   const menuItemClass =
-    "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm text-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-40";
+    "flex w-full min-h-12 cursor-pointer items-center gap-2.5 px-4 py-3 text-left text-[15px] text-foreground hover:bg-background disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-0 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm";
+  const menuSwitchRowClass =
+    "flex min-h-12 items-center justify-between gap-3 px-4 py-3 sm:min-h-0 sm:px-3 sm:py-2";
+
+  const mixAnchorEl = () =>
+    menuButtonRef.current ?? mobileMenuButtonRef.current;
+
+  const menuItems = (
+    <>
+      {canFavourite ? (
+        <button
+          type="button"
+          role="menuitem"
+          disabled={favouriteDisabled}
+          onClick={() => {
+            onFavourite?.(!m.favourite);
+            setMenuOpen(false);
+          }}
+          className={menuItemClass}
+        >
+          <IconHeart
+            filled={m.favourite}
+            strokeWidth={2.5}
+            className="h-4 w-4"
+          />
+          <span>{m.favourite ? "Unfavourite" : "Favourite"}</span>
+        </button>
+      ) : null}
+      {canEditMix && onOpenMix ? (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            const anchor = mixAnchorEl();
+            setMenuOpen(false);
+            if (!anchor) return;
+            if (mixEditorSk === m.sk) {
+              onCloseMix?.();
+              return;
+            }
+            onOpenMix(anchor);
+          }}
+          className={menuItemClass}
+        >
+          <IconMixer className="h-4 w-4" />
+          <span>{mixEditorSk === m.sk ? "Close mix" : "Edit mix"}</span>
+        </button>
+      ) : null}
+      {canScript ? (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            onToggleScript?.();
+            setMenuOpen(false);
+          }}
+          className={menuItemClass}
+        >
+          {open ? "Hide script" : "Show script"}
+        </button>
+      ) : null}
+      {canHowMade ? (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            setHowMadeOpen(true);
+            setMenuOpen(false);
+          }}
+          className={menuItemClass}
+        >
+          How this was made
+        </button>
+      ) : null}
+      {canOffline && offlineDownload ? (
+        <button
+          type="button"
+          role="menuitem"
+          disabled={offlineDownload.busy}
+          onClick={() => {
+            if (offlineDownload.downloaded && offlineDownload.stale) {
+              if (offlineDownload.onUpdate) offlineDownload.onUpdate();
+              else offlineDownload.onDownload();
+            } else if (offlineDownload.downloaded) {
+              offlineDownload.onRemove();
+            } else {
+              offlineDownload.onDownload();
+            }
+            setMenuOpen(false);
+          }}
+          className={menuItemClass}
+        >
+          {offlineDownload.downloaded && offlineDownload.stale
+            ? "Update download"
+            : offlineDownload.downloaded
+              ? "Remove download"
+              : "Download"}
+        </button>
+      ) : null}
+      {onDevRegenCover ? (
+        <button
+          type="button"
+          role="menuitem"
+          disabled={devRefreshBusy != null}
+          onClick={() => {
+            onDevRegenCover();
+            setMenuOpen(false);
+          }}
+          className={menuItemClass}
+        >
+          {devRefreshBusy === "cover"
+            ? "Regenerating artwork…"
+            : "Regenerate artwork"}
+        </button>
+      ) : null}
+      {onDevRederiveTitle ? (
+        <button
+          type="button"
+          role="menuitem"
+          disabled={devRefreshBusy != null}
+          onClick={() => {
+            onDevRederiveTitle();
+            setMenuOpen(false);
+          }}
+          className={menuItemClass}
+        >
+          {devRefreshBusy === "metadata"
+            ? "Re-deriving title…"
+            : "Re-derive title"}
+        </button>
+      ) : null}
+      {canSpeechifyEmotion ? (
+        <>
+          <div
+            role="separator"
+            className="my-1 border-t border-border"
+            aria-hidden
+          />
+          <div className="px-4 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted sm:px-3">
+            Dev · emotion
+          </div>
+          {(
+            [
+              ["neutral", "Neutral"],
+              ["warm", "Warm"],
+              ["calm", "Calm"],
+            ] as const
+          ).map(([value, label]) => {
+            const available =
+              value === "neutral" || Boolean(emotionStems?.[value]);
+            const selected = speechifyEmotion === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={selected}
+                disabled={!available}
+                onClick={() => {
+                  onSpeechifyEmotionChange?.(value);
+                  setMenuOpen(false);
+                }}
+                className={menuItemClass}
+              >
+                <span className="w-3 tabular-nums text-accent-link">
+                  {selected ? "✓" : ""}
+                </span>
+                <span>{label}</span>
+              </button>
+            );
+          })}
+        </>
+      ) : null}
+      {canShare ? (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            onShare?.();
+            setMenuOpen(false);
+          }}
+          className={menuItemClass}
+        >
+          {shareCopiedId === shareId ? "Copied!" : "Share"}
+        </button>
+      ) : null}
+      {canPublic ? (
+        <div
+          role="menuitem"
+          className={menuSwitchRowClass}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span
+            className={`text-[15px] sm:text-sm ${
+              m.isPublic === true ? "text-accent-link" : "text-foreground"
+            }`}
+          >
+            Public
+          </span>
+          <Switch.Root
+            checked={m.isPublic === true}
+            onCheckedChange={(v) => onPublicChange?.(Boolean(v))}
+            disabled={publicDisabled}
+            aria-label={
+              m.isPublic ? "Remove from community library" : "Make public"
+            }
+            className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed"
+          >
+            <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
+          </Switch.Root>
+        </div>
+      ) : null}
+      {canListenExample ? (
+        <div
+          role="menuitem"
+          className={menuSwitchRowClass}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span
+            className={`text-[15px] sm:text-sm ${
+              isListenExample ? "text-accent-link" : "text-foreground"
+            }`}
+          >
+            Set as example
+          </span>
+          <Switch.Root
+            checked={isListenExample}
+            onCheckedChange={(v) => onListenExampleChange?.(Boolean(v))}
+            disabled={!m.sk || listenExampleBusy}
+            aria-label={
+              isListenExample
+                ? "Remove from Listen examples"
+                : "Set as Listen example"
+            }
+            className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed"
+          >
+            <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
+          </Switch.Root>
+        </div>
+      ) : null}
+      {canArchive ? (
+        <button
+          type="button"
+          role="menuitem"
+          disabled={archiveDisabled}
+          onClick={() => {
+            if (!m.sk) return;
+            onArchive?.();
+            setMenuOpen(false);
+          }}
+          className={`${menuItemClass} text-muted`}
+        >
+          Archive
+        </button>
+      ) : null}
+    </>
+  );
+
+  /* Old fixed flyout (absolute right-0 top-full) — replaced by CardActionsMenuSurface
+   * (mobile bottom sheet + desktop flip-to-fit). Kept for reference:
+   * <div role="menu" className="absolute right-0 top-full z-[90] mt-1 min-w-[12.5rem] …">
+   *   {menuItems}
+   * </div>
+   */
 
   const renderCardMenu = (variant: "desktop" | "mobile") => {
     if (!hasMenuItems) return null;
-    const mobile = variant === "mobile";
-    const wrapRef = mobile ? mobileMenuRef : menuRef;
-    const btnRef = mobile ? mobileMenuButtonRef : menuButtonRef;
+    const isMobileBtn = variant === "mobile";
+    const wrapRef = isMobileBtn ? mobileMenuRef : menuRef;
+    const btnRef = isMobileBtn ? mobileMenuButtonRef : menuButtonRef;
     return (
-    <div
-      ref={wrapRef}
-      className={`relative shrink-0 transition-opacity ${
-        menuOpen || alwaysShowRowChrome
-          ? "opacity-100 pointer-events-auto"
-          : "opacity-100 pointer-events-auto sm:opacity-0 sm:pointer-events-none sm:group-hover:opacity-100 sm:group-hover:pointer-events-auto"
-      }`}
-    >
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setMenuOpen((v) => !v);
-        }}
-        aria-label="More actions"
-        aria-expanded={menuOpen}
-        aria-haspopup="menu"
-        className={
-          mobile
-            ? "flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-full text-foreground/70 transition-colors hover:bg-background/80 hover:text-foreground"
-            : "flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-background/80 hover:text-foreground"
-        }
+      <div
+        ref={wrapRef}
+        className={`relative shrink-0 transition-opacity ${
+          menuOpen || alwaysShowRowChrome
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-100 pointer-events-auto sm:opacity-0 sm:pointer-events-none sm:group-hover:opacity-100 sm:group-hover:pointer-events-auto"
+        }`}
       >
-        <IconDotsHorizontal />
-      </button>
-      {menuOpen ? (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-[90] mt-1 min-w-[12.5rem] overflow-hidden rounded-xl border border-border bg-card py-1 shadow-xl isolate"
+        <button
+          ref={btnRef}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen((v) => !v);
+          }}
+          aria-label="More actions"
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          className={
+            isMobileBtn
+              ? "flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-full text-foreground/70 transition-colors hover:bg-background/80 hover:text-foreground"
+              : "flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-muted transition-colors hover:bg-background/80 hover:text-foreground"
+          }
         >
-          {canFavourite ? (
-            <button
-              type="button"
-              role="menuitem"
-              disabled={favouriteDisabled}
-              onClick={() => {
-                onFavourite?.(!m.favourite);
-                setMenuOpen(false);
-              }}
-              className={menuItemClass}
-            >
-              <IconHeart
-                filled={m.favourite}
-                strokeWidth={2.5}
-                className="h-4 w-4"
-              />
-              <span>{m.favourite ? "Unfavourite" : "Favourite"}</span>
-            </button>
-          ) : null}
-          {canEditMix && onOpenMix ? (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                const anchor = btnRef.current;
-                setMenuOpen(false);
-                if (!anchor) return;
-                if (mixEditorSk === m.sk) {
-                  onCloseMix?.();
-                  return;
-                }
-                onOpenMix(anchor);
-              }}
-              className={menuItemClass}
-            >
-              <IconMixer className="h-4 w-4" />
-              <span>{mixEditorSk === m.sk ? "Close mix" : "Edit mix"}</span>
-            </button>
-          ) : null}
-          {canScript ? (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                onToggleScript?.();
-                setMenuOpen(false);
-              }}
-              className={menuItemClass}
-            >
-              {open ? "Hide script" : "Show script"}
-            </button>
-          ) : null}
-          {canHowMade ? (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setHowMadeOpen(true);
-                setMenuOpen(false);
-              }}
-              className={menuItemClass}
-            >
-              How this was made
-            </button>
-          ) : null}
-          {onDevRegenCover ? (
-            <button
-              type="button"
-              role="menuitem"
-              disabled={devRefreshBusy != null}
-              onClick={() => {
-                onDevRegenCover();
-                setMenuOpen(false);
-              }}
-              className={menuItemClass}
-            >
-              {devRefreshBusy === "cover"
-                ? "Regenerating artwork…"
-                : "Regenerate artwork"}
-            </button>
-          ) : null}
-          {onDevRederiveTitle ? (
-            <button
-              type="button"
-              role="menuitem"
-              disabled={devRefreshBusy != null}
-              onClick={() => {
-                onDevRederiveTitle();
-                setMenuOpen(false);
-              }}
-              className={menuItemClass}
-            >
-              {devRefreshBusy === "metadata"
-                ? "Re-deriving title…"
-                : "Re-derive title"}
-            </button>
-          ) : null}
-          {canSpeechifyEmotion ? (
-            <>
-              <div
-                role="separator"
-                className="my-1 border-t border-border"
-                aria-hidden
-              />
-              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Dev · emotion
-              </div>
-              {(
-                [
-                  ["neutral", "Neutral"],
-                  ["warm", "Warm"],
-                  ["calm", "Calm"],
-                ] as const
-              ).map(([value, label]) => {
-                const available =
-                  value === "neutral" || Boolean(emotionStems?.[value]);
-                const selected = speechifyEmotion === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={selected}
-                    disabled={!available}
-                    onClick={() => {
-                      onSpeechifyEmotionChange?.(value);
-                      setMenuOpen(false);
-                    }}
-                    className={menuItemClass}
-                  >
-                    <span className="w-3 tabular-nums text-accent-link">
-                      {selected ? "✓" : ""}
-                    </span>
-                    <span>{label}</span>
-                  </button>
-                );
-              })}
-            </>
-          ) : null}
-          {canShare ? (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                onShare?.();
-                setMenuOpen(false);
-              }}
-              className={menuItemClass}
-            >
-              {shareCopiedId === shareId ? "Copied!" : "Share"}
-            </button>
-          ) : null}
-          {canPublic ? (
-            <div
-              role="menuitem"
-              className="flex items-center justify-between gap-3 px-3 py-2"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <span
-                className={`text-sm ${
-                  m.isPublic === true ? "text-accent-link" : "text-foreground"
-                }`}
-              >
-                Public
-              </span>
-              <Switch.Root
-                checked={m.isPublic === true}
-                onCheckedChange={(v) => onPublicChange?.(Boolean(v))}
-                disabled={publicDisabled}
-                aria-label={
-                  m.isPublic ? "Remove from community library" : "Make public"
-                }
-                className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed"
-              >
-                <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
-              </Switch.Root>
-            </div>
-          ) : null}
-          {canListenExample ? (
-            <div
-              role="menuitem"
-              className="flex items-center justify-between gap-3 px-3 py-2"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <span
-                className={`text-sm ${
-                  isListenExample ? "text-accent-link" : "text-foreground"
-                }`}
-              >
-                Set as example
-              </span>
-              <Switch.Root
-                checked={isListenExample}
-                onCheckedChange={(v) => onListenExampleChange?.(Boolean(v))}
-                disabled={!m.sk || listenExampleBusy}
-                aria-label={
-                  isListenExample
-                    ? "Remove from Listen examples"
-                    : "Set as Listen example"
-                }
-                className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed"
-              >
-                <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
-              </Switch.Root>
-            </div>
-          ) : null}
-          {canArchive ? (
-            <button
-              type="button"
-              role="menuitem"
-              disabled={archiveDisabled}
-              onClick={() => {
-                if (!m.sk) return;
-                onArchive?.();
-                setMenuOpen(false);
-              }}
-              className={`${menuItemClass} text-muted`}
-            >
-              Archive
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
+          <IconDotsHorizontal />
+        </button>
+      </div>
     );
   };
   const cardMenu = renderCardMenu("desktop");
   const mobileMenu = renderCardMenu("mobile");
+  const cardMenuSurface = hasMenuItems ? (
+    <CardActionsMenuSurface
+      open={menuOpen}
+      onClose={() => setMenuOpen(false)}
+      title={m.title}
+      anchorRef={mobileMenuButtonRef}
+      desktopAnchorRef={menuButtonRef}
+    >
+      {menuItems}
+    </CardActionsMenuSurface>
+  ) : null;
 
   const metaBits = buildSpeakerDateTimeMetaBits({
     speakerName: m.speakerName,
@@ -1183,14 +1228,36 @@ export function LibraryMeditationCard({
     </button>
   ) : null;
 
+  const downloadedTag =
+    offlineDownload?.downloaded ? (
+      <span
+        className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+          offlineDownload.stale
+            ? "bg-amber-50 text-amber-900"
+            : "bg-[color-mix(in_srgb,var(--success,#067647)_12%,white)] text-[color:var(--success,#067647)]"
+        }`}
+      >
+        {offlineDownload.stale
+          ? "Soundscape changed · download again"
+          : "Downloaded"}
+      </span>
+    ) : null;
+
   const metaRow =
-    metaLine || stars || journalCount ? (
+    metaLine || stars || journalCount || downloadedTag ? (
       <div className="mt-2 hidden flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted sm:flex">
         {metaLine}
+        {offlineDownload?.downloaded && offlineDownload.soundscapeName ? (
+          <>
+            {metaLine ? <span aria-hidden>·</span> : null}
+            <span>{offlineDownload.soundscapeName}</span>
+          </>
+        ) : null}
+        {downloadedTag}
         {stars}
         {journalCount ? (
           <>
-            {metaLine || stars ? (
+            {metaLine || stars || downloadedTag ? (
               <span aria-hidden className="h-3 w-px shrink-0 bg-border" />
             ) : null}
             {journalCount}
@@ -1241,7 +1308,15 @@ export function LibraryMeditationCard({
         })
       : "";
   const mobileSpeaker = m.speakerName?.trim() || "";
-  const mobileFooterMeta = [mobileSpeaker, mobileDate === "Invalid Date" ? "" : mobileDate]
+  const mobileSoundscape =
+    offlineDownload?.downloaded && offlineDownload.soundscapeName
+      ? offlineDownload.soundscapeName
+      : "";
+  const mobileFooterMeta = [
+    mobileSpeaker,
+    mobileDate === "Invalid Date" ? "" : mobileDate,
+    mobileSoundscape,
+  ]
     .filter(Boolean)
     .join(" · ");
   const mobileIconBtn =
@@ -1349,6 +1424,7 @@ export function LibraryMeditationCard({
             </span>
           ) : null}
           <span className="min-w-0 truncate">{mobileFooterMeta}</span>
+          {downloadedTag}
           {journalCount ? (
             <button
               type="button"
@@ -1388,6 +1464,7 @@ export function LibraryMeditationCard({
       }
     : undefined;
   const detailCursor = detailHref ? "cursor-pointer" : "";
+  const offlineDim = offlineUnavailable ? "opacity-45" : "";
 
   if (viewMode === "grid") {
     return (
@@ -1395,7 +1472,7 @@ export function LibraryMeditationCard({
       <li
         ref={itemRef}
         onClick={openDetailFromBody}
-        className={`${detailCursor} group relative flex min-w-0 flex-col overflow-visible rounded-[6px] border bg-card p-5 shadow-sm ${
+        className={`${detailCursor} ${offlineDim} group relative flex min-w-0 flex-col overflow-visible rounded-[6px] border bg-card p-5 shadow-sm ${
           menuOpen ? "z-50" : "z-0 hover:z-50 focus-within:z-50"
         } ${
           isPlaying
@@ -1452,6 +1529,7 @@ export function LibraryMeditationCard({
         meditationStyleFallback={m.meditationStyle}
         onClose={() => setHowMadeOpen(false)}
       />
+      {cardMenuSurface}
       </>
     );
   }
@@ -1461,7 +1539,7 @@ export function LibraryMeditationCard({
     <li
       ref={itemRef}
       onClick={openDetailFromBody}
-      className={`${detailCursor} group relative min-w-0 overflow-visible bg-card ${
+      className={`${detailCursor} ${offlineDim} group relative min-w-0 overflow-visible bg-card ${
         menuOpen ? "z-50" : "z-0 hover:z-50 focus-within:z-50"
       } max-sm:mx-3 max-sm:rounded-[14px] max-sm:border max-sm:border-border max-sm:p-3 max-sm:shadow-none sm:rounded-[6px] sm:border sm:p-4 sm:shadow-sm ${
         isPlaying
@@ -1536,6 +1614,7 @@ export function LibraryMeditationCard({
       meditationStyleFallback={m.meditationStyle}
       onClose={() => setHowMadeOpen(false)}
     />
+    {cardMenuSurface}
     </>
   );
 }

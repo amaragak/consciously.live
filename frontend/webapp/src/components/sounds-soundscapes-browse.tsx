@@ -25,12 +25,19 @@ import {
   isPublicSoundscapeHidden,
   matchesConsciouslyOriginalsPack,
 } from "@/components/composition-artist-select";
+import { OfflineSoundscapeDownloadBtn } from "@/components/offline-soundscape-download-btn";
 import { SoundsBrowseWell } from "@/components/sounds-browse-well";
+import { useOfflineDownloads } from "@/lib/native/use-offline-downloads";
 import { useSoundFavorites } from "@/lib/sound-favorites";
 
 const SCAPE_PREFIX = "sounds:scape:";
 
-type SoundCategory = "all" | "favourites" | "our-picks" | string;
+type SoundCategory =
+  | "all"
+  | "downloaded"
+  | "favourites"
+  | "our-picks"
+  | string;
 
 const BRAINWAVE_SYMBOLS: Record<string, string> = {
   delta: "δ",
@@ -111,6 +118,7 @@ function coverCropObjectPosition(
 
 export function SoundsSoundscapesBrowse() {
   const favorites = useSoundFavorites();
+  const offline = useOfflineDownloads();
   const { playTrack, toggleCurrent, nowPlaying, playingS3Key } =
     useLibraryPlayer();
   const cached = peekBackgroundAudioCache();
@@ -127,10 +135,19 @@ export function SoundsSoundscapesBrowse() {
     () => cached?.baseUrl?.trim() || getMedimadeMediaBaseUrl() || null,
   );
   const [loading, setLoading] = useState(() => !cached);
-  const [soundCategory, setSoundCategory] = useState<SoundCategory>("all");
+  const [soundCategory, setSoundCategory] = useState<SoundCategory>(() =>
+    offline.enabled && !navigator.onLine ? "downloaded" : "all",
+  );
   const [soundSort, setSoundSort] = useState<"az" | "recent">("az");
   const [filterOpen, setFilterOpen] = useState(false);
   const [extraTags, setExtraTags] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!offline.enabled) return;
+    if (!offline.online && soundCategory !== "downloaded") {
+      setSoundCategory("downloaded");
+    }
+  }, [offline.enabled, offline.online, soundCategory]);
 
   useEffect(() => {
     let cancelled = false;
@@ -191,7 +208,9 @@ export function SoundsSoundscapesBrowse() {
     const requiredExtra = extraTags;
     let list = compositions.filter((item) => {
       if (isPublicSoundscapeHidden(item)) return false;
-      if (soundCategory === "favourites") {
+      if (soundCategory === "downloaded") {
+        if (!offline.soundscape(item.key)) return false;
+      } else if (soundCategory === "favourites") {
         if (!favorites.compositionSet.has(item.key)) return false;
       } else if (soundCategory === "our-picks") {
         if (!item.adminFavourite) return false;
@@ -231,10 +250,12 @@ export function SoundsSoundscapesBrowse() {
     recentSoundIds,
     favorites.compositionSet,
     extraTags,
+    offline.catalog.soundscapes,
   ]);
 
   const listHeading = (() => {
     const n = filteredSoundscapes.length;
+    if (soundCategory === "downloaded") return `Downloaded · ${n}`;
     if (soundCategory === "favourites") return `Favourites · ${n}`;
     if (soundCategory === "our-picks") return `Our picks · ${n}`;
     if (soundCategory !== "all") return `${soundCategory} · ${n}`;
@@ -288,6 +309,15 @@ export function SoundsSoundscapesBrowse() {
       <h1 className="sr-only">Soundscapes</h1>
       <div className="flex shrink-0 flex-col gap-3.5">
         <div className="flex flex-wrap items-center gap-2">
+          {offline.enabled ? (
+            <button
+              type="button"
+              onClick={() => setSoundCategory("downloaded")}
+              className={chipClass(soundCategory === "downloaded")}
+            >
+              Downloaded
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setSoundCategory("all")}
@@ -325,6 +355,11 @@ export function SoundsSoundscapesBrowse() {
               {pack}
             </button>
           ))}
+          {offline.enabled && soundCategory === "downloaded" ? (
+            <p className="basis-full text-[13px] text-muted">
+              {offline.summary.label}
+            </p>
+          ) : null}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2.5">
             {filterFacetTags.length > 0 ? (
               <div className="relative">
@@ -413,10 +448,15 @@ export function SoundsSoundscapesBrowse() {
                 "";
               const bits = soundscapeTagBits(item, tagTypes);
               const fav = favorites.compositionSet.has(item.key);
+              const isDownloaded = Boolean(offline.soundscape(item.key));
+              const needsConnection =
+                offline.enabled && !offline.online && !isDownloaded;
               return (
                 <article
                   key={item.key}
-                  className="relative flex flex-row overflow-hidden rounded-[14px] border border-border bg-card shadow-sm @[28rem]:flex-col"
+                  className={`relative flex flex-row overflow-hidden rounded-[14px] border border-border bg-card shadow-sm @[28rem]:flex-col ${
+                    needsConnection ? "opacity-45" : ""
+                  }`}
                 >
                   {/* Single-col: square left; multi-col (≥2×220): wide image on top */}
                   <div className="relative h-[88px] w-[88px] shrink-0 bg-accent-soft @[28rem]:h-32 @[28rem]:w-full">
@@ -437,12 +477,27 @@ export function SoundsSoundscapesBrowse() {
                       }}
                       aria-hidden
                     />
+                    <OfflineSoundscapeDownloadBtn
+                      soundKey={item.key}
+                      title={item.name}
+                      url={previewUrl(item)}
+                      coverImageUrl={cover || null}
+                      sizeBytes={item.size}
+                    />
                     <button
                       type="button"
                       aria-label={
                         playing ? `Pause ${item.name}` : `Play ${item.name}`
                       }
-                      onClick={() => togglePreview(item)}
+                      onClick={() => {
+                        if (needsConnection) {
+                          window.alert(
+                            "This soundscape needs a connection. Download it while online to play offline.",
+                          );
+                          return;
+                        }
+                        togglePreview(item);
+                      }}
                       className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center @[28rem]:bottom-2.5 @[28rem]:left-2.5 @[28rem]:top-auto @[28rem]:translate-x-0 @[28rem]:translate-y-0"
                     >
                       {/* Larger when centered (single-col); corner control when stacked */}

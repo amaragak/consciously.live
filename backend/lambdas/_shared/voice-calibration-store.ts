@@ -64,6 +64,9 @@ const SCRIPT_SILENCE_HAIKU_CELL_SK_PREFIX = "script-silence-haiku-cell#";
 const SCRIPT_SILENCE_WORDS_CELL_SK_PREFIX = "script-silence-words-cell#";
 const SCRIPT_SILENCE_WORDS_HAIKU_CELL_SK_PREFIX =
   "script-silence-words-haiku-cell#";
+/** Silence-fit · words + Haiku stream vs gated compare pairs. */
+const SCRIPT_SILENCE_WORDS_HAIKU_COMPARE_SK_PREFIX =
+  "script-silence-words-haiku-compare#";
 /** Head-to-head comparison pair rows. */
 const SCRIPT_COMPARE_PAIR_SK_PREFIX = "script-compare-pair#";
 const SCRIPT_SINGLE_META_SK_PREFIX = "script-single-calibration#";
@@ -1242,6 +1245,79 @@ export async function clearSilenceWordsHaikuCalibrationForModel(
   modelId: string,
 ): Promise<{ deletedCells: number }> {
   return clearCellsByPrefix(modelId, SCRIPT_SILENCE_WORDS_HAIKU_CELL_SK_PREFIX);
+}
+
+export function silenceWordsHaikuComparePairKey(params: {
+  option: string;
+  minutes: number;
+  briefIndex: number;
+}): string {
+  return `${params.option}#${params.minutes}#${params.briefIndex}`;
+}
+
+export async function saveSilenceWordsHaikuComparePair(params: {
+  modelId: string;
+  pair: import("./script-silence-words-haiku-compare-cell").SilenceWordsHaikuComparePair;
+}): Promise<void> {
+  const modelId = coerceClaudeModel(params.modelId);
+  const pair = params.pair;
+  await ddb.send(
+    new PutCommand({
+      TableName: requireTable(),
+      Item: {
+        pk: VOICE_SETTINGS_PK,
+        sk: `${SCRIPT_SILENCE_WORDS_HAIKU_COMPARE_SK_PREFIX}${modelId}#${pair.option}#${pair.minutes}#${pair.briefIndex}`,
+        modelId,
+        option: pair.option,
+        minutes: pair.minutes,
+        briefIndex: pair.briefIndex,
+        pair,
+        updatedAt: new Date().toISOString(),
+      },
+    }),
+  );
+}
+
+export async function loadSilenceWordsHaikuComparePairs(
+  modelId: string,
+): Promise<
+  import("./script-silence-words-haiku-compare-cell").SilenceWordsHaikuComparePair[]
+> {
+  const table = tableName();
+  if (!table) return [];
+  const id = coerceClaudeModel(modelId);
+  const prefix = `${SCRIPT_SILENCE_WORDS_HAIKU_COMPARE_SK_PREFIX}${id}#`;
+  const pairs: import("./script-silence-words-haiku-compare-cell").SilenceWordsHaikuComparePair[] =
+    [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const page = await ddb.send(
+      new QueryCommand({
+        TableName: table,
+        KeyConditionExpression: "pk = :pk AND begins_with(sk, :sk)",
+        ExpressionAttributeValues: {
+          ":pk": VOICE_SETTINGS_PK,
+          ":sk": prefix,
+        },
+        ExclusiveStartKey: startKey,
+      }),
+    );
+    for (const item of page.Items ?? []) {
+      if (item.pair && typeof item.pair === "object") {
+        pairs.push(
+          item.pair as import("./script-silence-words-haiku-compare-cell").SilenceWordsHaikuComparePair,
+        );
+      }
+    }
+    startKey = page.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey);
+  return pairs;
+}
+
+export async function clearSilenceWordsHaikuCompareForModel(
+  modelId: string,
+): Promise<{ deletedCells: number }> {
+  return clearCellsByPrefix(modelId, SCRIPT_SILENCE_WORDS_HAIKU_COMPARE_SK_PREFIX);
 }
 
 export async function saveSingleCallCalibrationMeta(params: {

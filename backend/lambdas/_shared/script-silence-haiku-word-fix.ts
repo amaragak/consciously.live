@@ -335,6 +335,11 @@ export async function applySilenceHaikuWordFix(params: {
    * use phaseTrigger alone. Targets scale with budget ÷ phases written so far.
    */
   streamingPartial?: boolean;
+  /**
+   * When true (default), Haiku phase fixes run via Promise.all.
+   * When false, phases are fixed one-after-another (serial / original timing).
+   */
+  haikuParallel?: boolean;
   source?: AiUsageSource;
 }): Promise<SilenceHaikuWordFixResult> {
   const scriptAsWritten = params.scriptWithHeaders;
@@ -444,66 +449,73 @@ export async function applySilenceHaikuWordFix(params: {
     haikuText: null,
   }));
   const usages: TimeBasedCallUsage[] = [];
+  const parallel = params.haikuParallel !== false;
 
-  await Promise.all(
-    toFix.map(async (i) => {
-      const phase = phases[i]!;
-      const words = phaseWords[i] ?? 0;
-      const wordTarget = phaseTargets[i] ?? 0;
-      const row = phaseResults[i]!;
-      row.attempted = true;
-      row.wordTarget = wordTarget;
-      const prevLine = i > 0 ? lastSpokenLine(phases[i - 1]!.body) : "";
-      const nextLine =
-        i < phases.length - 1 ? firstSpokenLine(phases[i + 1]!.body) : "";
-      try {
-        const { text, usage } = await haikuPhaseCall({
-          apiKey: params.apiKey,
-          model,
-          phase,
-          words,
-          wordTarget,
-          prevLine,
-          nextLine,
-          source: params.source,
-        });
-        if (usage) usages.push(usage);
-        const rewritten = extractPhaseFromHaikuReply(text, phase);
-        if (!rewritten || !rewritten.body.trim()) {
-          row.rejectReason = "missing_or_malformed";
-          row.haikuText = text.slice(0, 4000) || null;
-          return;
-        }
-        // Was: reject when pause markers differed (v1/v2).
-        // if (
-        //   !markersEqual(
-        //     pauseMarkersInOrder(phase.body),
-        //     pauseMarkersInOrder(rewritten.body),
-        //   )
-        // ) {
-        //   row.rejectReason = "pause_markers";
-        //   return;
-        // }
-        void pauseMarkersInOrder;
-        void markersEqual;
-        const after = countSpokenWords(rewritten.body);
-        row.wordsAfter = after;
-        row.haikuText = rewritten.body.slice(0, 4000);
-        if (!progressOk({ before: words, after, target: wordTarget })) {
-          row.rejectReason = "wrong_direction";
-          // Was: also "insufficient_progress" when moved < 1/3 of the way.
-          return;
-        }
-        nextPhases[i] = rewritten;
-        row.accepted = true;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        row.rejectReason =
-          /abort|timeout/i.test(msg) ? "timeout" : "call_failed";
-        console.warn("silence-haiku phase fix skipped", phase.name, msg);
+  const fixOne = async (i: number) => {
+    const phase = phases[i]!;
+    const words = phaseWords[i] ?? 0;
+    const wordTarget = phaseTargets[i] ?? 0;
+    const row = phaseResults[i]!;
+    row.attempted = true;
+    row.wordTarget = wordTarget;
+    const prevLine = i > 0 ? lastSpokenLine(phases[i - 1]!.body) : "";
+    const nextLine =
+      i < phases.length - 1 ? firstSpokenLine(phases[i + 1]!.body) : "";
+    try {
+      const { text, usage } = await haikuPhaseCall({
+        apiKey: params.apiKey,
+        model,
+        phase,
+        words,
+        wordTarget,
+        prevLine,
+        nextLine,
+        source: params.source,
+      });
+      if (usage) usages.push(usage);
+      const rewritten = extractPhaseFromHaikuReply(text, phase);
+      if (!rewritten || !rewritten.body.trim()) {
+        row.rejectReason = "missing_or_malformed";
+        row.haikuText = text.slice(0, 4000) || null;
+        return;
       }
-    }),
-  );
+      // Was: reject when pause markers differed (v1/v2).
+      // if (
+      //   !markersEqual(
+      //     pauseMarkersInOrder(phase.body),
+      //     pauseMarkersInOrder(rewritten.body),
+      //   )
+      // ) {
+      //   row.rejectReason = "pause_markers";
+      //   return;
+      // }
+      void pauseMarkersInOrder;
+      void markersEqual;
+      const after = countSpokenWords(rewritten.body);
+      row.wordsAfter = after;
+      row.haikuText = rewritten.body.slice(0, 4000);
+      if (!progressOk({ before: words, after, target: wordTarget })) {
+        row.rejectReason = "wrong_direction";
+        // Was: also "insufficient_progress" when moved < 1/3 of the way.
+        return;
+      }
+      nextPhases[i] = rewritten;
+      row.accepted = true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      row.rejectReason =
+        /abort|timeout/i.test(msg) ? "timeout" : "call_failed";
+      console.warn("silence-haiku phase fix skipped", phase.name, msg);
+    }
+  };
+
+  if (parallel) {
+    await Promise.all(toFix.map((i) => fixOne(i)));
+  } else {
+    for (const i of toFix) {
+      await fixOne(i);
+    }
+  }
 
   const scriptWithHeaders = joinTimeBasedPhases(nextPhases);
   const wordsAfter = nextPhases.reduce(

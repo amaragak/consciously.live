@@ -115,6 +115,7 @@ import {
   loadSilenceHaikuCalibrationCells,
   loadSilenceWordsCalibrationCells,
   loadSilenceWordsHaikuCalibrationCells,
+  loadSilenceWordsHaikuComparePairs,
   type SpeakerRateDoc,
   loadRecentLengthLogs,
   type LengthLog,
@@ -159,6 +160,18 @@ import {
   startSilenceWordsHaikuCostRun,
   stopSilenceWordsHaikuCostRun,
 } from "./_shared/script-silence-words-haiku-cost-run";
+import {
+  isSilenceWordsHaikuCompareWorkerEvent,
+  loadSilenceWordsHaikuCompareRun,
+  processSilenceWordsHaikuCompareTick,
+  silenceWordsHaikuCompareWorkItems,
+  startSilenceWordsHaikuCompareRun,
+  stopSilenceWordsHaikuCompareRun,
+} from "./_shared/script-silence-words-haiku-compare-run";
+import type {
+  SilenceWordsHaikuCompareModeResult,
+  SilenceWordsHaikuComparePair,
+} from "./_shared/script-silence-words-haiku-compare-cell";
 import {
   silenceWordsAsFitSettings,
   silenceWordsWordBudget,
@@ -419,6 +432,21 @@ export async function handler(
     } catch (e) {
       console.error(
         "silence-words-haiku-cost worker",
+        e instanceof Error ? e.message : e,
+      );
+    }
+    return;
+  }
+
+  if (isSilenceWordsHaikuCompareWorkerEvent(event)) {
+    try {
+      await processSilenceWordsHaikuCompareTick({
+        modelId: event.job.modelId,
+        runToken: event.job.runToken,
+      });
+    } catch (e) {
+      console.error(
+        "silence-words-haiku-compare worker",
         e instanceof Error ? e.message : e,
       );
     }
@@ -2376,6 +2404,342 @@ async function handlePost(
       summary,
       budgets,
       silenceWords: sw,
+      run,
+    });
+  }
+  if (action === "start-silence-words-haiku-compare") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const briefCount = coerceCalibrationBriefCount(
+      typeof body.calibrationBriefCount === "number"
+        ? body.calibrationBriefCount
+        : prev.scriptGeneration.calibrationBriefCount,
+      prev.scriptGeneration.calibrationBriefs.length || 10,
+    );
+    if (briefCount !== prev.scriptGeneration.calibrationBriefCount) {
+      await saveDeliveryProfileRecord({
+        profiles: prev.profiles,
+        scriptGeneration: {
+          ...prev.scriptGeneration,
+          calibrationBriefCount: briefCount,
+        },
+        by: admin.email?.trim() || admin.sub || "admin",
+        note: `Silence-words-haiku compare run n=${briefCount}`,
+      });
+    }
+    const run = await startSilenceWordsHaikuCompareRun({
+      modelId,
+      calibrationBriefCount: briefCount,
+      restart: body.restart !== false,
+    });
+    return json(200, { ok: true, run });
+  }
+  if (action === "stop-silence-words-haiku-compare") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    await stopSilenceWordsHaikuCompareRun(modelId);
+    const run = await loadSilenceWordsHaikuCompareRun(modelId);
+    return json(200, { ok: true, run });
+  }
+  if (action === "get-silence-words-haiku-compare") {
+    const prev = await loadDeliveryProfileRecord();
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim()
+        ? body.modelId.trim()
+        : prev.scriptGeneration.scriptModelId;
+    const pairs = await loadSilenceWordsHaikuComparePairs(modelId);
+    const briefs = activeCalibrationBriefs(prev.scriptGeneration);
+    const run = await loadSilenceWordsHaikuCompareRun(modelId);
+    const briefCount = coerceCalibrationBriefCount(
+      run?.briefCount ?? prev.scriptGeneration.calibrationBriefCount,
+      briefs.length,
+    );
+    const workItems = silenceWordsHaikuCompareWorkItems(briefCount);
+    const avg = (nums: number[]) =>
+      nums.length
+        ? Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10
+        : null;
+    const avgFine = (nums: number[]) =>
+      nums.length
+        ? Math.round(
+            (nums.reduce((a, b) => a + b, 0) / nums.length) * 10000,
+          ) / 10000
+        : null;
+    const avgInt = (nums: number[]) =>
+      nums.length
+        ? Math.round(nums.reduce((a, b) => a + b, 0) / nums.length)
+        : null;
+    const modeSnap = (
+      m: SilenceWordsHaikuCompareModeResult | undefined,
+    ) => m?.accuracy;
+    const rows = SILENCE_FIT_OPTIONS.flatMap((option) =>
+      SILENCE_FIT_LENGTHS.map((len) => {
+        const minutes = Number(len);
+        const cellPairs = pairs.filter(
+          (p) => p.option === option && p.minutes === minutes,
+        );
+        const failedCell = cellPairs.filter(
+          (p) => typeof p.error === "string" && p.error.trim(),
+        );
+        const group = cellPairs.filter(
+          (p) => !p.error && p.stream?.accuracy && p.gated?.accuracy,
+        );
+        const n = group.length;
+        const streamSnaps = group.map((p) => p.stream);
+        const gatedSnaps = group.map((p) => p.gated);
+        const bands = silenceFitAutoSpeakingBands(
+          silenceFitSpeakingShare(prev.profiles, option),
+        );
+        const missAfter = (
+          snaps: SilenceWordsHaikuCompareModeResult[],
+        ) =>
+          avg(
+            snaps.map((s) => {
+              const a = s.accuracy;
+              return a.targetSeconds > 0
+                ? ((a.predictedSecondsAfter - a.targetSeconds) /
+                    a.targetSeconds) *
+                    100
+                : 0;
+            }),
+          );
+        const missBefore = (
+          snaps: SilenceWordsHaikuCompareModeResult[],
+        ) =>
+          avg(
+            snaps.map((s) => {
+              const a = s.accuracy;
+              return a.targetSeconds > 0
+                ? ((a.predictedSecondsBefore - a.targetSeconds) /
+                    a.targetSeconds) *
+                    100
+                : 0;
+            }),
+          );
+        const detailFor = (
+          p: SilenceWordsHaikuComparePair,
+          m: SilenceWordsHaikuCompareModeResult,
+        ) => {
+          const acc = m.accuracy;
+          return {
+            briefIndex: p.briefIndex,
+            brief: p.brief,
+            mode: m.mode,
+            ...(acc ?? {}),
+            phasesAttempted: m.phasesAttempted,
+            phasesFixed: m.phasesFixed,
+            phasesRejected: m.phasesRejected,
+            haikuRan: m.haikuRan,
+            haikuMs: m.haikuMs,
+            totalMs: m.totalMs,
+            scriptMs: m.scriptMs,
+            ttsMs: m.ttsMs,
+            assembleMs: m.assembleMs,
+            ttsPhases: m.ttsPhases,
+            audioBytes: m.audioBytes,
+            haikuUsd: m.haikuUsd,
+            claudeUsd: m.claudeUsd,
+            sonnetMs: p.sonnetMs,
+            wordBudget: m.wordBudget ?? p.wordBudget,
+            scriptText: m.scriptText,
+            scriptAsWritten: m.scriptAsWritten || p.scriptAsWritten,
+            scriptAfterHaiku: m.scriptAfterHaiku,
+          };
+        };
+        return {
+          option,
+          label: SILENCE_FIT_OPTION_LABEL[option],
+          minutes,
+          scripts: n,
+          failed: failedCell.length,
+          failedError: failedCell[0]?.error?.slice(0, 160) ?? null,
+          speakingBandMin: bands.speakingBandMin,
+          speakingBandMax: bands.speakingBandMax,
+          speechShareSonnet: avgFine(
+            streamSnaps.map(
+              (s) =>
+                modeSnap(s)?.speechShareSonnet ??
+                modeSnap(s)?.speechShare ??
+                0,
+            ),
+          ),
+          stream: {
+            speechShare: avgFine(
+              streamSnaps.map((s) => modeSnap(s)?.speechShare ?? 0),
+            ),
+            wordsVsBudgetPct: avg(
+              streamSnaps.map((s) => modeSnap(s)?.wordsVsBudgetPct ?? 0),
+            ),
+            wordsVsBudgetSonnetPct: avg(
+              streamSnaps.map(
+                (s) =>
+                  modeSnap(s)?.wordsVsBudgetSonnetPct ??
+                  modeSnap(s)?.wordsVsBudgetPct ??
+                  0,
+              ),
+            ),
+            beforeFitPct: missBefore(streamSnaps),
+            afterFitPct: missAfter(streamSnaps),
+            estimatedTotalAudioSeconds: avg(
+              streamSnaps.map(
+                (s) => modeSnap(s)?.estimatedTotalAudioSeconds ?? 0,
+              ),
+            ),
+            haikuRanCount: streamSnaps.filter((s) => s.haikuRan).length,
+            phasesAttemptedAvg: avg(
+              streamSnaps.map((s) => s.phasesAttempted),
+            ),
+            phasesFixedAvg: avg(streamSnaps.map((s) => s.phasesFixed)),
+            phasesRejectedAvg: avg(
+              streamSnaps.map((s) => s.phasesRejected),
+            ),
+            haikuMsAvg: avgInt(streamSnaps.map((s) => s.haikuMs)),
+            totalMsAvg: avgInt(streamSnaps.map((s) => s.totalMs)),
+            scriptMsAvg: avgInt(streamSnaps.map((s) => s.scriptMs ?? 0)),
+            ttsMsAvg: avgInt(streamSnaps.map((s) => s.ttsMs ?? 0)),
+            assembleMsAvg: avgInt(streamSnaps.map((s) => s.assembleMs ?? 0)),
+            haikuUsdAvg: avgFine(streamSnaps.map((s) => s.haikuUsd)),
+            claudeUsdAvg: avgFine(streamSnaps.map((s) => s.claudeUsd)),
+            fitStep:
+              streamSnaps.length &&
+              streamSnaps.every(
+                (s) =>
+                  modeSnap(s)?.fitStep === modeSnap(streamSnaps[0])?.fitStep,
+              )
+                ? modeSnap(streamSnaps[0])?.fitStep ?? null
+                : streamSnaps.length
+                  ? "mixed"
+                  : null,
+            why: (() => {
+              const whys = [
+                ...new Set(
+                  streamSnaps
+                    .map((s) => modeSnap(s)?.why)
+                    .filter(
+                      (w): w is string => typeof w === "string" && !!w.trim(),
+                    ),
+                ),
+              ];
+              return whys.length === 1
+                ? whys[0]!
+                : whys.length > 1
+                  ? whys.join("; ")
+                  : null;
+            })(),
+          },
+          gated: {
+            speechShare: avgFine(
+              gatedSnaps.map((s) => modeSnap(s)?.speechShare ?? 0),
+            ),
+            wordsVsBudgetPct: avg(
+              gatedSnaps.map((s) => modeSnap(s)?.wordsVsBudgetPct ?? 0),
+            ),
+            wordsVsBudgetSonnetPct: avg(
+              gatedSnaps.map(
+                (s) =>
+                  modeSnap(s)?.wordsVsBudgetSonnetPct ??
+                  modeSnap(s)?.wordsVsBudgetPct ??
+                  0,
+              ),
+            ),
+            beforeFitPct: missBefore(gatedSnaps),
+            afterFitPct: missAfter(gatedSnaps),
+            estimatedTotalAudioSeconds: avg(
+              gatedSnaps.map(
+                (s) => modeSnap(s)?.estimatedTotalAudioSeconds ?? 0,
+              ),
+            ),
+            haikuRanCount: gatedSnaps.filter((s) => s.haikuRan).length,
+            phasesAttemptedAvg: avg(
+              gatedSnaps.map((s) => s.phasesAttempted),
+            ),
+            phasesFixedAvg: avg(gatedSnaps.map((s) => s.phasesFixed)),
+            phasesRejectedAvg: avg(
+              gatedSnaps.map((s) => s.phasesRejected),
+            ),
+            haikuMsAvg: avgInt(gatedSnaps.map((s) => s.haikuMs)),
+            totalMsAvg: avgInt(gatedSnaps.map((s) => s.totalMs)),
+            scriptMsAvg: avgInt(gatedSnaps.map((s) => s.scriptMs ?? 0)),
+            ttsMsAvg: avgInt(gatedSnaps.map((s) => s.ttsMs ?? 0)),
+            assembleMsAvg: avgInt(gatedSnaps.map((s) => s.assembleMs ?? 0)),
+            haikuUsdAvg: avgFine(gatedSnaps.map((s) => s.haikuUsd)),
+            claudeUsdAvg: avgFine(gatedSnaps.map((s) => s.claudeUsd)),
+            fitStep:
+              gatedSnaps.length &&
+              gatedSnaps.every(
+                (s) =>
+                  modeSnap(s)?.fitStep === modeSnap(gatedSnaps[0])?.fitStep,
+              )
+                ? modeSnap(gatedSnaps[0])?.fitStep ?? null
+                : gatedSnaps.length
+                  ? "mixed"
+                  : null,
+            why: (() => {
+              const whys = [
+                ...new Set(
+                  gatedSnaps
+                    .map((s) => modeSnap(s)?.why)
+                    .filter(
+                      (w): w is string => typeof w === "string" && !!w.trim(),
+                    ),
+                ),
+              ];
+              return whys.length === 1
+                ? whys[0]!
+                : whys.length > 1
+                  ? whys.join("; ")
+                  : null;
+            })(),
+          },
+          sonnetMsAvg: avgInt(group.map((p) => p.sonnetMs)),
+          scriptsDetail: group.flatMap((p) => [
+            detailFor(p, p.stream),
+            detailFor(p, p.gated),
+          ]),
+        };
+      }),
+    );
+    const okPairs = pairs.filter((p) => !p.error && p.stream && p.gated);
+    const failedPairs = pairs.filter(
+      (p) => typeof p.error === "string" && p.error.trim(),
+    );
+    return json(200, {
+      ok: true,
+      briefCount,
+      workItems,
+      completedCount: okPairs.length,
+      total: workItems.length,
+      rows,
+      summary: {
+        pairs: okPairs.length,
+        failed: failedPairs.length,
+        failedSample: failedPairs
+          .slice(0, 3)
+          .map((p) =>
+            `${p.option}/${p.minutes}m: ${(p.error || "").slice(0, 160)}`,
+          ),
+        streamHaikuRan: okPairs.filter((p) => p.stream.haikuRan).length,
+        gatedHaikuRan: okPairs.filter((p) => p.gated.haikuRan).length,
+        streamPhasesAttemptedAvg: avg(
+          okPairs.map((p) => p.stream.phasesAttempted),
+        ),
+        gatedPhasesAttemptedAvg: avg(
+          okPairs.map((p) => p.gated.phasesAttempted),
+        ),
+        streamHaikuMsAvg: avgInt(okPairs.map((p) => p.stream.haikuMs)),
+        gatedHaikuMsAvg: avgInt(okPairs.map((p) => p.gated.haikuMs)),
+        streamTtsMsAvg: avgInt(okPairs.map((p) => p.stream.ttsMs ?? 0)),
+        gatedTtsMsAvg: avgInt(okPairs.map((p) => p.gated.ttsMs ?? 0)),
+        streamTotalMsAvg: avgInt(okPairs.map((p) => p.stream.totalMs)),
+        gatedTotalMsAvg: avgInt(okPairs.map((p) => p.gated.totalMs)),
+        ttsVoiceName: okPairs.find((p) => p.ttsVoiceName)?.ttsVoiceName ?? null,
+      },
       run,
     });
   }

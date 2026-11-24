@@ -25,7 +25,7 @@ export type SilenceWordsHaikuModeSettings = SilenceWordsModeSettings & {
   phaseTriggerPct: number;
   /**
    * When true, stream finished phases to TTS before the full script is done.
-   * Default off. Whole-script Haiku trigger is skipped while streaming.
+   * Default on. Whole-script Haiku trigger is skipped while streaming.
    */
   streamPhasesToTts: boolean;
   /**
@@ -56,7 +56,7 @@ export function defaultSilenceWordsHaikuModeSettings(): SilenceWordsHaikuModeSet
     ...defaultSilenceWordsModeSettings(),
     scriptTriggerPct: 0.1,
     phaseTriggerPct: 0.15,
-    streamPhasesToTts: false,
+    streamPhasesToTts: true,
     askSonnetPctByOptionLength: defaultAskSonnetMap(),
   };
 }
@@ -109,7 +109,10 @@ export function coerceSilenceWordsHaikuModeSettings(
     ...words,
     scriptTriggerPct: clampPct(Number(o.scriptTriggerPct), base.scriptTriggerPct),
     phaseTriggerPct: clampPct(Number(o.phaseTriggerPct), base.phaseTriggerPct),
-    streamPhasesToTts: o.streamPhasesToTts === true,
+    streamPhasesToTts:
+      typeof o.streamPhasesToTts === "boolean"
+        ? o.streamPhasesToTts
+        : base.streamPhasesToTts,
     askSonnetPctByOptionLength,
   };
 }

@@ -47,8 +47,23 @@ import {
   patchMeditationDevRefresh,
   backgroundAudioPlaybackKey,
   backgroundAudioStreamingKey,
+  getMedimadeMediaBaseUrl,
   type BackgroundAudioItem,
 } from "@/lib/medimade-api";
+import { useOfflineDownloads } from "@/lib/native/use-offline-downloads";
+import {
+  markMeditationStaleIfMixChanged,
+} from "@/lib/native/offline-downloads";
+import {
+  formatBytes,
+  meditationDownloadSizeLabel,
+  meditationOfflineBedUrls,
+  meditationOfflineFingerprint,
+  removeMeditationDownload,
+  saveMeditationForOffline,
+  type MeditationBedCatalog,
+} from "@/lib/native/offline-download-actions";
+import { OfflineMeditationDownloadSheet } from "@/components/offline-meditation-download-sheet";
 import {
   sortByAlgoliaOrder,
   useUserContentSearchIds,
@@ -678,6 +693,16 @@ const PROGRAM_FOOTER_PX = 48;
 const PROGRAM_COVER_EDGE_PX =
   PROGRAM_TITLE_LINE_PX + 6 + PROGRAM_DESC_BLOCK_MIN_PX + PROGRAM_FOOTER_PX;
 
+/** Stable offline catalog id — own/community use `sk`; program days use `id`. */
+function meditationOfflineId(
+  m: Pick<LibraryMeditationItem, "sk" | "id">,
+): string | null {
+  const sk = m.sk?.trim();
+  if (sk) return sk;
+  const id = m.id?.trim();
+  return id || null;
+}
+
 /** Map a program class onto the shared library card shape so we reuse renderItem. */
 function libraryItemFromProgramDay(
   day: LibraryProgramDay,
@@ -839,6 +864,15 @@ export default function LibraryView({
   }, [mobileFilterOpen]);
   const [ratingBusy, setRatingBusy] = useState<string | null>(null);
   const [favouritesOnly, setFavouritesOnly] = useState(false);
+  const offline = useOfflineDownloads();
+  const [downloadedOnly, setDownloadedOnly] = useState(
+    () => offline.enabled && typeof navigator !== "undefined" && !navigator.onLine,
+  );
+  const [offlineBusyId, setOfflineBusyId] = useState<string | null>(null);
+  const [offlineConfirm, setOfflineConfirm] = useState<{
+    item: LibraryMeditationItem;
+    mode: "download" | "update";
+  } | null>(null);
   const [favouriteBusySk, setFavouriteBusySk] = useState<string | null>(null);
   const [archiveBusySk, setArchiveBusySk] = useState<string | null>(null);
   const [archiveConfirm, setArchiveConfirm] = useState<{
@@ -1031,6 +1065,46 @@ export default function LibraryView({
   useEffect(() => {
     setShowFishCostTooltip(shouldRenderDevUi(devUi.libraryDevFlyout));
   }, [devUi.libraryDevFlyout]);
+
+  useEffect(() => {
+    if (!offline.enabled) return;
+    if (!offline.online && !downloadedOnly) setDownloadedOnly(true);
+  }, [offline.enabled, offline.online, downloadedOnly]);
+
+  const mixBedCatalog: MeditationBedCatalog = useMemo(
+    () => ({
+      nature: mixNature,
+      music: mixMusic,
+      drums: mixDrums,
+      noise: mixNoise,
+      compositions: mixCompositions,
+    }),
+    [mixNature, mixMusic, mixDrums, mixNoise, mixCompositions],
+  );
+
+  useEffect(() => {
+    if (!offline.enabled) return;
+    const mediaBase = getMedimadeMediaBaseUrl()?.trim() || "";
+    if (!mediaBase) return;
+    const allItems = [
+      ...items,
+      ...communityRemote,
+      ...programs.flatMap((p) => p.days.map((d) => libraryItemFromProgramDay(d, p))),
+    ];
+    for (const item of allItems) {
+      const id = meditationOfflineId(item);
+      if (!id || !offline.meditation(id)) continue;
+      const fp = meditationOfflineFingerprint(item, mediaBase, mixBedCatalog);
+      markMeditationStaleIfMixChanged(id, fp);
+    }
+  }, [
+    offline.enabled,
+    offline.catalog.meditations,
+    items,
+    communityRemote,
+    programs,
+    mixBedCatalog,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1264,15 +1338,21 @@ export default function LibraryView({
 
   const visibleItems: LibraryMeditationRow[] = useMemo(() => {
     const tokens = librarySearchTokens(searchQuery);
+    const matchesDownloaded = (x: LibraryMeditationItem) => {
+      if (!downloadedOnly || !offline.enabled) return true;
+      const id = meditationOfflineId(x);
+      return Boolean(id && offline.meditation(id));
+    };
     if (libraryTab === "programs") return [];
     if (libraryTab === "community") {
       const afterFav = favouritesOnly
         ? sortedCommunityItems.filter((x) => x.favourite)
         : sortedCommunityItems;
+      const afterDl = afterFav.filter(matchesDownloaded);
       const list =
         categoryFilter === "all"
-          ? afterFav
-          : afterFav.filter((x) =>
+          ? afterDl
+          : afterDl.filter((x) =>
               itemMatchesLibraryCategory(x, categoryFilter),
             );
       return list.filter((x) => libraryRowMatchesSearch(x, tokens));
@@ -1286,6 +1366,7 @@ export default function LibraryView({
         !(pinnedAudioId && x.s3Key === pinnedAudioId),
     );
     const afterFav = favouritesOnly ? base.filter((x) => x.favourite) : base;
+    const afterDl = afterFav.filter(matchesDownloaded);
     const healJobIds =
       categoryFilter === "heal" || healItemQuery
         ? new Set(
@@ -1299,10 +1380,10 @@ export default function LibraryView({
       !healJobIds || Boolean(jobId && healJobIds.has(jobId));
     const afterCat =
       healJobIds
-        ? afterFav.filter((x) => matchesHeal(x.jobId))
+        ? afterDl.filter((x) => matchesHeal(x.jobId))
         : categoryFilter === "all"
-          ? afterFav
-          : afterFav.filter(
+          ? afterDl
+          : afterDl.filter(
               (x) => libraryMeditationCategoryLabel(x) === categoryFilter,
             );
     const catalogued = afterCat.filter((x) => {
@@ -1312,12 +1393,14 @@ export default function LibraryView({
       }
       return libraryRowMatchesSearch(x, tokens);
     });
-    const pendingMatched = pendingRows.filter((x) => {
-      if (healJobIds && !matchesHeal(x.jobId)) return false;
-      if (!libraryRowMatchesSearch(x, tokens)) return false;
-      const src = pending.find((p) => p.jobId === x.jobId);
-      return !src || !pendingHasCataloguedItem(catalogued, src);
-    });
+    const pendingMatched = downloadedOnly
+      ? []
+      : pendingRows.filter((x) => {
+          if (healJobIds && !matchesHeal(x.jobId)) return false;
+          if (!libraryRowMatchesSearch(x, tokens)) return false;
+          const src = pending.find((p) => p.jobId === x.jobId);
+          return !src || !pendingHasCataloguedItem(catalogued, src);
+        });
     const merged = [...pendingMatched, ...catalogued];
     return sortByAlgoliaOrder(
       merged,
@@ -1328,6 +1411,9 @@ export default function LibraryView({
     sortedItems,
     sortedCommunityItems,
     favouritesOnly,
+    downloadedOnly,
+    offline.enabled,
+    offline.catalog.meditations,
     categoryFilter,
     libraryTab,
     pendingRows,
@@ -1343,13 +1429,17 @@ export default function LibraryView({
     // When the user changes filters/sort/tabs, reset pagination so they don't land mid-list.
     setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortBy, favouritesOnly, categoryFilter, libraryTab, searchQuery]);
+  }, [sortBy, favouritesOnly, downloadedOnly, categoryFilter, libraryTab, searchQuery]);
 
   useEffect(() => {
     setCategoryFilter(searchParams.get("source") === "heal" ? "heal" : "all");
     setFavouritesOnly(false);
+    setDownloadedOnly(
+      offline.enabled && typeof navigator !== "undefined" && !navigator.onLine,
+    );
     setExploringProgramId(null);
     if (libraryTab === "programs") setViewMode("list");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset filters on tab change only
   }, [libraryTab]);
 
   const nonPendingVisibleItems = useMemo(() => {
@@ -2208,6 +2298,18 @@ export default function LibraryView({
           ? { community: true, s3Key: item.s3Key }
           : undefined,
       );
+      if (offline.enabled) {
+        const mediaBase = getMedimadeMediaBaseUrl()?.trim() || "";
+        if (mediaBase) {
+          const nextItem = { ...item, ...overlay };
+          const fp = meditationOfflineFingerprint(
+            nextItem,
+            mediaBase,
+            mixBedCatalog,
+          );
+          markMeditationStaleIfMixChanged(sk, fp);
+        }
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not save mix";
       setMixError(msg);
@@ -2240,8 +2342,72 @@ export default function LibraryView({
   }
 
   function playLibraryItem(m: LibraryMeditationItem) {
+    if (offline.enabled && !offline.online) {
+      const id = meditationOfflineId(m);
+      if (!id || !offline.meditation(id)) {
+        window.alert(
+          "This meditation needs a connection. Download it while online to play offline.",
+        );
+        return;
+      }
+    }
     unlockHtmlMediaPlayback();
     playItem(itemWithSpeechifyEmotion(m));
+  }
+
+  function offlineDownloadPropsFor(m: LibraryMeditationItem) {
+    if (!offline.enabled || !m.audioUrl) return null;
+    const id = meditationOfflineId(m);
+    if (!id) return null;
+    const saved = offline.meditation(id);
+    const mediaBase = getMedimadeMediaBaseUrl()?.trim() || "";
+    const beds = mediaBase
+      ? meditationOfflineBedUrls(m, mediaBase, mixBedCatalog)
+      : { urls: [] as string[], soundscapeName: null as string | null, bytesHint: 0 };
+    const sizeLabel = saved
+      ? formatBytes(saved.bytes)
+      : meditationDownloadSizeLabel({
+          durationSeconds: m.durationSeconds,
+          bedBytesHint: beds.bytesHint,
+        });
+    return {
+      downloaded: Boolean(saved),
+      stale: Boolean(saved?.stale),
+      soundscapeName: saved?.soundscapeName ?? beds.soundscapeName,
+      sizeLabel,
+      busy: offlineBusyId === id,
+      onDownload: () => setOfflineConfirm({ item: m, mode: "download" }),
+      onRemove: () => {
+        setOfflineBusyId(id);
+        void removeMeditationDownload(id).finally(() => setOfflineBusyId(null));
+      },
+      onUpdate: () => setOfflineConfirm({ item: m, mode: "update" }),
+    };
+  }
+
+  async function confirmOfflineDownload() {
+    if (!offlineConfirm) return;
+    const m = offlineConfirm.item;
+    const id = meditationOfflineId(m);
+    const mediaBase = getMedimadeMediaBaseUrl()?.trim() || "";
+    if (!id || !mediaBase) {
+      setOfflineConfirm(null);
+      return;
+    }
+    setOfflineBusyId(id);
+    try {
+      await saveMeditationForOffline({
+        sk: id,
+        item: m,
+        mediaBase,
+        catalog: mixBedCatalog,
+      });
+      setOfflineConfirm(null);
+    } catch {
+      /* leave as not downloaded */
+    } finally {
+      setOfflineBusyId(null);
+    }
   }
 
   function setSpeechifyEmotionForItem(
@@ -2535,6 +2701,7 @@ export default function LibraryView({
         }}
         mixOpen={mixEditor?.sk != null && mixEditor.sk === item.sk}
         onCloseMix={() => mixCloseRef.current?.()}
+        offlineDownload={offlineDownloadPropsFor(item)}
       />
       </>
     );
@@ -2655,6 +2822,15 @@ export default function LibraryView({
         onCloseMix={() => mixCloseRef.current?.()}
         shareCopiedId={shareCopiedId}
         onShare={() => shareLibraryItem(m, isCommunity)}
+        offlineDownload={offlineDownloadPropsFor(m)}
+        offlineUnavailable={Boolean(
+          offline.enabled &&
+            !offline.online &&
+            (() => {
+              const id = meditationOfflineId(m);
+              return !id || !offline.meditation(id);
+            })(),
+        )}
         itemRef={(el) => {
           if (el) itemElsRef.current.set(m.s3Key, el);
           else itemElsRef.current.delete(m.s3Key);
@@ -2859,9 +3035,37 @@ export default function LibraryView({
       "linear-gradient(145deg, color-mix(in srgb, var(--accent-button) 82%, white), var(--accent-button) 52%, color-mix(in srgb, var(--accent-button) 88%, black))",
   } as const;
 
+  const downloadedChipClass = (on: boolean) =>
+    `shrink-0 whitespace-nowrap rounded-full px-3.5 py-[7px] text-[13px] ${
+      on
+        ? "border border-accent bg-accent-soft/50 font-semibold text-foreground"
+        : "border border-border bg-card text-foreground"
+    }`;
+
+  const downloadedFilterChip =
+    offline.enabled &&
+    (libraryTab === "meditations" ||
+      libraryTab === "community" ||
+      libraryTab === "programs") ? (
+      <button
+        type="button"
+        onClick={() => setDownloadedOnly((v) => !v)}
+        aria-pressed={downloadedOnly}
+        className={downloadedChipClass(downloadedOnly)}
+      >
+        Downloaded
+      </button>
+    ) : null;
+
+  const downloadedSummaryLine =
+    offline.enabled && downloadedOnly ? (
+      <p className="text-[13px] text-muted">{offline.summary.label}</p>
+    ) : null;
+
   const mobileFilterPills = (
     <div className="flex items-center gap-2">
     <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {downloadedFilterChip}
       {libraryTab === "meditations" || libraryTab === "community" ? (
         <button
           type="button"
@@ -2990,6 +3194,7 @@ export default function LibraryView({
         aria-label="Search library"
       />
       {mobileFilterPills}
+      {downloadedSummaryLine}
     </div>
   );
 
@@ -3099,6 +3304,14 @@ export default function LibraryView({
                   ✦ Make it your own
                 </Link>
               </div>
+              {offline.enabled ? (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {downloadedFilterChip}
+                  </div>
+                  {downloadedSummaryLine}
+                </div>
+              ) : null}
             </>
           ) : null}
           {(libraryTab === "meditations" || libraryTab === "community")
@@ -3120,6 +3333,18 @@ export default function LibraryView({
               <IconSparkles size={16} stroke={2} aria-hidden />
               Make it your own
             </Link>
+          </div>
+        ) : null}
+        {!detailId &&
+        (libraryTab === "meditations" ||
+          libraryTab === "community" ||
+          libraryTab === "programs") &&
+        offline.enabled ? (
+          <div className="mt-3 hidden w-full flex-col gap-1.5 md:mt-2 md:flex">
+            <div className="flex flex-wrap items-center gap-2">
+              {downloadedFilterChip}
+            </div>
+            {downloadedSummaryLine}
           </div>
         ) : null}
         {!detailId &&
@@ -3301,9 +3526,14 @@ export default function LibraryView({
                   <p className="px-4 text-sm text-muted md:px-0">No lessons ready yet.</p>
                 ) : (
                   <ul className="mt-2 flex w-full min-w-0 max-w-full flex-col max-sm:gap-2.5 sm:max-md:gap-0 md:gap-3">
-                    {exploring.days.map((day) =>
-                      renderItem(libraryItemFromProgramDay(day, exploring)),
-                    )}
+                    {exploring.days
+                      .map((day) => libraryItemFromProgramDay(day, exploring))
+                      .filter((row) => {
+                        if (!downloadedOnly || !offline.enabled) return true;
+                        const id = meditationOfflineId(row);
+                        return Boolean(id && offline.meditation(id));
+                      })
+                      .map((row) => renderItem(row))}
                   </ul>
                 )}
               </div>
@@ -3439,19 +3669,21 @@ export default function LibraryView({
       ) : libraryTab !== "programs" &&
         pagedVisibleItems.length === 0 &&
         !showLibraryStoryPin ? (
-        searchQuery.trim() || (libraryTab === "community" && categoryFilter !== "all") || favouritesOnly ? (
+        searchQuery.trim() ||
+        (libraryTab === "community" && categoryFilter !== "all") ||
+        favouritesOnly ||
+        downloadedOnly ? (
           <EmptyState
             message={
-              searchQuery.trim()
-                ? "Nothing matches these filters"
-                : favouritesOnly
-                  ? "Nothing matches these filters"
-                  : "Nothing matches these filters"
+              downloadedOnly && !searchQuery.trim() && !favouritesOnly
+                ? "No downloaded meditations yet"
+                : "Nothing matches these filters"
             }
             actionLabel="Clear filters"
             onAction={() => {
               setSearchQuery("");
               setFavouritesOnly(false);
+              setDownloadedOnly(false);
               setCategoryFilter("all");
             }}
           />
@@ -3769,6 +4001,31 @@ export default function LibraryView({
         }}
       />
     ) : null}
+
+    <OfflineMeditationDownloadSheet
+      open={Boolean(offlineConfirm)}
+      title={offlineConfirm?.item.title ?? ""}
+      soundscapeName={
+        offlineConfirm
+          ? offlineDownloadPropsFor(offlineConfirm.item)?.soundscapeName ?? null
+          : null
+      }
+      sizeLabel={
+        offlineConfirm
+          ? offlineDownloadPropsFor(offlineConfirm.item)?.sizeLabel ?? "—"
+          : "—"
+      }
+      busy={Boolean(
+        offlineConfirm &&
+          offlineBusyId === meditationOfflineId(offlineConfirm.item),
+      )}
+      mode={offlineConfirm?.mode ?? "download"}
+      onConfirm={() => void confirmOfflineDownload()}
+      onClose={() => {
+        if (offlineBusyId) return;
+        setOfflineConfirm(null);
+      }}
+    />
 
     {archiveConfirm ? (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/50 p-4">

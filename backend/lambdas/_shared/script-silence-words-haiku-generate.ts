@@ -14,6 +14,7 @@ import type { DeliveryProfiles } from "./delivery-profiles";
 import { countSpokenWords } from "./meditation-length-fit";
 import {
   measureTimeBasedPhases,
+  splitTimeBasedPhases,
   type TimeBasedCallUsage,
   type TimeBasedPhaseStat,
 } from "./script-time-based-generate";
@@ -48,6 +49,11 @@ import {
 } from "./script-silence-haiku-word-fix";
 import { summarizeOrdinaryPauseMarkers } from "./script-pause-bands";
 import { summarizeExtendablePauses } from "./script-time-based-pauses";
+import {
+  streamSilenceWordsSonnetWithProgressiveHaiku,
+  type SilenceWordsHaikuPhaseReady,
+  type SilenceWordsHaikuStreamTiming,
+} from "./script-silence-words-haiku-stream";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
@@ -80,6 +86,8 @@ export type SilenceWordsHaikuGenerateResult = {
   option: SilenceFitOptionId;
   wordBudget: number;
   minLongPauses: number;
+  /** Wall-clock script processing (Sonnet → Haiku done). */
+  timing: SilenceWordsHaikuStreamTiming;
 };
 
 async function anthropicTextCall(params: {
@@ -163,7 +171,30 @@ export async function generateSilenceWordsHaikuScript(params: {
   lengthTolerancePct: number;
   journalMode?: boolean;
   source?: AiUsageSource;
+  /**
+   * When true: Haiku each out-of-range phase (no whole-script gate).
+   * When false/omit: use silenceWordsHaiku.streamPhasesToTts; if that is also
+   * false, Haiku only runs when the whole script is outside scriptTriggerPct.
+   */
+  streamingPartial?: boolean;
+  /** Default true (Promise.all). False = fix phases one-after-another. */
+  haikuParallel?: boolean;
+  /**
+   * When set, skip the Sonnet write and Haiku+fit this script instead
+   * (compare runs: one Sonnet, two Haiku strategies).
+   */
+  scriptAsWrittenOverride?: string;
+  /** Usages already recorded for a shared Sonnet write (compare runs). */
+  priorUsages?: TimeBasedCallUsage[];
+  /** When true, return after the Sonnet write (no Haiku / silence fit). */
+  skipHaiku?: boolean;
+  /**
+   * Fired when a phase is closed and Haiku (if any) has finished — create can
+   * TTS that chunk without waiting for the rest of the script.
+   */
+  onPhaseReady?: (phase: SilenceWordsHaikuPhaseReady) => void | Promise<void>;
 }): Promise<SilenceWordsHaikuGenerateResult> {
+  const t0 = Date.now();
   const sw = params.silenceWordsHaiku;
   const fitSettings = silenceWordsAsFitSettings(sw);
   const cell = silenceFitCellFor(fitSettings, params.option, params.minutes);
@@ -213,40 +244,122 @@ export async function generateSilenceWordsHaikuScript(params: {
     journalMode: params.journalMode,
   });
 
-  const usages: TimeBasedCallUsage[] = [];
-  const first = await anthropicTextCall({
-    apiKey: params.apiKey,
-    model: params.model,
-    label: "silence-words-haiku-write",
-    reason: "script-silence-words-haiku-write",
-    source: params.source,
-    body: buildScriptGenerationCachedBody({
+  // Admin "Stream phases to TTS" / create-dev override: when on, Haiku each
+  // phase toward its target (no whole-script gate). When off, Haiku only if
+  // the full script is outside scriptTriggerPct — same as admin cost cells.
+  const streamingPartial =
+    params.streamingPartial !== undefined
+      ? params.streamingPartial === true
+      : sw.streamPhasesToTts === true;
+
+  const usages: TimeBasedCallUsage[] = [...(params.priorUsages ?? [])];
+  let scriptAsWritten: string;
+  let haiku: SilenceHaikuWordFixResult;
+  let timing: SilenceWordsHaikuStreamTiming;
+
+  const useProgressiveStream =
+    streamingPartial &&
+    !params.skipHaiku &&
+    !params.scriptAsWrittenOverride?.trim();
+
+  if (useProgressiveStream) {
+    // Stream Sonnet; Haiku each closed phase immediately (overlaps remaining
+    // Sonnet). Total ms = wall clock start → last Haiku done.
+    const streamed = await streamSilenceWordsSonnetWithProgressiveHaiku({
+      apiKey: params.apiKey,
       model: params.model,
-      maxTokens: prompt.maxTokens,
+      haikuModelId: params.haikuModelId,
       systemStable: prompt.systemStable,
       meditationContext: prompt.meditationContext,
       taskContent: prompt.taskContent,
-      noCache: true,
-      effort: "medium",
-    }),
-  });
-  if (first.usage) usages.push(first.usage);
+      maxTokens: prompt.maxTokens,
+      wordBudget,
+      scriptTriggerPct: sw.scriptTriggerPct,
+      phaseTriggerPct: sw.phaseTriggerPct,
+      askSonnetPct,
+      source: params.source,
+      onPhaseReady: params.onPhaseReady,
+    });
+    scriptAsWritten = normalizeScriptWithHeaders(streamed.scriptAsWritten);
+    haiku = streamed.haiku;
+    for (const u of streamed.usages) usages.push(u);
+    timing = streamed.timing;
+  } else {
+    const sonnetStarted = Date.now();
+    if (params.scriptAsWrittenOverride?.trim()) {
+      scriptAsWritten = normalizeScriptWithHeaders(
+        params.scriptAsWrittenOverride,
+      );
+    } else {
+      const first = await anthropicTextCall({
+        apiKey: params.apiKey,
+        model: params.model,
+        label: "silence-words-haiku-write",
+        reason: "script-silence-words-haiku-write",
+        source: params.source,
+        body: buildScriptGenerationCachedBody({
+          model: params.model,
+          maxTokens: prompt.maxTokens,
+          systemStable: prompt.systemStable,
+          meditationContext: prompt.meditationContext,
+          taskContent: prompt.taskContent,
+          noCache: true,
+          effort: "medium",
+        }),
+      });
+      if (first.usage) usages.push(first.usage);
+      scriptAsWritten = normalizeScriptWithHeaders(first.text);
+    }
+    const sonnetMs = Date.now() - sonnetStarted;
 
-  const scriptAsWritten = normalizeScriptWithHeaders(first.text);
+    const haikuStarted = Date.now();
+    haiku = params.skipHaiku
+      ? {
+          scriptWithHeaders: scriptAsWritten,
+          scriptAsWritten,
+          haikuRan: false,
+          wordsBeforeHaiku: countSpokenWords(scriptAsWritten),
+          wordsAfterHaiku: countSpokenWords(scriptAsWritten),
+          wordBudget,
+          phasesFixed: 0,
+          phasesRejected: 0,
+          phaseResults: [],
+          usages: [] as TimeBasedCallUsage[],
+          haikuUsd: 0,
+        }
+      : await applySilenceHaikuWordFix({
+          apiKey: params.apiKey,
+          haikuModelId: params.haikuModelId,
+          scriptWithHeaders: scriptAsWritten,
+          wordBudget,
+          scriptTriggerPct: sw.scriptTriggerPct,
+          phaseTriggerPct: sw.phaseTriggerPct,
+          phaseTargetSource: "header_words",
+          streamingPartial,
+          haikuParallel: params.haikuParallel,
+          source: params.source,
+        });
+    for (const u of haiku.usages) usages.push(u);
+    const haikuMs = Date.now() - haikuStarted;
+    timing = {
+      sonnetMs,
+      haikuMs,
+      // Gated / non-stream: elapsed start → Haiku finished (sequential).
+      totalMs: Date.now() - t0,
+    };
 
-  const haiku = await applySilenceHaikuWordFix({
-    apiKey: params.apiKey,
-    haikuModelId: params.haikuModelId,
-    scriptWithHeaders: scriptAsWritten,
-    wordBudget,
-    scriptTriggerPct: sw.scriptTriggerPct,
-    phaseTriggerPct: sw.phaseTriggerPct,
-    phaseTargetSource: "header_words",
-    // Full-script path: streamingPartial only when streamPhasesToTts mid-write.
-    streamingPartial: false,
-    source: params.source,
-  });
-  for (const u of haiku.usages) usages.push(u);
+    if (params.onPhaseReady && !params.skipHaiku) {
+      const phases = splitTimeBasedPhases(haiku.scriptWithHeaders);
+      for (let i = 0; i < phases.length; i++) {
+        const phase = phases[i]!;
+        await params.onPhaseReady({
+          phaseIndex: i,
+          phase,
+          ttsBody: phase.body,
+        });
+      }
+    }
+  }
 
   const scriptAfterHaiku = haiku.scriptWithHeaders;
 
@@ -367,6 +480,9 @@ export async function generateSilenceWordsHaikuScript(params: {
     scriptAfterHaiku,
   };
 
+  // Include silence-fit in wall-clock total (local, usually tiny).
+  timing = { ...timing, totalMs: Math.max(timing.totalMs, Date.now() - t0) };
+
   console.log(
     JSON.stringify({
       tag: "script-silence-words-haiku",
@@ -377,6 +493,8 @@ export async function generateSilenceWordsHaikuScript(params: {
       phasesFixed: haiku.phasesFixed,
       wordsVsBudgetPct,
       callCount: usages.length,
+      timing,
+      progressiveStream: useProgressiveStream,
     }),
   );
 
@@ -393,5 +511,6 @@ export async function generateSilenceWordsHaikuScript(params: {
     option: params.option,
     wordBudget,
     minLongPauses,
+    timing,
   };
 }

@@ -1784,6 +1784,11 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     ttsProvider?: TtsProvider;
     fishTtsModel?: string;
     fishPauseMode?: "native" | "segmented";
+    /**
+     * Dev override for silence_words_haiku: Haiku each phase (no whole-script
+     * gate). When omitted, uses admin silenceWordsHaiku.streamPhasesToTts.
+     */
+    streamPhasesToTts?: boolean;
     speed?: number;
     voiceFxPreset?: string;
     voiceFxDial?: number;
@@ -1860,6 +1865,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     ttsProvider?: TtsProvider;
     fishTtsModel?: string;
     fishPauseMode?: "native" | "segmented";
+    streamPhasesToTts?: boolean;
     speed?: number;
     voiceFxPreset?: string;
     voiceFxDial?: number;
@@ -1893,6 +1899,9 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     ttsProvider: jobItem.ttsProvider,
     fishTtsModel: jobItem.fishTtsModel,
     fishPauseMode: jobItem.fishPauseMode,
+    ...(typeof jobItem.streamPhasesToTts === "boolean"
+      ? { streamPhasesToTts: jobItem.streamPhasesToTts }
+      : {}),
     speed: jobItem.speed,
     voiceFxPreset: jobItem.voiceFxPreset,
     voiceFxDial: jobItem.voiceFxDial,
@@ -2271,6 +2280,14 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
 
   let scriptTextUsed = scriptText;
   const shouldGenerateScript = !scriptTextUsed;
+  /** Stream Haiku: phase bodies ready for TTS as soon as each phase closes. */
+  let silenceWordsHaikuPhaseBodies: string[] = [];
+  let silenceWordsHaikuStreamTts = false;
+  /** Stream: PCM+FX OLA jobs kicked from onPhaseReady (overlaps remaining Sonnet). */
+  let silenceWordsHaikuPhasePcmJobs = new Map<
+    number,
+    Promise<Awaited<ReturnType<typeof synthesizeFishPcmFxOla>>>
+  >();
   let claudeWorkerInputTokens = 0;
   let claudeWorkerOutputTokens = 0;
   const generationTimings: GenerationTimings = { phases: {}, sections: [] };
@@ -2361,12 +2378,103 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           lengthTargetSeconds - titleSpeechSec - titlePauseWritten,
         );
         const option = silenceFitOptionFromDelivery(pacingDelivery);
+        const streamPhases =
+          typeof body.streamPhasesToTts === "boolean"
+            ? body.streamPhasesToTts === true
+            : scriptGeneration.silenceWordsHaiku.streamPhasesToTts === true;
+        silenceWordsHaikuStreamTts = streamPhases;
+        silenceWordsHaikuPhaseBodies = [];
+        silenceWordsHaikuPhasePcmJobs = new Map();
+        // Prefetch TTS secrets so phase PCM+FX can start while Sonnet still streams.
+        let streamFishKey: string | undefined;
+        let streamSpeechifyKey: string | undefined;
+        if (streamPhases) {
+          try {
+            if (ttsProvider === "speechify") {
+              streamSpeechifyKey = await getSpeechifyApiKey();
+            } else if (ttsProvider === "fish") {
+              streamFishKey = await getFishApiKey();
+            }
+          } catch (e) {
+            console.warn(
+              "stream phase TTS key prefetch failed; will TTS after script",
+              e instanceof Error ? e.message : e,
+            );
+          }
+        }
+        const streamSkipFx =
+          body.skipVoiceFx === true ||
+          (ttsProvider === "speechify" && body.skipSpeechifyLoudnorm === true);
+        const streamTitleHint =
+          typeof body.title === "string"
+            ? body.title
+            : typeof jobItem.title === "string"
+              ? jobItem.title
+              : "";
+        const streamSpeechifyRateSsml = speechifyRateToSsml(
+          typeof body.speechifyRate === "number" &&
+            Number.isFinite(body.speechifyRate)
+            ? body.speechifyRate
+            : speaker?.speechifyRate,
+        );
+        const kickPhasePcm = (phaseIndex: number, ttsBody: string) => {
+          silenceWordsHaikuPhaseBodies[phaseIndex] = ttsBody;
+          if (!streamPhases || silenceWordsHaikuPhasePcmJobs.has(phaseIndex)) {
+            return;
+          }
+          const bodyText = ttsBody.trim();
+          if (!bodyText) return;
+          const script =
+            phaseIndex === 0
+              ? withSpokenMeditationTitleIntro(bodyText, streamTitleHint)
+              : bodyText;
+          if (ttsProvider === "speechify" && streamSpeechifyKey) {
+            silenceWordsHaikuPhasePcmJobs.set(
+              phaseIndex,
+              synthesizeSpeechifyPcmFxOla({
+                s3,
+                bucket: mediaBucketName,
+                apiKey: streamSpeechifyKey,
+                script,
+                voiceId: referenceId,
+                speechifyRate: streamSpeechifyRateSsml,
+                speechifyLoudnessNormalization:
+                  body.skipSpeechifyLoudnorm !== true,
+                emotion: MEDITATION_SPEECHIFY_EMOTION,
+                sentenceBreakMs: speechifySentenceBreakMs,
+                pauseScale: pauseRenderScale,
+                applyFx: !streamSkipFx,
+                voiceFxDial,
+                encodeAac: false,
+              }),
+            );
+          } else if (ttsProvider === "fish" && streamFishKey) {
+            silenceWordsHaikuPhasePcmJobs.set(
+              phaseIndex,
+              synthesizeFishPcmFxOla({
+                s3,
+                bucket: mediaBucketName,
+                apiKey: streamFishKey,
+                script,
+                voiceId: referenceId,
+                speed: speechSpeed,
+                fishTtsModel,
+                pauseScale: pauseRenderScale,
+                applyFx: !streamSkipFx,
+                voiceFxDial,
+                encodeAac: false,
+              }),
+            );
+          }
+        };
         console.log("generating script from Claude (silence-fit · words + Haiku)", {
           meditationStylePresent: Boolean(meditationStyle?.trim()),
           targetMinutes,
           scriptTimeSeconds,
           option,
           writeMode,
+          streamPhases,
+          streamTtsPrefetch: Boolean(streamFishKey || streamSpeechifyKey),
           reason: "admin-mode-silence-words-haiku",
         });
         const generated = await generateSilenceWordsHaikuScript({
@@ -2386,6 +2494,12 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
             deliveryProfiles.shared.lengthTolerancePct ?? 10,
           journalMode: journalModeFromJob,
           source: "user",
+          streamingPartial: streamPhases,
+          onPhaseReady: streamPhases
+            ? ({ phaseIndex, ttsBody }) => {
+                kickPhasePcm(phaseIndex, ttsBody);
+              }
+            : undefined,
         });
         for (const u of generated.usages) {
           claudeWorkerInputTokens += u.input_tokens;
@@ -2407,6 +2521,9 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           haikuRan: generated.haiku.haikuRan,
           phasesFixed: generated.haiku.phasesFixed,
           callCount: generated.usages.length,
+          timing: generated.timing,
+          streamPhases,
+          phaseBodiesReady: silenceWordsHaikuPhaseBodies.filter(Boolean).length,
         });
       } else if (writeMode === "silence_words") {
         const scriptTimeSeconds = Math.max(
@@ -3371,7 +3488,88 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
 
       let result: Awaited<ReturnType<typeof runOla>>;
       const ttsSectionsStarted = Date.now();
-      if (sectionsUsed && sectionTexts.length > 1) {
+      if (silenceWordsHaikuStreamTts && silenceWordsHaikuPhasePcmJobs.size > 0) {
+        // Stream path: phase PCM+FX already running (kicked from onPhaseReady).
+        console.log("awaiting streamed phase PCM+FX jobs", {
+          phases: silenceWordsHaikuPhasePcmJobs.size,
+          ttsProvider,
+        });
+        const entries = [...silenceWordsHaikuPhasePcmJobs.entries()].sort(
+          (a, b) => a[0] - b[0],
+        );
+        const parts = await Promise.all(entries.map(([, p]) => p));
+        const mixedPcm = Buffer.concat(
+          parts.map((p) => p.mixedPcm ?? Buffer.alloc(0)),
+        );
+        let sampleOffset = 0;
+        const dryChunks = parts.flatMap((p) => {
+          const chunks = p.dryChunks.map((c) => ({
+            ...c,
+            startSample: c.startSample + sampleOffset,
+          }));
+          sampleOffset += (p.mixedPcm?.byteLength ?? 0) / 2;
+          return chunks;
+        });
+        const speechSeconds = parts.reduce(
+          (a, p) => a + p.lengthFit.speechSeconds,
+          0,
+        );
+        const pauseSeconds = parts.reduce(
+          (a, p) => a + p.lengthFit.pauseSeconds,
+          0,
+        );
+        const stemSeconds = parts.reduce(
+          (a, p) => a + p.lengthFit.stemSeconds,
+          0,
+        );
+        if (!lengthWithin(stemSeconds, lengthTargetSeconds, lengthTolerancePct)) {
+          console.log("streamed phase stitch outside tolerance; re-run full OLA", {
+            stemSeconds: Math.round(stemSeconds),
+            lengthTargetSeconds,
+          });
+          result = await runOla(ttsScript);
+          generationTimings.phases.sectionTtsMs = elapsedMs(ttsSectionsStarted);
+        } else {
+          const aacStarted = Date.now();
+          const deliveryAac = await pcm24kS16leToAac44100(mixedPcm);
+          generationTimings.phases.sectionTtsMs = elapsedMs(ttsSectionsStarted);
+          generationTimings.phases.aacEncodeMs = elapsedMs(aacStarted);
+          result = {
+            deliveryAac,
+            mixedPcm,
+            dryChunks,
+            voiceFxApplied: parts.some((p) => p.voiceFxApplied),
+            utf8Bytes: parts.reduce((a, p) => a + p.utf8Bytes, 0),
+            lengthFit: {
+              speechSeconds,
+              pauseSeconds,
+              stemSeconds,
+              longPauseScale: preAudioPauseScale,
+              postScaled: false,
+            },
+            timings: {
+              sections: parts.flatMap((p) => p.timings.sections),
+              phases: {
+                ttsPipelineMs: elapsedMs(ttsSectionsStarted),
+                ttsFxLoopMs: Math.max(
+                  ...parts.map((p) => p.timings.phases.ttsFxLoopMs ?? 0),
+                ),
+                olaMs: parts.reduce(
+                  (a, p) => a + (p.timings.phases.olaMs ?? 0),
+                  0,
+                ),
+                aacEncodeMs: generationTimings.phases.aacEncodeMs,
+                fxMs: parts.reduce((a, p) => a + (p.timings.phases.fxMs ?? 0), 0),
+              },
+            },
+          };
+        }
+        console.log("streamed phase PCM assemble done", {
+          phases: parts.length,
+          stemSeconds: Math.round(result.lengthFit.stemSeconds),
+          sectionTtsMs: generationTimings.phases.sectionTtsMs,
+        });
+      } else if (sectionsUsed && sectionTexts.length > 1) {
         // Per-section TTS in parallel, then stitch PCM and encode once.
         const sectionScripts = sectionTexts.map((sec, i) =>
           i === 0
@@ -3522,14 +3720,10 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         synthTimings = result.timings;
         // Native Fish has no per-chunk decode — leave scriptChunks empty.
       } else {
-        console.log("calling TTS with pause-aware synthesis", {
-          reference_id: referenceId,
-          ttsProvider,
-          fishTtsModel,
-          longerBreaks,
-          pauseRenderScale,
-        });
-        const result = await synthesizeScriptWithPauses({
+        const phaseBodies = silenceWordsHaikuPhaseBodies.filter(
+          (b): b is string => typeof b === "string" && b.trim().length > 0,
+        );
+        const ttsCommon = {
           provider: ttsProvider,
           fishApiKey: fishKey,
           speechifyApiKey: speechifyKey,
@@ -3537,19 +3731,98 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           speechifyLoudnessNormalization,
           emotion: MEDITATION_SPEECHIFY_EMOTION,
           runpod: runpodCreds,
-          script: ttsScript,
           voiceId: referenceId,
           speed: speechSpeed,
           fishTtsModel,
           pauseBands,
           pauseScale: pauseRenderScale,
           sentenceBreakMs: speechifySentenceBreakMs,
-        });
-        audio = result.audio;
-        utf8Bytes = result.utf8Bytes;
-        voiceFxApplied = false;
-        synthTimings = result.timings;
-        speechDurationsMs = result.speechDurationsMs;
+        } as const;
+        if (silenceWordsHaikuStreamTts && phaseBodies.length > 0) {
+          // Stream path: TTS each Haiku-ready phase in parallel, then concat.
+          // (Phases were collected as Sonnet streamed; Haiku already overlapped.)
+          console.log("calling TTS per streamed phase (parallel)", {
+            reference_id: referenceId,
+            ttsProvider,
+            phases: phaseBodies.length,
+          });
+          const phaseResults = await Promise.all(
+            phaseBodies.map((script, i) =>
+              synthesizeScriptWithPauses({
+                ...ttsCommon,
+                script,
+              }).then((r) => ({ i, ...r })),
+            ),
+          );
+          phaseResults.sort((a, b) => a.i - b.i);
+          const parts = phaseResults.map((r) => r.audio);
+          const speechify = ttsProvider === "speechify";
+          const id = randomUUID();
+          const ext = speechify ? ".aac" : ".mp3";
+          const files = parts.map((buf, i) => {
+            const p = `/tmp/phase-tts-${id}-${i}${ext}`;
+            fs.writeFileSync(p, buf);
+            return p;
+          });
+          const outPath = speechify
+            ? `/tmp/phase-tts-out-${id}${AAC_EXTENSION}`
+            : `/tmp/phase-tts-out-${id}.mp3`;
+          const listPath = `/tmp/phase-tts-${id}.txt`;
+          fs.writeFileSync(
+            listPath,
+            files.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"),
+          );
+          const concatStarted = Date.now();
+          await execFileAsync("ffmpeg", [
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            listPath,
+            "-ac",
+            "1",
+            "-ar",
+            "44100",
+            ...(speechify
+              ? (["-c:a", AAC_ENCODER, "-b:a", "160k"] as const)
+              : (["-c:a", "libmp3lame", "-q:a", "2"] as const)),
+            outPath,
+          ]);
+          audio = fs.readFileSync(outPath);
+          utf8Bytes = phaseResults.reduce((s, r) => s + r.utf8Bytes, 0);
+          voiceFxApplied = false;
+          speechDurationsMs = phaseResults.flatMap((r) => r.speechDurationsMs);
+          synthTimings = {
+            sections: phaseResults.flatMap((r) => r.timings.sections),
+            phases: {
+              concatMs: elapsedMs(concatStarted),
+            },
+          };
+          console.log("streamed phase TTS concat", {
+            phases: parts.length,
+            concatMs: synthTimings.phases.concatMs,
+            bytes: audio.byteLength,
+          });
+        } else {
+          console.log("calling TTS with pause-aware synthesis", {
+            reference_id: referenceId,
+            ttsProvider,
+            fishTtsModel,
+            longerBreaks,
+            pauseRenderScale,
+          });
+          const result = await synthesizeScriptWithPauses({
+            ...ttsCommon,
+            script: ttsScript,
+          });
+          audio = result.audio;
+          utf8Bytes = result.utf8Bytes;
+          voiceFxApplied = false;
+          synthTimings = result.timings;
+          speechDurationsMs = result.speechDurationsMs;
+        }
       }
 
       generationTimings.sections = synthTimings.sections;

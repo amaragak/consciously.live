@@ -410,6 +410,12 @@ export function clearMedimadeSession(): void {
         void import("@/lib/journal-storage").then((j) => {
           j.resetJournalLocalToGuestInitialImport();
         });
+        // Native offline downloads are per-account — wipe on sign-out.
+        void import("@/lib/native/offline-downloads").then((o) => {
+          if (o.offlineDownloadsEnabled()) {
+            void o.clearAllOfflineDownloads();
+          }
+        });
         window.dispatchEvent(new Event("medimade-session-changed"));
       } catch {
         /* */

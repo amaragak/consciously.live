@@ -42,6 +42,7 @@ type AdminScriptTab =
   | "calibrate"
   | "costs"
   | "accuracy"
+  | "compare"
   | "preview";
 
 const ADMIN_SCRIPT_TABS: readonly AdminScriptTab[] = [
@@ -49,6 +50,7 @@ const ADMIN_SCRIPT_TABS: readonly AdminScriptTab[] = [
   "calibrate",
   "costs",
   "accuracy",
+  "compare",
   "preview",
 ] as const;
 
@@ -322,6 +324,12 @@ function fmtClock(seconds: number | null | undefined): string {
   return `${m}:${String(r).padStart(2, "0")}`;
 }
 
+/** Format wall-clock ms as seconds (one decimal). */
+function fmtMsAsSec(ms: number | null | undefined): string {
+  if (typeof ms !== "number" || !Number.isFinite(ms)) return "—";
+  return (Math.max(0, ms) / 1000).toFixed(1);
+}
+
 function silenceFitStepLabel(step: string | null | undefined): string {
   if (step === "long_pauses") return "Long pauses";
   if (step === "short_pauses") return "Short pauses";
@@ -423,6 +431,7 @@ type SilenceAccuracyRow = {
       wordsBefore: number;
       wordsAfter: number;
       wordTarget: number;
+      headerWords?: number | null;
       haikuText?: string | null;
     }>;
     scriptTextAsWritten?: string;
@@ -440,6 +449,101 @@ type SilenceAccuracySummary = {
   avgMissAfterPct: number | null;
   largestMissAfterPct?: number | null;
   haikuRanCount?: number;
+};
+
+type SilenceWordsHaikuCompareModeAgg = {
+  speechShare: number | null;
+  wordsVsBudgetPct: number | null;
+  wordsVsBudgetSonnetPct: number | null;
+  beforeFitPct: number | null;
+  afterFitPct: number | null;
+  estimatedTotalAudioSeconds: number | null;
+  haikuRanCount: number;
+  phasesAttemptedAvg: number | null;
+  phasesFixedAvg: number | null;
+  phasesRejectedAvg: number | null;
+  haikuMsAvg: number | null;
+  totalMsAvg: number | null;
+  scriptMsAvg?: number | null;
+  ttsMsAvg?: number | null;
+  assembleMsAvg?: number | null;
+  haikuUsdAvg: number | null;
+  claudeUsdAvg: number | null;
+  fitStep: string | null;
+  why: string | null;
+};
+
+type SilenceWordsHaikuCompareRow = {
+  option: string;
+  label: string;
+  minutes: number;
+  scripts: number;
+  failed?: number;
+  failedError?: string | null;
+  speakingBandMin: number;
+  speakingBandMax: number;
+  speechShareSonnet: number | null;
+  stream: SilenceWordsHaikuCompareModeAgg;
+  gated: SilenceWordsHaikuCompareModeAgg;
+  sonnetMsAvg: number | null;
+  scriptsDetail?: Array<{
+    briefIndex: number;
+    brief?: string;
+    mode: "stream" | "gated";
+    speechShare?: number;
+    speechShareSonnet?: number;
+    wordsVsBudgetPct?: number;
+    wordsVsBudgetSonnetPct?: number;
+    predictedSecondsBefore?: number;
+    predictedSecondsAfter?: number;
+    targetSeconds?: number;
+    estimatedTotalAudioSeconds?: number;
+    fitStep?: string | null;
+    why?: string | null;
+    haikuRan?: boolean;
+    phasesAttempted?: number;
+    phasesFixed?: number;
+    phasesRejected?: number;
+    haikuMs?: number;
+    totalMs?: number;
+    scriptMs?: number;
+    ttsMs?: number;
+    assembleMs?: number;
+    haikuUsd?: number;
+    claudeUsd?: number;
+    sonnetMs?: number;
+    wordsBeforeHaiku?: number;
+    wordsAfterHaiku?: number;
+    phaseResults?: Array<{
+      phaseIndex: number;
+      phaseName: string;
+      attempted: boolean;
+      accepted: boolean;
+      rejectReason: string | null;
+      wordsBefore: number;
+      wordsAfter: number;
+      wordTarget: number;
+      headerWords?: number | null;
+      haikuText?: string | null;
+    }>;
+  }>;
+};
+
+type SilenceWordsHaikuCompareSummary = {
+  pairs: number;
+  failed?: number;
+  failedSample?: string[];
+  streamHaikuRan: number;
+  gatedHaikuRan: number;
+  streamPhasesAttemptedAvg: number | null;
+  gatedPhasesAttemptedAvg: number | null;
+  streamHaikuMsAvg: number | null;
+  gatedHaikuMsAvg: number | null;
+  streamTtsMsAvg?: number | null;
+  gatedTtsMsAvg?: number | null;
+  streamTotalMsAvg: number | null;
+  gatedTotalMsAvg: number | null;
+  ttsVoiceName?: string | null;
 };
 
 type SilenceModeBucket = {
@@ -888,6 +992,18 @@ export function AdminDeliveryProfiles() {
   const [expandedHaikuRejectKey, setExpandedHaikuRejectKey] = useState<
     string | null
   >(null);
+  const [wordsHaikuCompareRows, setWordsHaikuCompareRows] = useState<
+    SilenceWordsHaikuCompareRow[]
+  >([]);
+  const [wordsHaikuCompareSummary, setWordsHaikuCompareSummary] =
+    useState<SilenceWordsHaikuCompareSummary | null>(null);
+  const [wordsHaikuCompareRunning, setWordsHaikuCompareRunning] =
+    useState(false);
+  const [wordsHaikuCompareProgress, setWordsHaikuCompareProgress] = useState<
+    string | null
+  >(null);
+  const [expandedWordsHaikuCompareKey, setExpandedWordsHaikuCompareKey] =
+    useState<string | null>(null);
 
   function patchSilenceMode(
     mode: SilenceFamilyMode,
@@ -1080,6 +1196,19 @@ export function AdminDeliveryProfiles() {
                   action: "get-silence-words-haiku-calibration",
                   modelId: sg0.scriptModelId,
                 }),
+                postAdminVoice<{
+                  rows?: SilenceWordsHaikuCompareRow[];
+                  summary?: SilenceWordsHaikuCompareSummary | null;
+                  run?: {
+                    status?: string;
+                    completedCount?: number;
+                    total?: number;
+                    currentLabel?: string | null;
+                  } | null;
+                }>({
+                  action: "get-silence-words-haiku-compare",
+                  modelId: sg0.scriptModelId,
+                }),
               ]);
               const fitSnap =
                 settled[0].status === "fulfilled" ? settled[0].value : null;
@@ -1089,6 +1218,36 @@ export function AdminDeliveryProfiles() {
                 settled[2].status === "fulfilled" ? settled[2].value : null;
               const wordsHaikuSnap =
                 settled[3].status === "fulfilled" ? settled[3].value : null;
+              const wordsHaikuCompareSnap =
+                settled[4].status === "fulfilled" ? settled[4].value : null;
+              if (!cancelled && wordsHaikuCompareSnap) {
+                setWordsHaikuCompareRows(wordsHaikuCompareSnap.rows ?? []);
+                setWordsHaikuCompareSummary(
+                  wordsHaikuCompareSnap.summary ?? null,
+                );
+                const cr = wordsHaikuCompareSnap.run;
+                const pairs = wordsHaikuCompareSnap.summary?.pairs ?? 0;
+                if (cr?.status === "running" || cr?.status === "stopping") {
+                  setWordsHaikuCompareRunning(true);
+                  setWordsHaikuCompareProgress(
+                    cr.status === "stopping"
+                      ? cr.currentLabel || "Stopping…"
+                      : cr.currentLabel ||
+                          `${cr.completedCount ?? 0} of ${cr.total ?? 0}`,
+                  );
+                  // Resume polling after refresh so Stop stays usable and UI updates.
+                  void pollSilenceWordsHaikuCompareUntilIdle(
+                    scriptGeneration.scriptModelId,
+                  );
+                } else {
+                  setWordsHaikuCompareRunning(false);
+                  setWordsHaikuCompareProgress(
+                    pairs > 0
+                      ? `Last compare · ${pairs} pairs`
+                      : "No stored stream vs gated compare yet",
+                  );
+                }
+              }
               if (!cancelled) {
                 const progressFor = (
                   snap: SilenceSnap,
@@ -2269,6 +2428,145 @@ export function AdminDeliveryProfiles() {
     }
   }
 
+  async function pollSilenceWordsHaikuCompareUntilIdle(modelId: string) {
+    const sleep = (ms: number) =>
+      new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+    for (;;) {
+      await sleep(4000);
+      const snap = await postAdminVoice<{
+        run?: {
+          status?: string;
+          completedCount?: number;
+          total?: number;
+          currentLabel?: string | null;
+          error?: string | null;
+        } | null;
+        rows?: SilenceWordsHaikuCompareRow[];
+        summary?: SilenceWordsHaikuCompareSummary | null;
+      }>({
+        action: "get-silence-words-haiku-compare",
+        modelId,
+      });
+      setWordsHaikuCompareRows(snap.rows ?? []);
+      setWordsHaikuCompareSummary(snap.summary ?? null);
+      const run = snap.run;
+      if (
+        run?.status === "done" ||
+        run?.status === "failed" ||
+        run?.status === "paused" ||
+        run?.status === "idle" ||
+        !run
+      ) {
+        if (run?.status === "failed") {
+          setError(run.error || "Words + Haiku compare run failed");
+          setWordsHaikuCompareProgress(
+            run.error || "Words + Haiku compare run failed",
+          );
+        } else {
+          setWordsHaikuCompareProgress(
+            run?.status === "paused"
+              ? run.currentLabel ||
+                  `Paused · ${run.completedCount ?? 0} of ${run.total ?? 0}`
+              : `Last compare · ${snap.summary?.pairs ?? run?.completedCount ?? 0} pairs`,
+          );
+        }
+        setWordsHaikuCompareRunning(false);
+        return;
+      }
+      setWordsHaikuCompareProgress(
+        run.status === "stopping"
+          ? run.currentLabel || "Stopping…"
+          : run.currentLabel ||
+              `${run.completedCount ?? 0} of ${run.total ?? 0}`,
+      );
+    }
+  }
+
+  async function runSilenceWordsHaikuCompare() {
+    setWordsHaikuCompareRunning(true);
+    setError(null);
+    const modelId = scriptGeneration.scriptModelId;
+    const briefCount = coerceCalibrationBriefCount(
+      scriptGeneration.calibrationBriefCount,
+      scriptGeneration.calibrationBriefs.length || CALIBRATION_BRIEF_COUNT,
+    );
+    try {
+      setWordsHaikuCompareProgress(
+        `Starting stream vs gated compare (n=${briefCount} · ${briefCount * 9} pairs)…`,
+      );
+      const started = await postAdminVoice<{
+        run?: { total?: number; currentLabel?: string | null };
+      }>({
+        action: "start-silence-words-haiku-compare",
+        modelId,
+        calibrationBriefCount: briefCount,
+        // Keep successes; rate-limit failures are retried.
+        restart: false,
+      });
+      setScriptGeneration((sg) => ({
+        ...sg,
+        calibrationBriefCount: briefCount,
+      }));
+      setWordsHaikuCompareProgress(
+        started.run?.currentLabel ||
+          `Running · 0 of ${started.run?.total ?? briefCount * 9}`,
+      );
+      await pollSilenceWordsHaikuCompareUntilIdle(modelId);
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Words + Haiku compare run failed",
+      );
+      setWordsHaikuCompareProgress(null);
+      setWordsHaikuCompareRunning(false);
+    }
+  }
+
+  async function refreshSilenceWordsHaikuCompareStored() {
+    try {
+      const snap = await postAdminVoice<{
+        rows?: SilenceWordsHaikuCompareRow[];
+        summary?: SilenceWordsHaikuCompareSummary | null;
+        run?: {
+          status?: string;
+          completedCount?: number;
+          total?: number;
+          currentLabel?: string | null;
+        } | null;
+      }>({
+        action: "get-silence-words-haiku-compare",
+        modelId: scriptGeneration.scriptModelId,
+      });
+      setWordsHaikuCompareRows(snap.rows ?? []);
+      setWordsHaikuCompareSummary(snap.summary ?? null);
+      const run = snap.run;
+      const pairs = snap.summary?.pairs ?? 0;
+      if (run?.status === "running" || run?.status === "stopping") {
+        setWordsHaikuCompareRunning(true);
+        setWordsHaikuCompareProgress(
+          run.status === "stopping"
+            ? run.currentLabel || "Stopping…"
+            : run.currentLabel ||
+                `${run.completedCount ?? 0} of ${run.total ?? 0}`,
+        );
+      } else {
+        setWordsHaikuCompareRunning(false);
+        setWordsHaikuCompareProgress(
+          pairs > 0
+            ? `Last compare · ${pairs} pairs`
+            : "No stored stream vs gated compare yet",
+        );
+      }
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Failed to load words + Haiku compare",
+      );
+    }
+  }
+
   async function runSelectedModeBatch() {
     const mode = selectedMode();
     if (mode === "silence_words_haiku") return runSilenceWordsHaikuBatch();
@@ -2284,6 +2582,60 @@ export function AdminDeliveryProfiles() {
   async function stopSelectedModeBatch() {
     const mode = selectedMode();
     const modelId = scriptGeneration.scriptModelId;
+    if (adminTab === "compare" && mode === "silence_words_haiku") {
+      try {
+        setWordsHaikuCompareRunning(true);
+        setWordsHaikuCompareProgress("Stopping…");
+        await postAdminVoice({
+          action: "stop-silence-words-haiku-compare",
+          modelId,
+        });
+        // Poll until server marks paused/done (Stop can land mid-cell).
+        for (let i = 0; i < 90; i++) {
+          await new Promise<void>((r) => window.setTimeout(r, 2000));
+          const snap = await postAdminVoice<{
+            run?: {
+              status?: string;
+              completedCount?: number;
+              total?: number;
+              currentLabel?: string | null;
+            } | null;
+            rows?: SilenceWordsHaikuCompareRow[];
+            summary?: SilenceWordsHaikuCompareSummary | null;
+          }>({
+            action: "get-silence-words-haiku-compare",
+            modelId,
+          });
+          setWordsHaikuCompareRows(snap.rows ?? []);
+          setWordsHaikuCompareSummary(snap.summary ?? null);
+          const run = snap.run;
+          if (
+            !run ||
+            run.status === "paused" ||
+            run.status === "done" ||
+            run.status === "failed" ||
+            run.status === "idle"
+          ) {
+            setWordsHaikuCompareRunning(false);
+            setWordsHaikuCompareProgress(
+              run?.status === "paused"
+                ? run.currentLabel ||
+                    `Paused · ${run.completedCount ?? 0} of ${run.total ?? 0}`
+                : snap.summary?.pairs
+                  ? `Last compare · ${snap.summary.pairs} pairs`
+                  : "Compare stopped",
+            );
+            break;
+          }
+          setWordsHaikuCompareProgress(
+            run.currentLabel || "Stopping…",
+          );
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Stop failed");
+      }
+      return;
+    }
     const stopAction =
       mode === "silence_words_haiku"
         ? "stop-silence-words-haiku-costs"
@@ -2741,6 +3093,10 @@ export function AdminDeliveryProfiles() {
     (activeModeFilter === "single" && singleCalibrating);
   const selectedModeCanStop =
     selectedModeRunning && activeModeFilter !== "single";
+  const briefCountForRun = coerceCalibrationBriefCount(
+    scriptGeneration.calibrationBriefCount,
+    scriptGeneration.calibrationBriefs.length || CALIBRATION_BRIEF_COUNT,
+  );
   const tabDesc: Record<AdminScriptTab, string> = {
     settings:
       "Production mode, models, pacing (silence share + range of space), and length tolerance.",
@@ -2750,6 +3106,8 @@ export function AdminDeliveryProfiles() {
       "Claude + TTS cost per pacing × length for the selected mode. Compare modes for a side-by-side.",
     accuracy:
       "Length vs requested and words vs target from the latest calibration / check for the selected mode.",
+    compare:
+      "Stream/parallel Haiku vs gated/serial Haiku on the same Sonnet script — 3 briefs × each pacing × length.",
     preview:
       "Generate a script (no audio) and see predicted length per voice; time-based shows phase headers.",
   };
@@ -2817,6 +3175,9 @@ export function AdminDeliveryProfiles() {
             ["calibrate", "Calibrate"],
             ["costs", "Costs"],
             ["accuracy", "Accuracy"],
+            ...(activeModeFilter === "silence_words_haiku"
+              ? ([["compare", "Compare"]] as const)
+              : []),
             ["preview", "Preview"],
           ] as const
         ).map(([id, label]) => (
@@ -2835,9 +3196,13 @@ export function AdminDeliveryProfiles() {
         ))}
         <select
           value={activeModeFilter}
-          onChange={(e) =>
-            setModeFilter(e.target.value as ScriptWriteMode)
-          }
+          onChange={(e) => {
+            const next = e.target.value as ScriptWriteMode;
+            setModeFilter(next);
+            if (next !== "silence_words_haiku" && adminTab === "compare") {
+              setAdminTab("accuracy");
+            }
+          }}
           title={`View/run mode · production is ${scriptWriteModeLabel(safeScriptGeneration.scriptWriteMode)}`}
           className="shrink-0 rounded-lg border border-border bg-background px-2 py-1 text-sm text-foreground"
         >
@@ -2888,6 +3253,7 @@ export function AdminDeliveryProfiles() {
         <button
           type="button"
           disabled={
+            wordsHaikuCompareRunning ||
             anySilenceFamilyRunning ||
             timeCostRunning ||
             singleCalibrating ||
@@ -2896,7 +3262,11 @@ export function AdminDeliveryProfiles() {
           }
           className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs text-muted hover:text-foreground disabled:opacity-50"
           onClick={() => {
-            void refreshSelectedModeStored();
+            if (adminTab === "compare" && isSilenceWordsHaiku) {
+              void refreshSilenceWordsHaikuCompareStored();
+            } else {
+              void refreshSelectedModeStored();
+            }
           }}
         >
           Refresh
@@ -2904,6 +3274,7 @@ export function AdminDeliveryProfiles() {
         <button
           type="button"
           disabled={
+            wordsHaikuCompareRunning ||
             anySilenceFamilyRunning ||
             timeCostRunning ||
             singleCalibrating ||
@@ -2912,31 +3283,39 @@ export function AdminDeliveryProfiles() {
           }
           className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs text-foreground disabled:opacity-50"
           onClick={() => {
-            void runSelectedModeBatch();
+            if (adminTab === "compare" && isSilenceWordsHaiku) {
+              void runSilenceWordsHaikuCompare();
+            } else {
+              void runSelectedModeBatch();
+            }
           }}
         >
-          {anySilenceFamilyRunning ||
+          {wordsHaikuCompareRunning ||
+          anySilenceFamilyRunning ||
           timeCostRunning ||
           singleCalibrating ||
           calibrating
             ? "Running…"
-            : `Run ${
-                activeModeFilter === "sections"
-                  ? "sectioned"
-                  : activeModeFilter === "single"
-                    ? "single-call"
-                    : activeModeFilter === "time"
-                      ? "time-based"
-                      : "silence-fit"
-              } (n=${coerceCalibrationBriefCount(
-                scriptGeneration.calibrationBriefCount,
-                scriptGeneration.calibrationBriefs.length ||
-                  CALIBRATION_BRIEF_COUNT,
-              )})`}
+            : adminTab === "compare" && isSilenceWordsHaiku
+              ? `Run compare (n=${briefCountForRun} · ${briefCountForRun * 9})`
+              : `Run ${
+                  activeModeFilter === "sections"
+                    ? "sectioned"
+                    : activeModeFilter === "single"
+                      ? "single-call"
+                      : activeModeFilter === "time"
+                        ? "time-based"
+                        : "silence-fit"
+                } (n=${briefCountForRun})`}
         </button>
         <button
           type="button"
-          disabled={!selectedModeCanStop}
+          disabled={
+            !(
+              selectedModeCanStop ||
+              (adminTab === "compare" && wordsHaikuCompareRunning)
+            )
+          }
           title="Stop after the current cell — completed cells stay saved"
           className="shrink-0 rounded-full border border-border px-2.5 py-1 text-xs text-foreground disabled:opacity-50"
           onClick={() => {
@@ -2947,18 +3326,21 @@ export function AdminDeliveryProfiles() {
         </button>
       </div>
       <p className="text-xs text-muted">{tabDesc[adminTab]}</p>
-      {silenceCostProgress ||
+      {wordsHaikuCompareProgress ||
+      silenceCostProgress ||
       timeCostProgress ||
       singleProgress ||
       calibrateProgress ? (
         <p className="text-xs text-muted">
-          {isSilenceFamily
-            ? silenceCostProgress
-            : activeModeFilter === "time"
-              ? timeCostProgress
-              : activeModeFilter === "single"
-                ? singleProgress
-                : calibrateProgress}
+          {adminTab === "compare" && isSilenceWordsHaiku
+            ? wordsHaikuCompareProgress
+            : isSilenceFamily
+              ? silenceCostProgress
+              : activeModeFilter === "time"
+                ? timeCostProgress
+                : activeModeFilter === "single"
+                  ? singleProgress
+                  : calibrateProgress}
         </p>
       ) : null}
 
@@ -5984,6 +6366,413 @@ export function AdminDeliveryProfiles() {
       </section>
       ) : null}
 
+      {adminTab === "compare" && isSilenceWordsHaiku ? (
+        <section className="rounded-2xl border border-border p-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="font-semibold text-foreground">
+                Speed / accuracy · stream vs gated Haiku
+              </h2>
+              <p className="mt-1 text-xs text-muted">
+                {wordsHaikuCompareSummary
+                  ? `${wordsHaikuCompareSummary.pairs} pairs${(wordsHaikuCompareSummary.failed ?? 0) > 0 ? ` · ${wordsHaikuCompareSummary.failed} failed` : ""} · TTS${wordsHaikuCompareSummary.ttsVoiceName ? ` · ${wordsHaikuCompareSummary.ttsVoiceName}` : ""} · stream Haiku on ${wordsHaikuCompareSummary.streamHaikuRan} · gated Haiku on ${wordsHaikuCompareSummary.gatedHaikuRan} · avg Total ${fmtMsAsSec(wordsHaikuCompareSummary.streamTotalMsAvg)} / ${fmtMsAsSec(wordsHaikuCompareSummary.gatedTotalMsAvg)} s (stream / gated, audio-ready)${(wordsHaikuCompareSummary.failedSample?.length ?? 0) > 0 ? ` · e.g. ${wordsHaikuCompareSummary.failedSample![0]}` : ""}`
+                  : "One Sonnet write per brief, then Haiku twice + create’s Speechify PCM+FX OLA: stream kicks per phase as it closes; gated waits then one full-script OLA. Total = wall clock to AAC. n selector × 9 pacing/length cells."}
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[960px] text-left text-sm">
+              <thead className="text-xs text-muted">
+                <tr className="border-b border-border">
+                  <th className="py-2 pr-2 font-medium whitespace-nowrap">
+                    Meditation
+                  </th>
+                  <th className="py-2 pr-2 font-medium whitespace-nowrap">
+                    Mode
+                  </th>
+                  <th className="py-2 pr-2 font-medium whitespace-nowrap">
+                    Speech · Sonnet
+                  </th>
+                  <th className="py-2 pr-2 font-medium whitespace-nowrap">
+                    Speech
+                  </th>
+                  <th className="py-2 pr-2 font-medium whitespace-nowrap">
+                    Words · Sonnet
+                  </th>
+                  <th className="py-2 pr-2 font-medium whitespace-nowrap">
+                    Words
+                  </th>
+                  <th className="py-2 pr-2 font-medium whitespace-nowrap">
+                    Band
+                  </th>
+                  <th className="py-2 pr-2 font-medium whitespace-nowrap">
+                    After fit
+                  </th>
+                  <th
+                    className="py-2 pr-2 font-medium whitespace-nowrap"
+                    title="Phases Haiku tried to rewrite / phases whose rewrite was kept"
+                  >
+                    Phases fixed
+                  </th>
+                  <th
+                    className="py-2 pr-2 font-medium whitespace-nowrap"
+                    title="Scripts where Haiku ran at least once"
+                  >
+                    Haiku ran
+                  </th>
+                  <th className="py-2 pr-2 font-medium whitespace-nowrap">
+                    Est. audio
+                  </th>
+                  <th
+                    className="py-2 pr-2 font-medium whitespace-nowrap"
+                    title="Haiku wall (stream = first kick→last settle, may overlap Sonnet)"
+                  >
+                    Haiku (s)
+                  </th>
+                  <th
+                    className="py-2 pr-2 font-medium whitespace-nowrap"
+                    title="Speechify TTS API time summed across phases (stream) or one full-script call (gated) — not wall"
+                  >
+                    TTS (s)
+                  </th>
+                  <th
+                    className="py-2 pr-2 font-medium whitespace-nowrap"
+                    title="Wall clock to AAC (create PCM+FX OLA). Stream overlaps TTS with Sonnet/Haiku; gated is Sonnet→Haiku→TTS."
+                  >
+                    Total (s)
+                  </th>
+                  <th className="py-2 font-medium whitespace-nowrap">USD</th>
+                </tr>
+              </thead>
+              <tbody>
+                {wordsHaikuCompareRows.filter(
+                  (r) => r.scripts > 0 || (r.failed ?? 0) > 0,
+                ).length === 0 ? (
+                  <tr>
+                    <td colSpan={15} className="py-3 text-sm text-muted">
+                      No compare results yet — Run compare on the tab row above.
+                    </td>
+                  </tr>
+                ) : (
+                  wordsHaikuCompareRows
+                    .filter((r) => r.scripts > 0 || (r.failed ?? 0) > 0)
+                    .flatMap((r, pairIdx, pairs) => {
+                      const key = `whc-${r.option}-${r.minutes}`;
+                      const open = expandedWordsHaikuCompareKey === key;
+                      const speechSonnet =
+                        typeof r.speechShareSonnet === "number"
+                          ? Math.round(r.speechShareSonnet * 100)
+                          : null;
+                      const bandLabel = `${Math.round(r.speakingBandMin * 100)}–${Math.round(r.speakingBandMax * 100)}%`;
+                      const lastPair = pairIdx === pairs.length - 1;
+                      const modeRow = (
+                        mode: "stream" | "gated",
+                        agg: SilenceWordsHaikuCompareModeAgg,
+                        opts: { thinBelow: boolean; thickBelow: boolean },
+                      ) => {
+                        const speech =
+                          typeof agg.speechShare === "number"
+                            ? Math.round(agg.speechShare * 100)
+                            : null;
+                        const border = opts.thickBelow
+                          ? "border-b-2 border-foreground/25"
+                          : opts.thinBelow
+                            ? "border-b border-border/50"
+                            : "";
+                        return (
+                          <tr
+                            key={`${key}-${mode}`}
+                            className={`cursor-pointer text-foreground hover:bg-muted/20 ${border}`}
+                            onClick={() =>
+                              setExpandedWordsHaikuCompareKey(
+                                open ? null : key,
+                              )
+                            }
+                          >
+                            <td className="py-2 pr-2 whitespace-nowrap">
+                              {mode === "stream" ? (
+                                <>
+                                  <span className="mr-1 text-xs text-muted">
+                                    {open ? "▾" : "▸"}
+                                  </span>
+                                  {r.label} {r.minutes}
+                                  {r.scripts > 1 ? (
+                                    <span className="ml-1 text-xs text-muted">
+                                      · n={r.scripts}
+                                    </span>
+                                  ) : null}
+                                  {(r.failed ?? 0) > 0 ? (
+                                    <span
+                                      className="ml-1 text-xs text-red-600"
+                                      title={r.failedError || "TTS failed"}
+                                    >
+                                      · {r.failed} failed
+                                    </span>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <span className="text-xs text-muted">↳</span>
+                              )}
+                            </td>
+                            <td className="py-2 pr-2 whitespace-nowrap text-xs font-medium">
+                              {mode}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums whitespace-nowrap">
+                              {speechSonnet == null
+                                ? "—"
+                                : `${speechSonnet}%`}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums whitespace-nowrap">
+                              {speech == null ? "—" : `${speech}%`}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums whitespace-nowrap">
+                              {fmtPct(agg.wordsVsBudgetSonnetPct, true)}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums whitespace-nowrap">
+                              {fmtPct(agg.wordsVsBudgetPct, true)}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums whitespace-nowrap">
+                              {bandLabel}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums whitespace-nowrap">
+                              {fmtPct(agg.afterFitPct, true)}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums whitespace-nowrap text-xs">
+                              {agg.phasesFixedAvg ?? "—"} /{" "}
+                              {agg.phasesAttemptedAvg ?? "—"}
+                            </td>
+                            <td className="py-2 pr-2 whitespace-nowrap text-xs">
+                              {r.scripts > 0
+                                ? `${agg.haikuRanCount} of ${r.scripts}`
+                                : "—"}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums whitespace-nowrap">
+                              {fmtClock(agg.estimatedTotalAudioSeconds)}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums whitespace-nowrap">
+                              {fmtMsAsSec(agg.haikuMsAvg)}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums whitespace-nowrap">
+                              {fmtMsAsSec(agg.ttsMsAvg)}
+                            </td>
+                            <td className="py-2 pr-2 tabular-nums whitespace-nowrap">
+                              {fmtMsAsSec(agg.totalMsAvg)}
+                            </td>
+                            <td className="py-2 tabular-nums whitespace-nowrap">
+                              {typeof agg.claudeUsdAvg === "number"
+                                ? `$${agg.claudeUsdAvg.toFixed(4)}`
+                                : "—"}
+                            </td>
+                          </tr>
+                        );
+                      };
+
+                      const pairRows = [
+                        modeRow("stream", r.stream, {
+                          thinBelow: true,
+                          thickBelow: false,
+                        }),
+                        modeRow("gated", r.gated, {
+                          thinBelow: false,
+                          thickBelow: !open && !lastPair,
+                        }),
+                      ];
+
+                      if (!open) return pairRows;
+
+                      const details = r.scriptsDetail ?? [];
+                      const byBrief = new Map<
+                        number,
+                        {
+                          stream?: (typeof details)[number];
+                          gated?: (typeof details)[number];
+                        }
+                      >();
+                      for (const s of details) {
+                        const cur = byBrief.get(s.briefIndex) ?? {};
+                        if (s.mode === "stream") cur.stream = s;
+                        else cur.gated = s;
+                        byBrief.set(s.briefIndex, cur);
+                      }
+                      const briefIndexes = [...byBrief.keys()].sort(
+                        (a, b) => a - b,
+                      );
+                      const children = briefIndexes.flatMap(
+                        (briefIndex, bi) => {
+                          const pair = byBrief.get(briefIndex)!;
+                          const lastBrief = bi === briefIndexes.length - 1;
+                          const child = (
+                            mode: "stream" | "gated",
+                            s: (typeof details)[number] | undefined,
+                            thinBelow: boolean,
+                            thickBelow: boolean,
+                          ) => {
+                            if (!s) return null;
+                            const speech =
+                              typeof s.speechShare === "number"
+                                ? Math.round(s.speechShare * 100)
+                                : null;
+                            const speechS =
+                              typeof s.speechShareSonnet === "number"
+                                ? Math.round(s.speechShareSonnet * 100)
+                                : speech;
+                            const afterPct =
+                              typeof s.predictedSecondsAfter === "number" &&
+                              typeof s.targetSeconds === "number" &&
+                              s.targetSeconds > 0
+                                ? ((s.predictedSecondsAfter -
+                                    s.targetSeconds) /
+                                    s.targetSeconds) *
+                                  100
+                                : null;
+                            const border = thickBelow
+                              ? "border-b-2 border-foreground/25"
+                              : thinBelow
+                                ? "border-b border-border/40"
+                                : "";
+                            return (
+                              <tr
+                                key={`${key}-b${briefIndex}-${mode}`}
+                                className={`bg-muted/10 text-foreground ${border}`}
+                              >
+                                <td className="py-1.5 pr-2 pl-6 whitespace-nowrap text-xs text-muted">
+                                  {mode === "stream"
+                                    ? `Brief ${briefIndex + 1}`
+                                    : ""}
+                                </td>
+                                <td className="py-1.5 pr-2 whitespace-nowrap text-xs text-muted">
+                                  {mode}
+                                </td>
+                                <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap text-xs">
+                                  {speechS == null ? "—" : `${speechS}%`}
+                                </td>
+                                <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap text-xs">
+                                  {speech == null ? "—" : `${speech}%`}
+                                </td>
+                                <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap text-xs">
+                                  {fmtPct(s.wordsVsBudgetSonnetPct, true)}
+                                </td>
+                                <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap text-xs">
+                                  {fmtPct(s.wordsVsBudgetPct, true)}
+                                </td>
+                                <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap text-xs">
+                                  {bandLabel}
+                                </td>
+                                <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap text-xs">
+                                  {fmtPct(afterPct, true)}
+                                </td>
+                                <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap text-xs">
+                                  {s.phasesFixed ?? 0} /{" "}
+                                  {s.phasesAttempted ?? 0}
+                                </td>
+                                <td className="py-1.5 pr-2 text-xs">
+                                  {s.haikuRan ? "yes" : "no"}
+                                </td>
+                                <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap text-xs">
+                                  {fmtClock(s.estimatedTotalAudioSeconds)}
+                                </td>
+                                <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap text-xs">
+                                  {fmtMsAsSec(s.haikuMs)}
+                                </td>
+                                <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap text-xs">
+                                  {fmtMsAsSec(s.ttsMs)}
+                                </td>
+                                <td className="py-1.5 pr-2 tabular-nums whitespace-nowrap text-xs">
+                                  {fmtMsAsSec(s.totalMs)}
+                                </td>
+                                <td className="py-1.5 tabular-nums whitespace-nowrap text-xs">
+                                  {typeof s.claudeUsd === "number"
+                                    ? `$${s.claudeUsd.toFixed(4)}`
+                                    : "—"}
+                                </td>
+                              </tr>
+                            );
+                          };
+                          const phaseDetailRow = (
+                            mode: "stream" | "gated",
+                            s: (typeof details)[number] | undefined,
+                            thickBelow: boolean,
+                          ) => {
+                            if (!s?.phaseResults?.length) return null;
+                            const border = thickBelow
+                              ? "border-b-2 border-foreground/25"
+                              : "border-b border-border/40";
+                            return (
+                              <tr
+                                key={`${key}-b${briefIndex}-${mode}-phases`}
+                                className={`bg-muted/5 text-muted ${border}`}
+                              >
+                                <td
+                                  colSpan={15}
+                                  className="py-1.5 pl-6 pr-2 text-[11px]"
+                                >
+                                  <div className="space-y-0.5">
+                                    <div>
+                                      {mode} phases · words{" "}
+                                      {s.wordsBeforeHaiku ?? "—"}→
+                                      {s.wordsAfterHaiku ?? "—"}
+                                    </div>
+                                    {s.phaseResults.map((p) => (
+                                      <div key={p.phaseIndex}>
+                                        {p.phaseName}: header{" "}
+                                        {p.headerWords ?? "—"} · target{" "}
+                                        {p.wordTarget} · {p.wordsBefore}→
+                                        {p.wordsAfter}
+                                        {p.attempted
+                                          ? p.accepted
+                                            ? " · kept Haiku"
+                                            : ` · rejected${
+                                                p.rejectReason
+                                                  ? ` (${p.rejectReason})`
+                                                  : ""
+                                              }`
+                                          : ""}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          };
+                          return [
+                            child("stream", pair.stream, true, false),
+                            phaseDetailRow("stream", pair.stream, false),
+                            child(
+                              "gated",
+                              pair.gated,
+                              false,
+                              lastBrief ? !lastPair : true,
+                            ),
+                            phaseDetailRow(
+                              "gated",
+                              pair.gated,
+                              lastBrief ? !lastPair : true,
+                            ),
+                          ].filter(Boolean);
+                        },
+                      );
+
+                      // Open pair: thin between stream/gated averages; thick
+                      // after last brief (or after gated avg if no details).
+                      return [
+                        modeRow("stream", r.stream, {
+                          thinBelow: true,
+                          thickBelow: false,
+                        }),
+                        modeRow("gated", r.gated, {
+                          thinBelow: children.length > 0,
+                          thickBelow: children.length === 0 && !lastPair,
+                        }),
+                        ...children,
+                      ];
+                    })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
       {adminTab === "accuracy" && isSilenceFamily ? (
         <section className="rounded-2xl border border-border p-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
@@ -6431,15 +7220,15 @@ export function AdminDeliveryProfiles() {
                                     : ""}
                                 </div>
                               ) : null}
-                              {showsHaikuCols && s.haikuRan ? (
+                              {showsHaikuCols &&
+                              (s.haikuRan ||
+                                (s.phaseResults?.length ?? 0) > 0) ? (
                                 <div className="mt-1 space-y-1 text-[11px] text-muted">
                                   <div>
                                     total words {s.wordsBeforeHaiku ?? "—"}→
                                     {s.wordsAfterHaiku ?? "—"}
                                   </div>
-                                  {(s.phaseResults ?? [])
-                                    .filter((p) => p.attempted)
-                                    .map((p) => {
+                                  {(s.phaseResults ?? []).map((p) => {
                                       const rejectKey = `${key}-b${s.briefIndex}-p${p.phaseIndex}`;
                                       const showReject =
                                         expandedHaikuRejectKey === rejectKey;
@@ -6449,15 +7238,21 @@ export function AdminDeliveryProfiles() {
                                           className="border-t border-border/40 pt-1"
                                         >
                                           <div>
-                                            {p.phaseName}: {p.wordsBefore}→
-                                            {p.wordsAfter}→{p.wordTarget} ·{" "}
-                                            {p.accepted
-                                              ? "kept Haiku"
-                                              : `rejected${
-                                                  p.rejectReason
-                                                    ? ` (${p.rejectReason})`
-                                                    : ""
-                                                }`}
+                                            {p.phaseName}: header{" "}
+                                            {p.headerWords ?? "—"} · target{" "}
+                                            {p.wordTarget} · {p.wordsBefore}→
+                                            {p.wordsAfter}
+                                            {p.attempted
+                                              ? ` · ${
+                                                  p.accepted
+                                                    ? "kept Haiku"
+                                                    : `rejected${
+                                                        p.rejectReason
+                                                          ? ` (${p.rejectReason})`
+                                                          : ""
+                                                      }`
+                                                }`
+                                              : ""}
                                           </div>
                                           {!p.accepted && p.haikuText ? (
                                             <>

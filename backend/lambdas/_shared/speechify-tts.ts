@@ -177,12 +177,97 @@ function isSpeechifyRateLimited(status: number, body: string): boolean {
   return /rate_limited|rate limit/i.test(body);
 }
 
+/**
+ * Speechify 429 Retry-After (seconds). Free = 1 rps / 3 concurrent;
+ * Starter+ is much higher — always prefer the header over guessing.
+ * https://docs.speechify.ai/build/api-reference/get-started/api-limits
+ */
 function speechifyRetryDelayMs(res: Response, attempt: number): number {
   const seconds = Number(res.headers.get("retry-after"));
-  const headerMs =
-    Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : NaN;
-  const base = Number.isFinite(headerMs) ? headerMs : 400 + attempt * 250;
-  return Math.min(3_000, Math.max(250, base)) + Math.floor(Math.random() * 150);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(5_000, Math.max(200, seconds * 1000)) +
+      Math.floor(Math.random() * 100);
+  }
+  // No header: short backoff so parallel siblings can land without a long stall.
+  return Math.min(2_000, 250 * attempt) + Math.floor(Math.random() * 100);
+}
+
+/**
+ * Free plan = 3 concurrent / 1 rps (burst 10). Starter = 15 / 20.
+ * Override via SPEECHIFY_TTS_CONCURRENCY / SPEECHIFY_TTS_RPS on paid plans.
+ * https://docs.speechify.ai/build/api-reference/get-started/api-limits
+ */
+export function speechifyTtsConcurrency(): number {
+  const raw = Number(process.env.SPEECHIFY_TTS_CONCURRENCY);
+  if (Number.isFinite(raw) && raw >= 1) return Math.min(30, Math.floor(raw));
+  return 3;
+}
+
+/** Sustained request starts per second (Free = 1). Burst is server-side. */
+export function speechifyTtsRps(): number {
+  const raw = Number(process.env.SPEECHIFY_TTS_RPS);
+  if (Number.isFinite(raw) && raw > 0) return Math.min(150, raw);
+  return 1;
+}
+
+/** Process-wide in-flight + start-rate so parallel chunks stay under Free limits. */
+let speechifyInFlight = 0;
+const speechifyWaiters: Array<() => void> = [];
+let speechifyLastStartMs = 0;
+let speechifyClaimChain: Promise<void> = Promise.resolve();
+
+async function acquireSpeechifySlot(): Promise<void> {
+  const max = speechifyTtsConcurrency();
+  const gapMs = Math.max(50, Math.round(1000 / speechifyTtsRps()));
+  for (;;) {
+    while (speechifyInFlight >= max) {
+      await new Promise<void>((r) => speechifyWaiters.push(r));
+    }
+    let acquired = false;
+    await new Promise<void>((resolve, reject) => {
+      speechifyClaimChain = speechifyClaimChain
+        .then(async () => {
+          if (speechifyInFlight >= max) {
+            resolve();
+            return;
+          }
+          const wait = Math.max(0, speechifyLastStartMs + gapMs - Date.now());
+          if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+          if (speechifyInFlight >= max) {
+            resolve();
+            return;
+          }
+          speechifyLastStartMs = Date.now();
+          speechifyInFlight += 1;
+          acquired = true;
+          resolve();
+        })
+        .catch(reject);
+    });
+    if (acquired) return;
+  }
+}
+
+function releaseSpeechifySlot(): void {
+  speechifyInFlight = Math.max(0, speechifyInFlight - 1);
+  const next = speechifyWaiters.shift();
+  if (next) next();
+}
+
+async function withSpeechifyConcurrency<T>(fn: () => Promise<T>): Promise<T> {
+  await acquireSpeechifySlot();
+  try {
+    return await fn();
+  } finally {
+    releaseSpeechifySlot();
+  }
+}
+
+export function isSpeechifyRetryablePairError(
+  error: string | null | undefined,
+): boolean {
+  if (!error) return false;
+  return /rate_limited|rate limit|concurrency_limit/i.test(error);
 }
 
 export type SpeechifyTtsParams = {
@@ -239,44 +324,55 @@ async function speechifyTtsStream(
       text_normalization: true,
     },
   });
-  const maxAttempts = 5;
+  // Free sustained 1 rps — paced starts + generous 429 retries on that request.
+  const maxAttempts = 12;
   let lastErr = "Speechify TTS failed";
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const upstream = await fetch(SPEECHIFY_STREAM_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${params.apiKey}`,
-        "Content-Type": "application/json",
-        Accept: opts.accept,
-      },
-      body,
-    });
-    if (upstream.ok) {
-      const buf = Buffer.from(await upstream.arrayBuffer());
-      const chars = Buffer.byteLength(params.text ?? "", "utf8");
-      void recordSpeechifyTtsUsage({
-        chars,
-        model: speechifyTtsModel(),
-        feature: "speechify-tts",
+  return withSpeechifyConcurrency(async () => {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const upstream = await fetch(SPEECHIFY_STREAM_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${params.apiKey}`,
+          "Content-Type": "application/json",
+          Accept: opts.accept,
+        },
+        body,
       });
-      return buf;
+      if (upstream.ok) {
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        const chars = Buffer.byteLength(params.text ?? "", "utf8");
+        void recordSpeechifyTtsUsage({
+          chars,
+          model: speechifyTtsModel(),
+          feature: "speechify-tts",
+        });
+        return buf;
+      }
+      const err = await upstream.text();
+      lastErr = `Speechify TTS failed: ${err.slice(0, 500)}`;
+      const rateLimited = isSpeechifyRateLimited(upstream.status, err);
+      const retryable =
+        rateLimited || [502, 503, 504].includes(upstream.status);
+      if (!retryable || attempt >= maxAttempts) break;
+      const backoffMs = speechifyRetryDelayMs(upstream, attempt);
+      console.warn("Speechify transient failure, retrying", {
+        attempt,
+        status: upstream.status,
+        rateLimited,
+        outputFormat: opts.outputFormat,
+        backoffMs,
+        retryAfter: upstream.headers.get("retry-after"),
+      });
+      // Free the slot while waiting so sibling chunks keep synthesizing.
+      releaseSpeechifySlot();
+      try {
+        await new Promise((r) => setTimeout(r, backoffMs));
+      } finally {
+        await acquireSpeechifySlot();
+      }
     }
-    const err = await upstream.text();
-    lastErr = `Speechify TTS failed: ${err.slice(0, 500)}`;
-    const retryable =
-      isSpeechifyRateLimited(upstream.status, err) ||
-      [502, 503, 504].includes(upstream.status);
-    if (!retryable || attempt >= maxAttempts) break;
-    const backoffMs = speechifyRetryDelayMs(upstream, attempt);
-    console.warn("Speechify transient failure, retrying", {
-      attempt,
-      status: upstream.status,
-      outputFormat: opts.outputFormat,
-      backoffMs,
-    });
-    await new Promise((r) => setTimeout(r, backoffMs));
-  }
-  throw new Error(lastErr);
+    throw new Error(lastErr);
+  });
 }
 
 /**

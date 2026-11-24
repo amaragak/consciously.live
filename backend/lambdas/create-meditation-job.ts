@@ -62,6 +62,11 @@ export async function handler(
     claudeModel?: string;
     /** `native` = Fish `[break]` / `[long-break]` …; `segmented` = ffmpeg silence (default). */
     fishPauseMode?: string;
+    /**
+     * Dev: silence_words_haiku Haiku each phase (no whole-script gate).
+     * When omitted, worker uses admin silenceWordsHaiku.streamPhasesToTts.
+     */
+    streamPhasesToTts?: boolean;
     /** Experienced pacing — cued open sits (~1–2 min); same Length target. */
     longerBreaks?: boolean;
     /** Casual | Guided | Open sits. */
@@ -253,6 +258,9 @@ export async function handler(
         claudeModel,
         fishPauseMode:
           body.fishPauseMode === "native" ? "native" : "segmented",
+        ...(typeof body.streamPhasesToTts === "boolean"
+          ? { streamPhasesToTts: body.streamPhasesToTts === true }
+          : {}),
         ...(body.longerBreaks === true || body.deliveryStyle === "open_sits"
           ? { longerBreaks: true }
           : {}),

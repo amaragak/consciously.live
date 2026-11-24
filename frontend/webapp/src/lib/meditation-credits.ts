@@ -1,6 +1,9 @@
 /**
- * Client-side meditation credit estimate (mirrors server defaults).
- * Server remains source of truth at create time; this drives the Sound step pill.
+ * Client-side meditation credit estimate for Create › Sound.
+ * Single source for the cost number and the breakdown popover.
+ *
+ * Credits = product of factors (length × delivery [× future factors]).
+ * Server remains source of truth at charge time; this drives the UI.
  */
 
 import type { MeditationDelivery } from "@/lib/meditation-delivery";
@@ -41,6 +44,32 @@ export const DEFAULT_CHARS_PER_CREDIT_STANDARD = 1800;
 /** Pro (Fish) multiplier — server-configurable; default 2×. */
 export const DEFAULT_PRO_VOICE_MULTIPLIER = 2;
 
+const DELIVERY_LABEL: Record<MeditationDelivery, string> = {
+  casual: "Casual",
+  guided: "Guided",
+  open_sits: "Open sits",
+};
+
+/** Length factor: 5→×1, 10→×2, 15→×3, 20→×4 (and proportional for other lengths). */
+export function lengthCreditMultiplier(lengthMinutes: number): number {
+  const m = Math.max(1, Math.round(lengthMinutes || 10));
+  return Math.max(1, Math.round(m / 5));
+}
+
+/** Delivery factor: Casual ×3, Guided ×2, Open sits ×1. */
+export function deliveryCreditMultiplier(delivery: MeditationDelivery): number {
+  if (delivery === "casual") return 3;
+  if (delivery === "open_sits") return 1;
+  return 2;
+}
+
+export type MeditationCreditFactor = {
+  key: string;
+  label: string;
+  detail: string;
+  multiplier: number;
+};
+
 export type MeditationCreditEstimateInput = {
   lengthMinutes: number;
   delivery: MeditationDelivery;
@@ -58,6 +87,8 @@ export type MeditationCreditEstimateInput = {
 
 export type MeditationCreditEstimate = {
   credits: number;
+  /** Ordered factors that multiply to `credits` (before ceil/min-1). */
+  factors: MeditationCreditFactor[];
   spokenMinutes: number;
   estimatedCharacters: number;
   scriptCredits: number;
@@ -68,11 +99,64 @@ export type MeditationCreditEstimate = {
   lengthMinutes: number;
 };
 
+/**
+ * Build the factor list for the current choices. Add future factors (e.g. pro
+ * voice) here so the popover grows a row without a redesign.
+ */
+export function meditationCreditFactors(
+  input: Pick<
+    MeditationCreditEstimateInput,
+    "lengthMinutes" | "delivery" | "isProVoice" | "proMultiplier"
+  >,
+): MeditationCreditFactor[] {
+  const lengthMinutes = Math.max(1, Math.min(120, input.lengthMinutes || 10));
+  const delivery = input.delivery;
+  const factors: MeditationCreditFactor[] = [
+    {
+      key: "length",
+      label: "Length",
+      detail: `${lengthMinutes} min`,
+      multiplier: lengthCreditMultiplier(lengthMinutes),
+    },
+    {
+      key: "delivery",
+      label: "Delivery",
+      detail: DELIVERY_LABEL[delivery],
+      multiplier: deliveryCreditMultiplier(delivery),
+    },
+  ];
+  // Pro voices are not in use today — leave the hook for a future row.
+  if (input.isProVoice) {
+    const pro = Math.max(
+      1,
+      input.proMultiplier ?? DEFAULT_PRO_VOICE_MULTIPLIER,
+    );
+    if (pro !== 1) {
+      factors.push({
+        key: "pro_voice",
+        label: "Pro voice",
+        detail: "Pro",
+        multiplier: pro,
+      });
+    }
+  }
+  return factors;
+}
+
 export function estimateMeditationCredits(
   input: MeditationCreditEstimateInput,
 ): MeditationCreditEstimate {
   const lengthMinutes = Math.max(1, Math.min(120, input.lengthMinutes || 10));
   const delivery = input.delivery;
+  const factors = meditationCreditFactors(input);
+  const product = factors.reduce((acc, f) => acc * f.multiplier, 1);
+  const credits = Math.max(1, Math.round(product));
+
+  /* Previous speech/character-based estimate kept for calibration reference:
+   * spokenShare × wpm × charsPerWord / charsPerCredit + scriptBase.
+   * Create UI now uses length × delivery factors so the number and breakdown
+   * always agree.
+   */
   const spokenShare =
     typeof input.spokenShare === "number" && Number.isFinite(input.spokenShare)
       ? Math.min(1, Math.max(0.05, input.spokenShare))
@@ -85,22 +169,6 @@ export function estimateMeditationCredits(
     typeof input.charsPerWord === "number" && input.charsPerWord > 0
       ? input.charsPerWord
       : AVG_CHARS_PER_WORD;
-  const proMultiplier = Math.max(
-    1,
-    input.proMultiplier ?? DEFAULT_PRO_VOICE_MULTIPLIER,
-  );
-  const scriptBase = Math.max(
-    0,
-    input.scriptBaseCredits ?? DEFAULT_SCRIPT_BASE_CREDITS,
-  );
-  const charsPerCredit = Math.max(
-    200,
-    input.charsPerCreditStandard ?? DEFAULT_CHARS_PER_CREDIT_STANDARD,
-  );
-
-  // Credits are based on the script only — not lead-in, title or fade-out.
-  // Approximate script share: requested minutes minus typical around-parts
-  // (~20s lead + ~6s title + ~20s fade ≈ 46s ≈ 0.77 min on a 5–20 min session).
   const aroundMinutes =
     (SEEDED.shared.sessionLeadInSeconds +
       SEEDED.shared.sessionFadeOutSeconds +
@@ -113,18 +181,17 @@ export function estimateMeditationCredits(
   const estimatedCharacters = Math.round(
     spokenMinutes * wpm * charsPerWord,
   );
-  const tierRate = input.isProVoice ? proMultiplier : 1;
-  const voiceCreditsRaw = (estimatedCharacters / charsPerCredit) * tierRate;
-  const voiceCredits = Math.max(0, voiceCreditsRaw);
-  const total = Math.max(1, Math.ceil(scriptBase + voiceCredits));
 
   return {
-    credits: total,
+    credits,
+    factors,
     spokenMinutes: Math.round(spokenMinutes * 10) / 10,
     estimatedCharacters,
-    scriptCredits: scriptBase,
-    voiceCredits: Math.round(voiceCredits * 10) / 10,
-    proMultiplier: tierRate,
+    scriptCredits: DEFAULT_SCRIPT_BASE_CREDITS,
+    voiceCredits: credits,
+    proMultiplier: input.isProVoice
+      ? Math.max(1, input.proMultiplier ?? DEFAULT_PRO_VOICE_MULTIPLIER)
+      : 1,
     isProVoice: input.isProVoice,
     delivery,
     lengthMinutes,

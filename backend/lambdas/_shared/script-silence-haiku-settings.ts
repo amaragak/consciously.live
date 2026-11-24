@@ -23,7 +23,7 @@ export type SilenceHaikuModeSettings = SilenceFitModeSettings & {
    * own word target, in the same direction as the overall miss. Default 0.15.
    */
   phaseTriggerPct: number;
-  /** Stream finished phases to TTS before the full script is done. Default off. */
+  /** Stream finished phases to TTS before the full script is done. Default on. */
   streamPhasesToTts: boolean;
   /**
    * Ask Sonnet for this fraction more/less words in the prompt only
@@ -53,7 +53,7 @@ export function defaultSilenceHaikuModeSettings(): SilenceHaikuModeSettings {
     ...defaultSilenceFitModeSettings(),
     scriptTriggerPct: 0.1,
     phaseTriggerPct: 0.15,
-    streamPhasesToTts: false,
+    streamPhasesToTts: true,
     askSonnetPctByOptionLength: defaultAskSonnetMap(),
   };
 }
@@ -131,7 +131,10 @@ export function coerceSilenceHaikuModeSettings(
     ...fit,
     scriptTriggerPct,
     phaseTriggerPct,
-    streamPhasesToTts: o.streamPhasesToTts === true,
+    streamPhasesToTts:
+      typeof o.streamPhasesToTts === "boolean"
+        ? o.streamPhasesToTts
+        : base.streamPhasesToTts,
     askSonnetPctByOptionLength,
   };
 }

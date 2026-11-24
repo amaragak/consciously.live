@@ -131,7 +131,7 @@ export type SilenceHaikuModeSettings = SilenceFitModeSettings & {
   phaseTriggerPct: number;
   /**
    * When true, stream finished phases to TTS before the full script is done.
-   * Default off. Whole-script Haiku trigger is skipped while streaming.
+   * Default on. Whole-script Haiku trigger is skipped while streaming.
    */
   streamPhasesToTts: boolean;
   /** Prompt-only Sonnet word ask (−0.25…+0.30) per option × length. */
@@ -143,7 +143,7 @@ export function defaultSilenceHaikuModeSettings(): SilenceHaikuModeSettings {
     ...defaultSilenceFitModeSettings(),
     scriptTriggerPct: 0.1,
     phaseTriggerPct: 0.15,
-    streamPhasesToTts: false,
+    streamPhasesToTts: true,
     askSonnetPctByOptionLength: defaultAskSonnetPctMap(),
   };
 }
@@ -158,7 +158,7 @@ export function coerceSilenceHaikuModeSettings(
       ...fit,
       scriptTriggerPct: base.scriptTriggerPct,
       phaseTriggerPct: base.phaseTriggerPct,
-      streamPhasesToTts: false,
+      streamPhasesToTts: base.streamPhasesToTts,
       askSonnetPctByOptionLength: defaultAskSonnetPctMap(),
     };
   }
@@ -175,7 +175,10 @@ export function coerceSilenceHaikuModeSettings(
     ...fit,
     scriptTriggerPct: Math.min(0.5, scriptTriggerPct),
     phaseTriggerPct: Math.min(0.5, phaseTriggerPct),
-    streamPhasesToTts: o.streamPhasesToTts === true,
+    streamPhasesToTts:
+      typeof o.streamPhasesToTts === "boolean"
+        ? o.streamPhasesToTts
+        : base.streamPhasesToTts,
     askSonnetPctByOptionLength: coerceAskSonnetPctMap(
       o.askSonnetPctByOptionLength,
     ),
@@ -198,7 +201,7 @@ export function defaultSilenceWordsHaikuModeSettings(): SilenceWordsHaikuModeSet
     ...defaultSilenceWordsModeSettings(),
     scriptTriggerPct: 0.1,
     phaseTriggerPct: 0.15,
-    streamPhasesToTts: false,
+    streamPhasesToTts: true,
     askSonnetPctByOptionLength: defaultAskSonnetPctMap(),
   };
 }
@@ -225,7 +228,10 @@ export function coerceSilenceWordsHaikuModeSettings(
       Number(o.phaseTriggerPct),
       base.phaseTriggerPct,
     ),
-    streamPhasesToTts: o.streamPhasesToTts === true,
+    streamPhasesToTts:
+      typeof o.streamPhasesToTts === "boolean"
+        ? o.streamPhasesToTts
+        : base.streamPhasesToTts,
     askSonnetPctByOptionLength: coerceAskSonnetPctMap(
       o.askSonnetPctByOptionLength,
     ),
@@ -639,7 +645,7 @@ export function defaultScriptGenerationSettings(): ScriptGenerationSettings {
     singleCallCalibratedModelIds: [],
     calibrationBriefs: [...DEFAULT_CALIBRATION_BRIEFS],
     comparisonBriefs: [...DEFAULT_COMPARISON_BRIEFS],
-    scriptWriteMode: "sections",
+    scriptWriteMode: "silence_words_haiku",
     userScriptFidelityCheck: false,
     styleInferModelId: CLAUDE_HAIKU_55_MODEL_ID,
     calibrationBriefCount: CALIBRATION_BRIEF_COUNT,

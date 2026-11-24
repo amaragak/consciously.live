@@ -30,6 +30,8 @@
   --sidebar-border: #e0d6c4;
   --nav-active: color-mix(in srgb, #1e2530 6%, transparent);
   --header-gold: #d9b87c;
+  /** Navy duotone paisley plate on the SPA desktop header (0–1). */
+  --header-paisley-opacity: 0.56;
   --marketing-ink: #1e2530;
   --marketing-muted: #5c6570;
   --marketing-eyebrow: #8a8078;
@@ -271,28 +273,28 @@
 }
 
 /*
- * Desktop header: same solid tonal navy as Next /read sticky chrome
- * (`--hv2-sticky-bg` / `--nav` = #1e232e). No paisley.
+ * Desktop header: hero navy + dark paisley duotone at `--header-paisley-opacity`.
  * The only light on the bar is the small radial glow behind the sun.
+ * Hybrid keeps the cream `--nav` fill (no paisley).
  */
 @media (min-width: 768px) {
-  .app-top-bar {
-    /* Was: #1a1820 + paisley plate (hero-overlay look). */
-    background-color: var(--nav) !important;
+  :root:not(.hybrid) .app-top-bar {
+    background-color: #1a1820 !important;
     isolation: isolate;
   }
 
-  .app-top-bar-paisley {
-    display: none;
-    /* Was: dark paisley duotone plate
+  :root:not(.hybrid) .app-top-bar-paisley {
     position: absolute;
     inset: 0;
     background-image: url("/patterns/paisley-dark-duotone.webp");
     background-repeat: repeat;
     background-size: 640px 640px;
     background-position: 0 0;
-    opacity: 0.56;
-    */
+    opacity: var(--header-paisley-opacity, 0.56);
+  }
+
+  :root.hybrid .app-top-bar-paisley {
+    display: none;
   }
 }
 

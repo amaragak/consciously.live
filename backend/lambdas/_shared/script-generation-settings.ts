@@ -325,7 +325,7 @@ export function defaultScriptGenerationSettings(): ScriptGenerationSettings {
     singleCallCalibratedModelIds: [],
     calibrationBriefs: [...DEFAULT_CALIBRATION_BRIEFS],
     comparisonBriefs: [...DEFAULT_COMPARISON_BRIEFS],
-    scriptWriteMode: "sections",
+    scriptWriteMode: "silence_words_haiku",
     userScriptFidelityCheck: false,
     styleInferModelId: CLAUDE_HAIKU_55_MODEL_ID,
     calibrationBriefCount: CALIBRATION_BRIEF_COUNT,
@@ -469,7 +469,7 @@ export function coerceScriptGenerationSettings(
           ...silenceWords,
           scriptTriggerPct: 0.1,
           phaseTriggerPct: 0.15,
-          streamPhasesToTts: false,
+          streamPhasesToTts: true,
         });
   return {
     scriptModelId,

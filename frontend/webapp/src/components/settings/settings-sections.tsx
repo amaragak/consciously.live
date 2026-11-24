@@ -56,6 +56,11 @@ import { journalLockIsSet } from "@/lib/journal-prefs";
 import { cacheDailyTodos } from "@/lib/daily-todos";
 import { getSessionPrivileges } from "@/lib/session-privileges";
 import { shouldShowSettingsRow } from "@/lib/settings-status";
+import { useOfflineDownloads } from "@/lib/native/use-offline-downloads";
+import {
+  clearAllOfflineDownloads,
+  formatBytes,
+} from "@/lib/native/offline-downloads";
 import { COLOR_SCHEME_OPTIONS, setColorScheme } from "@/lib/color-scheme";
 import {
   ACCOUNT_PRONOUNS,
@@ -1737,6 +1742,54 @@ function EmailSection({ settings, onPatch }: SectionProps) {
   );
 }
 
+function MeditateDownloadsRow() {
+  const { enabled, summary } = useOfflineDownloads();
+  const [busy, setBusy] = useState(false);
+  if (!enabled) {
+    return (
+      <SettingsRow
+        key="downloads"
+        settingsKey="meditate.downloads"
+        title="Downloads / offline"
+        helper="Available in the iOS and Android app."
+        control={<span className="text-sm text-muted">App only</span>}
+      />
+    );
+  }
+  return (
+    <SettingsRow
+      key="downloads"
+      settingsKey="meditate.downloads"
+      title="Downloads / offline"
+      helper={
+        summary.count > 0
+          ? `${summary.count} saved · ${formatBytes(summary.bytes)} on this device`
+          : "Save meditations and soundscapes for offline listening."
+      }
+      control={
+        <button
+          type="button"
+          disabled={busy || summary.count === 0}
+          className="rounded-full border border-border px-3 py-1.5 text-sm text-foreground disabled:opacity-40"
+          onClick={() => {
+            if (
+              !window.confirm(
+                "Remove all offline downloads from this device?",
+              )
+            ) {
+              return;
+            }
+            setBusy(true);
+            void clearAllOfflineDownloads().finally(() => setBusy(false));
+          }}
+        >
+          {busy ? "Removing…" : "Remove all"}
+        </button>
+      }
+    />
+  );
+}
+
 function MeditateSection({ settings, onPatch }: SectionProps) {
   const lengthOptions = ([/* 2, */ 5, 10, 20] as const).map((m) => ({
     value: String(m),
@@ -1904,19 +1957,7 @@ function MeditateSection({ settings, onPatch }: SectionProps) {
 
   if (shouldShowSettingsRow("meditate.downloads")) {
     rows.push(
-      <SettingsRow
-        key="downloads"
-        settingsKey="meditate.downloads"
-        title="Downloads / offline"
-        helper="Save meditations for offline listening."
-        control={
-          <SettingsSwitch
-            aria-label="Offline downloads"
-            checked={false}
-            disabled
-          />
-        }
-      />,
+      <MeditateDownloadsRow key="downloads" />,
     );
   }
 

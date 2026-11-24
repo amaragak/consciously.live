@@ -175,15 +175,16 @@ export function CreateFlowFooterBar({
   if (!mdUp) {
     return (
       <div className="relative shrink-0">
-        {/* Floats above the length nav; out of flow so page content shows through. */}
+        {/* Floats above the length nav; out of flow so page content shows through.
+            Keep below the nav stacking context so credit flyouts can cover the strip. */}
         <div
           ref={stripHostRef}
-          className="pointer-events-none absolute inset-x-0 bottom-full z-50"
+          className="pointer-events-none absolute inset-x-0 bottom-full z-40"
         />
         <div
           ref={rootRef}
           className={[
-            "border-t border-border/60 bg-background pt-3 pb-4 sm:pt-4 sm:pb-6",
+            "relative z-50 border-t border-border/60 bg-background pt-3 pb-4 sm:pt-4 sm:pb-6",
             className ?? "",
           ]
             .filter(Boolean)
@@ -199,7 +200,14 @@ export function CreateFlowFooterBar({
 
   return (
     <div className="create-flow-footer-pill pointer-events-none fixed bottom-0 right-0 z-30 max-lg:left-0 lg:left-[var(--app-sidebar-w,200px)]">
-      {/* Full-width bottom band — fill, top border — replaced by the pill.
+      {/* Right-aligned hugging pill — replaced by content-width bar (create-desktop-fixes-v3).
+      <div className="mx-auto flex w-full max-w-6xl justify-end px-4 pb-4 sm:px-6">
+        <div className="pointer-events-auto w-max max-w-full border …" style={{ borderRadius: 9999 }}>
+          children
+        </div>
+      </div>
+      */}
+      {/* Full-width bottom band — fill, top border — earlier superseded by the pill.
       <div className="relative shrink-0">
         <div className="border-t border-border/60 bg-background pt-3 pb-4 sm:pt-4 sm:pb-6">
           <div className="mx-auto flex min-h-0 w-full max-w-6xl items-center gap-2 px-4 sm:px-6">
@@ -210,13 +218,13 @@ export function CreateFlowFooterBar({
       */}
       <div
         ref={stripHostRef}
-        className="pointer-events-none absolute inset-x-0 bottom-full z-50"
+        className="pointer-events-none absolute inset-x-0 bottom-full z-40"
       />
-      <div className="mx-auto flex w-full max-w-6xl justify-end px-4 pb-4 sm:px-6">
+      <div className="relative z-50 mx-auto w-full max-w-6xl px-4 pb-4 sm:px-6">
         <div
           ref={rootRef}
           className={[
-            "pointer-events-auto w-max max-w-full border border-border bg-card shadow-[0_10px_28px_-12px_rgb(0_0_0_/_0.35)]",
+            "pointer-events-auto w-full border border-border bg-card shadow-[0_10px_28px_-12px_rgb(0_0_0_/_0.35)]",
             className ?? "",
           ]
             .filter(Boolean)
@@ -225,7 +233,7 @@ export function CreateFlowFooterBar({
           role="navigation"
           aria-label="Create steps"
         >
-          <div className="flex items-center gap-2 px-1.5 py-1.5 [&>*]:!w-auto [&>*]:flex-none">
+          <div className="flex w-full items-center gap-2 px-1.5 py-1.5">
             {children}
           </div>
         </div>

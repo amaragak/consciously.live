@@ -115,7 +115,7 @@ export const SETTINGS_STATUS: Record<SettingsKey, SettingsStatus> = {
   "meditate.background": "not_implemented",
   "meditate.playbackSpeed": "not_implemented",
   "meditate.showCreateHint": "wired",
-  "meditate.downloads": "not_available",
+  "meditate.downloads": "wired",
   "focus.sessionDefaults": "wired",
   "focus.distraction": "not_available",
   "focus.goalsPicker": "not_available",

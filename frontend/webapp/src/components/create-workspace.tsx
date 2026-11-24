@@ -1275,6 +1275,11 @@ export function CreateWorkspace({
   );
   /** Dev: Fish qualitative tags vs our ffmpeg silence chunks (default). */
   const [fishPauseMode, setFishPauseMode] = useState<FishPauseMode>("segmented");
+  /**
+   * Dev: silence_words_haiku — Haiku each phase (no whole-script gate).
+   * Off = Haiku only when the full script is outside scriptTriggerPct.
+   */
+  const [streamPhasesToTts, setStreamPhasesToTts] = useState(true);
   /** Dev: Speechify — also generate warm + calm emotion stems (serial). */
   const [speechifyEmotionVariants, setSpeechifyEmotionVariants] =
     useState(false);
@@ -4415,6 +4420,9 @@ export function CreateWorkspace({
           ? claudeModelChoice
           : CLAUDE_SONNET_45_MODEL_ID,
         fishPauseMode: showCreateAudioDevControls ? fishPauseMode : "segmented",
+        ...(showCreateAudioDevControls
+          ? { streamPhasesToTts }
+          : {}),
         ...(showCreateAudioDevControls &&
         speechifyEmotionVariants &&
         ttsProvider !== "orpheus"
@@ -5153,6 +5161,33 @@ export function CreateWorkspace({
                   onClick={() => setFishPauseMode(value)}
                   className={`cursor-pointer px-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                     fishPauseMode === value
+                      ? "bg-accent-soft text-foreground"
+                      : "text-muted hover:bg-accent-soft/40 hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div
+              className="inline-flex h-8 shrink-0 overflow-hidden rounded-lg border border-border bg-background"
+              role="group"
+              aria-label="Stream Haiku phases"
+              title="On: after Sonnet, Haiku each phase toward its word target. Off: Haiku only if the whole script is outside the admin script trigger %."
+            >
+              {(
+                [
+                  [false, "Haiku if miss"],
+                  [true, "Haiku stream"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  disabled={audioLoading}
+                  onClick={() => setStreamPhasesToTts(value)}
+                  className={`cursor-pointer px-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    streamPhasesToTts === value
                       ? "bg-accent-soft text-foreground"
                       : "text-muted hover:bg-accent-soft/40 hover:text-foreground"
                   }`}

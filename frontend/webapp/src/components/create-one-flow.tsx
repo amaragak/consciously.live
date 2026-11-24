@@ -13,6 +13,8 @@ import {
 } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { IconRefresh } from "@tabler/icons-react";
+import { CircleHelp } from "lucide-react";
+import type { MeditationCreditEstimate } from "@/lib/meditation-credits";
 import { readAffirmationMeditation } from "@/lib/daily-affirmations";
 import { CommunityCategoryGrid } from "@/components/community-category-grid";
 import { AppPrimaryTabsDesktop } from "@/components/app-primary-tabs";
@@ -534,6 +536,10 @@ export function CreateOneFlow({
   const [audioError, setAudioError] = useState<string | null>(null);
   const [showCreateHint, setShowCreateHint] = useState<boolean | null>(null);
   const [soundPreviewPlaying, setSoundPreviewPlaying] = useState(false);
+  const [soundCreditEstimate, setSoundCreditEstimate] = useState<
+    (MeditationCreditEstimate & { needsMoreCredits: boolean }) | null
+  >(null);
+  const [creditsInfoOpen, setCreditsInfoOpen] = useState(false);
   const [soundSessionMeta, setSoundSessionMeta] =
     useState<CreateSoundSessionOverrideMeta>(EMPTY_SESSION_OVERRIDE_META);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -545,7 +551,27 @@ export function CreateOneFlow({
     if (step === "sound") return;
     soundStepRef.current?.stopPreviews();
     setSoundSessionMeta(EMPTY_SESSION_OVERRIDE_META);
+    setSoundCreditEstimate(null);
+    setCreditsInfoOpen(false);
   }, [step]);
+
+  useEffect(() => {
+    if (!creditsInfoOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el?.closest("[data-credits-info]")) return;
+      setCreditsInfoOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCreditsInfoOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [creditsInfoOpen]);
   const stateRef = useRef(state);
   stateRef.current = state;
   const shapeRequestIdRef = useRef(0);
@@ -1912,6 +1938,9 @@ export function CreateOneFlow({
             : {}),
           ...(soundExtras.fishPauseMode
             ? { fishPauseMode: soundExtras.fishPauseMode }
+          : {}),
+          ...(typeof soundExtras.streamPhasesToTts === "boolean"
+            ? { streamPhasesToTts: soundExtras.streamPhasesToTts }
             : {}),
           ...(soundExtras.skipVoiceFx ? { skipVoiceFx: true } : {}),
           ...(soundExtras.skipSpeechifyLoudnorm
@@ -2366,32 +2395,37 @@ export function CreateOneFlow({
   const shapeHasFormat = Boolean(state.style || state.program);
   const shapeHasContext =
     state.journals.length > 0 || Boolean(state.goal) || Boolean(state.heal);
-  const briefSummaryLine = [
-    state.prompt.trim() || "No brief yet",
-    `${state.lengthMinutes} min`,
-  ].join(" · ");
-
-  /** Shape / Sound landing card (quick-create v2) — all widths. */
+  /**
+   * Shape / Sound brief card. Length chip lives here on every step past Start
+   * (Start keeps it in the composer). On Sound the brief/context are locked —
+   * chat may already have reshaped the brief; only length stays editable.
+   */
+  const briefLocked = step === "sound";
   const yourBriefCard = (
     <div className="flex shrink-0 flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-[0_4px_18px_rgb(0_0_0_/_0.08)]">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
           Your brief
         </span>
-        <button
-          type="button"
-          onClick={() => goStep("start")}
-          className="cursor-pointer text-[13px] font-semibold text-accent-link underline-offset-2 hover:underline"
-        >
-          Edit
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {renderLengthChip(briefLocked ? "compact" : "default")}
+          {!briefLocked ? (
+            <button
+              type="button"
+              onClick={() => goStep("start")}
+              className="cursor-pointer text-[13px] font-semibold text-accent-link underline-offset-2 hover:underline"
+            >
+              Edit
+            </button>
+          ) : null}
+        </div>
       </div>
       <p className="font-sans text-[15px] leading-[1.4] text-foreground md:text-[16px]">
-        {briefSummaryLine}
+        {state.prompt.trim() || "No brief yet"}
       </p>
       <div className="flex flex-wrap items-center gap-1.5">
-        {tokens(true, { kindLabels: true })}
-        {!shapeHasFormat ? (
+        {tokens(!briefLocked, { kindLabels: true })}
+        {!briefLocked && !shapeHasFormat ? (
           <button
             type="button"
             onClick={() => openPicker("style")}
@@ -2400,7 +2434,7 @@ export function CreateOneFlow({
             <IconPlus className="h-3.5 w-3.5" /> Format
           </button>
         ) : null}
-        {!shapeHasContext ? (
+        {!briefLocked && !shapeHasContext ? (
           <button
             type="button"
             onClick={() => openPicker("journal")}
@@ -2408,10 +2442,9 @@ export function CreateOneFlow({
           >
             <IconPlus className="h-3.5 w-3.5" /> Context
           </button>
-        ) : (
-          shapeContextAddChips
-        )}
-        {shapeHasFormat ? shapeFormatAddChips : null}
+        ) : null}
+        {!briefLocked && shapeHasContext ? shapeContextAddChips : null}
+        {!briefLocked && shapeHasFormat ? shapeFormatAddChips : null}
         {shapeSkipped && step === "sound" ? (
           <button
             type="button"
@@ -3027,166 +3060,134 @@ export function CreateOneFlow({
           {step === "sound" ? (
             <div className="flex w-full flex-col gap-4">
               {yourBriefCard}
-              <div className="rounded-[10px] border border-accent/35 bg-accent-soft/40">
-                <div className="flex min-w-0 items-start gap-2.5 px-3.5 py-2.5">
-                  <span className="mt-0.5 shrink-0 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
-                    <span className="md:hidden">Making</span>
-                    <span className="hidden md:inline">You&apos;re making</span>
-                  </span>
-                  <span
-                    title={state.prompt.trim() || undefined}
-                    className={`min-w-0 flex-1 font-display text-[15px] leading-[1.35] text-foreground line-clamp-2 md:truncate md:text-[16px] ${
-                      state.prompt.trim() ? "" : "italic text-muted"
-                    }`}
-                  >
-                    {state.prompt.trim() || summarySentence}
-                  </span>
-                  <div className="shrink-0 self-center">
-                    {renderLengthChip("compact", {
-                      disabled: !state.program,
-                    })}
-                  </div>
-                </div>
-                {soundSessionIds && state.program ? (
-                  <>
-                    <div className="flex min-w-0 flex-col gap-1 border-t border-accent/20 px-3.5 py-2.5">
-                      <span className="text-[10px] font-semibold uppercase tracking-[1.4px] text-muted">
-                        Program
-                      </span>
-                      <div className="flex min-w-0 flex-wrap items-center gap-y-2">
-                        {tokens(false, {
-                          includeStyle: false,
-                          includeJournal: false,
-                          includeGoal: false,
-                        })}
+              {soundSessionIds && state.program ? (
+                <div className="rounded-[10px] border border-accent/35 bg-accent-soft/40">
+                  <div className="flex min-w-0 flex-col gap-1 px-3.5 py-2.5">
+                    <span className="text-[10px] font-semibold uppercase tracking-[1.4px] text-muted">
+                      Program
+                    </span>
+                    <div className="flex min-w-0 flex-wrap items-center gap-y-2">
+                      {tokens(false, {
+                        includeStyle: false,
+                        includeJournal: false,
+                        includeGoal: false,
+                      })}
+                      {soundSessionMeta.expanded ? (
+                        <div
+                          role="group"
+                          aria-label="Voice and sound target"
+                          className="ml-4 flex min-w-0 items-center gap-1.5 border-l border-accent/35 pl-4 max-md:order-last max-md:ml-0 max-md:w-full max-md:overflow-x-auto max-md:border-l-0 max-md:py-1 max-md:pl-0 max-md:pr-1"
+                        >
+                          {[
+                            { id: null as string | null, label: "All sessions" },
+                            ...soundSessionIds.map((id, i) => ({
+                              id: id as string | null,
+                              label: String(i + 1),
+                            })),
+                          ].map(({ id, label }) => {
+                            const selected = soundSessionMeta.focusSessionId === id;
+                            const overridden =
+                              id != null &&
+                              soundSessionMeta.overriddenSessionIds.includes(id);
+                            return (
+                              <button
+                                key={id ?? "all"}
+                                type="button"
+                                aria-pressed={selected}
+                                disabled={audioBusy}
+                                onClick={() =>
+                                  soundStepRef.current?.setFocusSessionId(id)
+                                }
+                                className={`relative inline-flex h-[34px] min-w-[34px] shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-full bg-card px-[14px] text-[13px] disabled:cursor-not-allowed disabled:opacity-50 ${
+                                  selected
+                                    ? "border-[1.5px] border-accent font-semibold text-foreground"
+                                    : "border border-border text-muted"
+                                }`}
+                              >
+                                {label}
+                                {overridden ? (
+                                  <span
+                                    aria-hidden
+                                    className="absolute -right-0.5 -top-0.5 h-[9px] w-[9px] rounded-full bg-accent ring-2 ring-background"
+                                  />
+                                ) : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2 pl-3 text-[13px]">
                         {soundSessionMeta.expanded ? (
-                          <div
-                            role="group"
-                            aria-label="Voice and sound target"
-                            className="ml-4 flex min-w-0 items-center gap-1.5 border-l border-accent/35 pl-4 max-md:order-last max-md:ml-0 max-md:w-full max-md:overflow-x-auto max-md:border-l-0 max-md:py-1 max-md:pl-0 max-md:pr-1"
-                          >
-                            {[
-                              { id: null as string | null, label: "All sessions" },
-                              ...soundSessionIds.map((id, i) => ({
-                                id: id as string | null,
-                                label: String(i + 1),
-                              })),
-                            ].map(({ id, label }) => {
-                              const selected = soundSessionMeta.focusSessionId === id;
-                              const overridden =
-                                id != null &&
-                                soundSessionMeta.overriddenSessionIds.includes(id);
-                              return (
+                          <>
+                            {soundSessionMeta.overrideCount > 0 ? (
+                              <>
+                                <span className="text-muted">
+                                  {soundSessionMeta.overrideCount === 1
+                                    ? "1 session differs"
+                                    : `${soundSessionMeta.overrideCount} sessions differ`}
+                                </span>
+                                <span aria-hidden className="text-border">
+                                  ·
+                                </span>
                                 <button
-                                  key={id ?? "all"}
                                   type="button"
-                                  aria-pressed={selected}
                                   disabled={audioBusy}
                                   onClick={() =>
-                                    soundStepRef.current?.setFocusSessionId(id)
+                                    soundStepRef.current?.clearAllSessionOverrides()
                                   }
-                                  className={`relative inline-flex h-[34px] min-w-[34px] shrink-0 cursor-pointer items-center justify-center whitespace-nowrap rounded-full bg-card px-[14px] text-[13px] disabled:cursor-not-allowed disabled:opacity-50 ${
-                                    selected
-                                      ? "border-[1.5px] border-accent font-semibold text-foreground"
-                                      : "border border-border text-muted"
-                                  }`}
+                                  className="cursor-pointer font-semibold text-accent-link disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                  {label}
-                                  {overridden ? (
-                                    <span
-                                      aria-hidden
-                                      className="absolute -right-0.5 -top-0.5 h-[9px] w-[9px] rounded-full bg-accent ring-2 ring-background"
-                                    />
-                                  ) : null}
+                                  Reset all
                                 </button>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-                        <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2 pl-3 text-[13px]">
-                          {soundSessionMeta.expanded ? (
-                            <>
-                              {soundSessionMeta.overrideCount > 0 ? (
-                                <>
-                                  <span className="text-muted">
-                                    {soundSessionMeta.overrideCount === 1
-                                      ? "1 session differs"
-                                      : `${soundSessionMeta.overrideCount} sessions differ`}
-                                  </span>
-                                  <span aria-hidden className="text-border">
-                                    ·
-                                  </span>
-                                  <button
-                                    type="button"
-                                    disabled={audioBusy}
-                                    onClick={() =>
-                                      soundStepRef.current?.clearAllSessionOverrides()
-                                    }
-                                    className="cursor-pointer font-semibold text-accent-link disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    Reset all
-                                  </button>
-                                  <span aria-hidden className="text-border">
-                                    ·
-                                  </span>
-                                </>
-                              ) : null}
-                              <button
-                                type="button"
-                                disabled={audioBusy}
-                                onClick={() =>
-                                  soundStepRef.current?.setSessionPickerExpanded(false)
-                                }
-                                className="cursor-pointer font-semibold text-accent-link disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                Done
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <span className="text-muted">
-                                {soundSessionMeta.overrideCount > 0
-                                  ? soundSessionMeta.overrideCount === 1
-                                    ? "1 session customised"
-                                    : `${soundSessionMeta.overrideCount} sessions customised`
-                                  : soundSessionIds.length === 1
-                                    ? "Voice and sound apply to your session"
-                                    : `Voice and sound apply to all ${soundSessionIds.length} sessions`}
-                              </span>
-                              <span aria-hidden className="text-border">
-                                ·
-                              </span>
-                              <button
-                                type="button"
-                                disabled={audioBusy}
-                                onClick={() =>
-                                  soundStepRef.current?.setSessionPickerExpanded(true)
-                                }
-                                className="cursor-pointer font-semibold text-accent-link disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {soundSessionMeta.overrideCount > 0
-                                  ? "Edit"
-                                  : "Set per session ›"}
-                              </button>
-                            </>
-                          )}
-                        </div>
+                                <span aria-hidden className="text-border">
+                                  ·
+                                </span>
+                              </>
+                            ) : null}
+                            <button
+                              type="button"
+                              disabled={audioBusy}
+                              onClick={() =>
+                                soundStepRef.current?.setSessionPickerExpanded(false)
+                              }
+                              className="cursor-pointer font-semibold text-accent-link disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Done
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-muted">
+                              {soundSessionMeta.overrideCount > 0
+                                ? soundSessionMeta.overrideCount === 1
+                                  ? "1 session customised"
+                                  : `${soundSessionMeta.overrideCount} sessions customised`
+                                : soundSessionIds.length === 1
+                                  ? "Voice and sound apply to your session"
+                                  : `Voice and sound apply to all ${soundSessionIds.length} sessions`}
+                            </span>
+                            <span aria-hidden className="text-border">
+                              ·
+                            </span>
+                            <button
+                              type="button"
+                              disabled={audioBusy}
+                              onClick={() =>
+                                soundStepRef.current?.setSessionPickerExpanded(true)
+                              }
+                              className="cursor-pointer font-semibold text-accent-link disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {soundSessionMeta.overrideCount > 0
+                                ? "Edit"
+                                : "Set per session ›"}
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
-                    {state.style ||
-                    state.journals.length > 0 ||
-                    state.goal ? (
-                      <div className="flex min-w-0 flex-wrap items-center gap-1.5 border-t border-accent/20 px-3.5 py-2.5">
-                        {tokens(false, { kindLabels: true, includeProgram: false })}
-                      </div>
-                    ) : null}
-                  </>
-                ) : hasAttachedContext ? (
-                  <div className="flex min-w-0 flex-wrap items-center gap-1.5 border-t border-accent/20 px-3.5 py-2.5">
-                    {tokens(false, { kindLabels: true })}
                   </div>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
               <CreateSoundStep
                 ref={soundStepRef}
                 disabled={audioBusy}
@@ -3205,6 +3206,7 @@ export function CreateOneFlow({
                     : null
                 }
                 onPreviewMixPlayingChange={setSoundPreviewPlaying}
+                onCreditEstimateChange={setSoundCreditEstimate}
                 programId={soundSessionIds ? (state.program?.id ?? null) : null}
                 programSessionIds={soundSessionIds}
                 onSessionOverrideMetaChange={setSoundSessionMeta}
@@ -3223,8 +3225,8 @@ export function CreateOneFlow({
           {mobileStepBar(false)}
           <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-3 px-3 pt-0 md:gap-3 md:px-6 md:pt-6">
           {yourBriefCard}
-          <div className="flex min-h-0 w-full flex-1 flex-col pb-4 xl:flex-row xl:items-stretch xl:gap-5 xl:pb-4">
-            <div className="flex min-h-0 min-w-0 w-full max-w-[760px] flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_4px_18px_rgb(0_0_0_/_0.08)] md:rounded-[18px]">
+          <div className="flex min-h-[280px] w-full flex-1 flex-col pb-4 md:min-h-[360px] xl:min-h-0 xl:flex-row xl:items-stretch xl:gap-5 xl:pb-4">
+            <div className="flex min-h-0 min-w-0 w-full max-w-[760px] flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[0_4px_18px_rgb(0_0_0_/_0.08)] md:rounded-[18px] xl:self-stretch">
               <div className="flex shrink-0 flex-col border-b border-border">
                 <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 md:px-5 md:py-3">
                   <span className="text-[11px] font-semibold uppercase tracking-[1.4px] text-accent-link">
@@ -3298,7 +3300,7 @@ export function CreateOneFlow({
                       {shapeAddChips}
                     </div>
                     {state.style && !state.program ? (
-                      <div className="hidden shrink-0 items-center gap-2 md:flex">
+                      <div className="ml-auto hidden shrink-0 items-center gap-2 md:flex">
                         <div className="flex items-center gap-1">
                           {styleQuestions.map((_, i) => (
                             <span
@@ -3317,7 +3319,6 @@ export function CreateOneFlow({
                         </span>
                       </div>
                     ) : null}
-                    <div className="ml-auto shrink-0">{renderLengthChip()}</div>
                   </div>
                 </div>
               </div>
@@ -3398,7 +3399,7 @@ export function CreateOneFlow({
 
             <aside
               aria-label="This meditation"
-              className="hidden w-[300px] shrink-0 flex-col gap-3 overflow-y-auto xl:flex"
+              className="hidden w-[300px] shrink-0 flex-col gap-3 overflow-y-auto xl:flex xl:self-start"
             >
               <div className="flex flex-col gap-2.5 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-[0_4px_18px_rgb(0_0_0_/_0.08)]">
                 {state.program ? (
@@ -3566,25 +3567,83 @@ export function CreateOneFlow({
             </button>
           ) : null}
           {step === "sound" ? (
-            <button
-              type="button"
-              disabled={audioBusy}
-              onClick={() => void generateMeditation()}
-              style={PRIMARY_ACCENT_FILL_STYLE}
-              className="inline-flex h-11 min-w-0 flex-1 cursor-pointer items-center justify-center rounded-full border-transparent px-3 text-[15px] font-semibold accent-fill-gradient text-on-accent disabled:pointer-events-none disabled:opacity-40"
-            >
-              {soundCreateCount > 1
-                ? `Create ${soundCreateCount}`
-                : "Create meditation"}
-            </button>
+            <>
+              {soundCreditEstimate ? (
+                <div
+                  data-credits-info
+                  className="relative flex shrink-0 items-center gap-1 pl-1"
+                >
+                  <span
+                    className={`text-[12px] tabular-nums ${
+                      soundCreditEstimate.needsMoreCredits
+                        ? "font-semibold text-destructive"
+                        : "text-muted"
+                    }`}
+                  >
+                    {soundCreditEstimate.credits}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="How credits are worked out"
+                    aria-expanded={creditsInfoOpen}
+                    onClick={() => setCreditsInfoOpen((v) => !v)}
+                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-muted"
+                  >
+                    <CircleHelp className="h-3.5 w-3.5" strokeWidth={1.8} />
+                  </button>
+                  {creditsInfoOpen ? (
+                    <div
+                      role="dialog"
+                      aria-label="Credit breakdown"
+                      className="absolute bottom-[calc(100%+8px)] right-0 z-[60] w-[220px] rounded-xl border border-border bg-card p-3 text-left shadow-xl md:hidden"
+                    >
+                      <ul className="flex flex-col gap-1.5 text-[13px] text-foreground">
+                        {soundCreditEstimate.factors.map((f) => (
+                          <li
+                            key={f.key}
+                            className="flex items-baseline justify-between gap-3"
+                          >
+                            <span className="min-w-0 truncate text-muted">
+                              {f.label} · {f.detail}
+                            </span>
+                            <span className="shrink-0 tabular-nums font-semibold">
+                              ×{f.multiplier}
+                            </span>
+                          </li>
+                        ))}
+                        <li className="mt-1 flex items-baseline justify-between gap-3 border-t border-border pt-1.5 font-semibold">
+                          <span>Total</span>
+                          <span className="tabular-nums">
+                            {soundCreditEstimate.credits} credit
+                            {soundCreditEstimate.credits === 1 ? "" : "s"}
+                          </span>
+                        </li>
+                      </ul>
+                      <p className="mt-2 text-[12px] leading-snug text-muted">
+                        Credits = length × delivery.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                disabled={audioBusy}
+                onClick={() => void generateMeditation()}
+                style={PRIMARY_ACCENT_FILL_STYLE}
+                className="inline-flex h-11 min-w-0 flex-1 cursor-pointer items-center justify-center rounded-full border-transparent px-3 text-[15px] font-semibold accent-fill-gradient text-on-accent disabled:pointer-events-none disabled:opacity-40"
+              >
+                {soundCreateCount > 1
+                  ? `Create ${soundCreateCount}`
+                  : "Create meditation"}
+              </button>
+            </>
           ) : null}
         </div>
 
-        {/* Desktop length-nav chrome. Full-width 3-column band is now a hugging row inside the pill.
-        <div className="hidden h-auto w-full grid-cols-[1fr_auto_1fr] items-center gap-2 px-1 py-2 md:grid md:h-[68px] md:gap-2.5 md:px-1 md:py-0">
-        */}
-        <div className="hidden items-center gap-2 px-1 py-2 md:flex md:gap-2.5 md:px-1 md:py-0">
-          <div className="flex justify-start">
+        {/* Desktop: back left, primary actions right — full content-width pill. */}
+        <div className="hidden w-full items-center justify-between gap-2 px-1 py-2 md:flex md:gap-2.5 md:px-1.5 md:py-0">
+          <div className="flex min-w-0 justify-start">
             {step !== "start" ? (
               <CreateFlowNavPill
                 onClick={() => {
@@ -3599,10 +3658,11 @@ export function CreateOneFlow({
                     : "Shape"
                   : "Start"}
               </CreateFlowNavPill>
-            ) : null}
+            ) : (
+              <span aria-hidden className="inline-block w-2" />
+            )}
           </div>
-          <div className="flex items-center justify-center gap-2.5" aria-hidden />
-          <div className="flex justify-end gap-2.5">
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2.5">
             {step === "start" ? (
               <>
                 <CreateFlowNavPill onClick={createNow}>
@@ -3665,6 +3725,65 @@ export function CreateOneFlow({
                   </span>
                   {soundPreviewLabel}
                 </CreateFlowNavPill>
+                {soundCreditEstimate ? (
+                  <div
+                    data-credits-info
+                    className="relative flex items-center gap-1.5"
+                  >
+                    <span
+                      className={`text-[13px] tabular-nums ${
+                        soundCreditEstimate.needsMoreCredits
+                          ? "font-semibold text-destructive"
+                          : "text-muted"
+                      }`}
+                    >
+                      {soundCreditEstimate.credits} credit
+                      {soundCreditEstimate.credits === 1 ? "" : "s"}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="How credits are worked out"
+                      aria-expanded={creditsInfoOpen}
+                      onClick={() => setCreditsInfoOpen((v) => !v)}
+                      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-border bg-card text-muted hover:text-foreground"
+                    >
+                      <CircleHelp className="h-3.5 w-3.5" strokeWidth={1.8} />
+                    </button>
+                    {creditsInfoOpen ? (
+                      <div
+                        role="dialog"
+                        aria-label="Credit breakdown"
+                        className="absolute bottom-[calc(100%+8px)] right-0 z-[60] hidden w-[220px] rounded-xl border border-border bg-card p-3 text-left shadow-xl md:block"
+                      >
+                        <ul className="flex flex-col gap-1.5 text-[13px] text-foreground">
+                          {soundCreditEstimate.factors.map((f) => (
+                            <li
+                              key={f.key}
+                              className="flex items-baseline justify-between gap-3"
+                            >
+                              <span className="min-w-0 truncate text-muted">
+                                {f.label} · {f.detail}
+                              </span>
+                              <span className="shrink-0 tabular-nums font-semibold">
+                                ×{f.multiplier}
+                              </span>
+                            </li>
+                          ))}
+                          <li className="mt-1 flex items-baseline justify-between gap-3 border-t border-border pt-1.5 font-semibold">
+                            <span>Total</span>
+                            <span className="tabular-nums">
+                              {soundCreditEstimate.credits} credit
+                              {soundCreditEstimate.credits === 1 ? "" : "s"}
+                            </span>
+                          </li>
+                        </ul>
+                        <p className="mt-2 text-[12px] leading-snug text-muted">
+                          Credits = length × delivery.
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <CreateFlowNavPill
                   disabled={audioBusy}
                   onClick={() => void generateMeditation()}
