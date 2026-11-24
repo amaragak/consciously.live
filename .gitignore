@@ -123,3 +123,6 @@ frontend/webapp/docs/design/journal-tabs-v2/
 docs/design/offline-downloads/
 docs/design/card-menu-sheet/
 docs/design/create-desktop-fixes-v3/
+
+# Local one-off debug dumps (never ship)
+backend/scripts/_dump-*.ts
