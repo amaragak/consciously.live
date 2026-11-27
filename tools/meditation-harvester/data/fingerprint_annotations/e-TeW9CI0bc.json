@@ -1,0 +1,42 @@
+{
+  "video_id": "e-TeW9CI0bc",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "posture",
+      "eyes_closed_or_soft_gaze",
+      "intention_or_purpose"
+    ],
+    "closing_moves": [
+      "eyes_open",
+      "carry_into_day"
+    ],
+    "techniques": [
+      "repeated_affirmations",
+      "loving_kindness_phrases",
+      "noting_or_labelling"
+    ],
+    "body_sequence_direction": "none",
+    "imagery_themes": [
+      "people"
+    ],
+    "person_main": "you",
+    "listener_i_statements": true,
+    "tense_main": "present",
+    "question_rate": "low",
+    "repetition_level": "high",
+    "listener_repeats": true,
+    "directiveness": 2,
+    "energy": 2,
+    "certainty": 3,
+    "warmth": 4,
+    "formality": 3
+  },
+  "words": 428,
+  "questions_per_1k_words": 0.0,
+  "usage": {
+    "in": 2496,
+    "out": 228
+  }
+}

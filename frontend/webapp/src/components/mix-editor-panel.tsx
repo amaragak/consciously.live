@@ -7,6 +7,7 @@ import { SoundscapePicker } from "@/components/soundscape-picker";
 import { soundscapeListenVolume } from "@/lib/bed-volume";
 import { playWithLeadBuffer } from "@/lib/audio-lead-buffer";
 import {
+  backgroundAudioPlaybackKey,
   backgroundAudioStreamingKey,
   getMedimadeMediaBaseUrl,
   type BackgroundAudioItem,
@@ -70,8 +71,9 @@ export function mixWithKey(
 }
 
 function mediaFileUrl(base: string, key: string): string {
+  const playKey = backgroundAudioPlaybackKey(key);
   const b = base.replace(/\/$/, "");
-  const path = key.split("/").map(encodeURIComponent).join("/");
+  const path = playKey.split("/").map(encodeURIComponent).join("/");
   return `${b}/${path}`;
 }
 
@@ -472,7 +474,7 @@ export function MixEditorPanel({
 
   function soundscapePreviewUrl(key: string): string | null {
     if (!mediaBase || !key.trim()) return null;
-    return mediaFileUrl(mediaBase, backgroundAudioStreamingKey(key));
+    return mediaFileUrl(mediaBase, backgroundAudioPlaybackKey(key));
   }
 
   function applySoundscapeDevFader(percent: number) {

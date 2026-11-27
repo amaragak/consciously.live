@@ -1,0 +1,63 @@
+{
+  "video_id": "1tgZojaSyrk",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "d7a6bc0ddf84ce54",
+  "labels": [
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "settle",
+      "opening"
+    ],
+    [
+      "settle",
+      "opening"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "return",
+      "closing"
+    ],
+    [
+      "return",
+      "closing"
+    ]
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "video_id": "fDkaAjIiQfg",
+  "pause_min_s": 4.0,
+  "short_min_s": 1.0,
+  "runtime_s": 400.0,
+  "lead_in_s": 0.0,
+  "tail_s": 0.0,
+  "segments": [
+    {
+      "type": "pause",
+      "start": 0.0,
+      "length": 12.18
+    },
+    {
+      "type": "passage",
+      "start": 12.18,
+      "length": 194.84,
+      "words": 357,
+      "position": 0.0304,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 19,
+        "lengths_s": [
+          2.3,
+          1.6,
+          1.8,
+          2.2,
+          2.6,
+          2.0,
+          1.4,
+          1.4,
+          1.6,
+          1.2,
+          1.4,
+          3.1,
+          3.3,
+          1.5,
+          2.2,
+          2.1,
+          1.8,
+          1.3,
+          2.4
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 207.02,
+      "length": 4.08
+    },
+    {
+      "type": "passage",
+      "start": 211.1,
+      "length": 132.91,
+      "words": 263,
+      "position": 0.5277,
+      "role": "breath",
+      "phase": "main",
+      "short_pauses": {
+        "count": 17,
+        "lengths_s": [
+          1.5,
+          1.3,
+          1.9,
+          1.8,
+          1.6,
+          2.1,
+          2.2,
+          1.7,
+          2.4,
+          1.6,
+          2.6,
+          1.1,
+          1.1,
+          1.1,
+          1.1,
+          3.1,
+          2.2
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 344.01,
+      "length": 5.67
+    },
+    {
+      "type": "passage",
+      "start": 349.68,
+      "length": 36.14,
+      "words": 64,
+      "position": 0.8742,
+      "role": "self-practice handover",
+      "phase": "closing",
+      "short_pauses": {
+        "count": 4,
+        "lengths_s": [
+          1.1,
+          2.1,
+          2.5,
+          1.6
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 385.82,
+      "length": 14.18
+    }
+  ],
+  "counts": {
+    "passages": 3,
+    "pauses": 4,
+    "words": 684
+  },
+  "timing_check": {
+    "covered_s": 400.0,
+    "delta_s": 0.0,
+    "vs_youtube_s": 0.0
+  }
+}

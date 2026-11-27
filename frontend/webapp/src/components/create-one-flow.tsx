@@ -3620,7 +3620,10 @@ export function CreateOneFlow({
                         </li>
                       </ul>
                       <p className="mt-2 text-[12px] leading-snug text-muted">
-                        Credits = length × delivery.
+                        Credits = length
+                        {soundCreditEstimate.isProVoice
+                          ? " × Pro voice."
+                          : "."}
                       </p>
                     </div>
                   ) : null}
@@ -3778,7 +3781,10 @@ export function CreateOneFlow({
                           </li>
                         </ul>
                         <p className="mt-2 text-[12px] leading-snug text-muted">
-                          Credits = length × delivery.
+                          Credits = length
+                        {soundCreditEstimate.isProVoice
+                          ? " × Pro voice."
+                          : "."}
                         </p>
                       </div>
                     ) : null}

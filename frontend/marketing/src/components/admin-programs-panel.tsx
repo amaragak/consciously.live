@@ -62,8 +62,9 @@ async function fileToCompressedJpegDataUrl(file: File): Promise<{
 }
 
 function mediaFileUrl(base: string, key: string): string {
+  const playKey = backgroundAudioPlaybackKey(key);
   const b = base.replace(/\/$/, "");
-  const path = key.split("/").map(encodeURIComponent).join("/");
+  const path = playKey.split("/").map(encodeURIComponent).join("/");
   return `${b}/${path}`;
 }
 

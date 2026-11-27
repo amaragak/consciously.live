@@ -1,0 +1,35 @@
+{
+  "video_id": "WfneJJL4hM4",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "797325eecec0cbfd",
+  "labels": [
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "self-practice handover",
+      "main"
+    ]
+  ]
+}

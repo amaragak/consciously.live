@@ -1,55 +1,74 @@
 > Guidance for Anxiety relief meditations, not fixed rules. Use judgement for each moment; the user's request overrides any of this.
 
-# Writing an anxiety-relief meditation
+# Anxiety relief: writer's brief
 
-## Mechanism
-Anxiety pulls attention into future-facing thought and a tense, fast body. Your job is to move attention from the story to something present and physical (breath, contact, sensation), then give the nervous system a slow, predictable rhythm to settle into. Calm comes from three things: a steady, unhurried voice; tasks that are simple enough to do while anxious; and repeated reassurance that nothing needs fixing. If a request goes beyond what's covered here, ask whether each line moves the listener toward the present, toward the body, or toward safety.
+Everything here is a default. If the request asks for something different, follow the request and use this only for what it leaves open.
 
-## Phases
-Divide the session by change of technique or focus, and allow a different number of sections depending on length. Default arc:
-1. **Arrive** (short): permission to stop, a position, a few breaths. Name what they came for.
-2. **Regulate the breath**: one technique, such as a longer exhale or an easy count. Say briefly why it works.
-3. **Release the body or ground the senses**: tension spots, contact with the surface, sounds. With panic or acute distress, ground first and go gently.
-4. **Work with the anxiety itself**: witness a feeling, name a thought and let it pass, or soften around a sensation. Use one method per session, not several.
-5. **Rest**: the longest silence, with only sparse, gentle prompts.
-6. **Return**: slowly back to the room.
+## 1. Mechanism
+Anxiety pulls attention into future-facing thought and a braced body. The session moves attention to something present and physical (breath, contact, one body area), then shows that the feeling can be there without being fought. Three moves do the work:
+- **Anchor** attention in sensation, not thought.
+- **Name and permit** the state, so the listener feels met instead of corrected.
+- **Slow the exhale and slow the language** so the body follows.
+Reassurance comes from steadiness, not from claims that everything is fixed. Promise only what is true: this passes, you are safe right now, nothing needs fixing.
 
-Longer sessions let phases 3–5 run longer and may add one more technique. They shouldn't pile on new ideas. A short session (around 10 minutes) might use only phases 1, 2, 4 and 6, with a brief rest. Carry across: one recurring anchor (the breath or a short phrase), the safety theme, and the user's situation. Each section should end on a settled note and begin by echoing it.
+## 2. Phases
+Default arc, each phase a section:
+1. **Arrival** (short): welcome, posture, eyes, a line that names why they are here.
+2. **Settling breath**: a few full breaths with a longer exhale; permission to feel however they feel.
+3. **Anchor**: body contact, hands, or breath sensation. This brings attention out of thought.
+4. **Core technique** (largest): one method developed fully, such as a counted breath ratio, a body-part release, noting thoughts and feelings, or witnessing a sensation. Match it to the request.
+5. **Rest**: fewer words and longer silence, with sparse reassurance.
+6. **Return**: deepen once, widen to the room, move, open the eyes.
 
-## How to say things
-- Name one focus, invite it, and leave the result open: "Notice where your shoulders are holding… and let the out-breath soften them, as much or as little as feels right."
-- Use second person, present tense, and short plain sentences. Concrete body words beat abstractions.
-- Make instructions permissive ("you might", "if it helps", "no need to get this right"), and expect the mind to wander: "If thoughts pull you away, that's normal. Come back to the next breath."
-- Use counts only when teaching a breath, and give the rhythm once, then release it: "Breathe in for four, out for six… and on your own now."
-- Use signature phrases sparingly, such as one short line like "you are safe in this breath", and vary the wording each time. Reassurance works best when it is specific and credible ("this feeling is a body reaction, and it passes"). Avoid unlimited positivity.
-- Weave in the user's own material in a light, non-triggering way. Name their situation once, in the arrival or work phase, then refer to it through the body ("the tightness you described"). Don't re-run their worries.
-- Explain a technique in a sentence before using it. Don't lecture.
+Phase boundaries fall where the technique, focus or depth changes. Longer sessions add length to the core and rest phases, or a second technique, not more preamble. Short sessions merge anchor and core. For acute panic, shorten arrival, reassure early and keep instructions simple.
 
-## Pauses
-Silence gives the listener time to do what was asked, so the pause length follows the task. Short cues and counted breaths take 1–3s, a body or feeling cue takes 4–10s, and the rest phase can hold 15–60s or longer. Silence grows as the session deepens. Don't leave long gaps for acute panic or for a listener still learning a technique, where the voice is the anchor. Don't break the middle of a sentence, or a breath count, with a pause. Write pauses as [[PAUSE Ns]].
+Carry across phases: one anchor (the breath or a contact point) that returns, a few recurring phrases, and a steadily softer tone. End each section on a line the next can pick up, such as "stay with that breath". Start the next section by continuing, not by re-welcoming.
 
-## Opening and closing
-Open warmly and plainly. Acknowledge why they're here, give permission to stop, and start the breath within a few lines. If the user is in acute panic, skip the preamble and start grounding straight away. Close by returning the senses (sounds, the surface beneath them, fingers and toes), then a short reminder of the anchor they can use later, and an unhurried goodbye. Don't end with a promise that anxiety is cured.
+## 3. How to say it
+- **Cue anatomy:** name the place or sensation, invite softly, leave the outcome open. "Notice where your breath moves most easily… and let the exhale be a little longer."
+- **Sequence:** one cue at a time. Introduce a technique with a brief demonstration or count, then repeat it so the listener can follow without effort. Count-based breath works better when the numbers are spoken at first and then released ("on your own now").
+- **Name the state:** "if there's tightness, or a racing feeling, that's allowed here." Normalise drifting minds and say so before it happens.
+- **Soften:** "you might", "see if", "perhaps", "if it helps". Use "let" and "allow" over "try".
+- **Reassure through acceptance:** you don't have to change this; the feeling is a reaction, not a danger.
+- **Language:** short sentences, present tense, "you". Plain and sensory (weight, warmth, jaw, shoulders). Few questions, and only gentle ones. Repeat key phrases with small variation so they become anchors.
+- **User material:** put their worry, situation or words in once, early, to name what is being held. Then work with the sensation, not the story. Do not walk through the storyline.
 
-## Common mistakes
-- Stacking techniques, which feels like effort. Choose one or two.
-- Over-instructing breath ("deeper, deeper"), which can raise anxiety. Offer 10–20% less effort instead.
-- Reassuring in absolutes ("nothing bad will ever happen"). Stay truthful.
-- Long explanations before any calming happens.
-- Rushing the silence, or repeating the same phrase unchanged.
-- Drifting into sleep imagery or affirmation lists unless asked.
+## 4. Pauses
+A pause gives time to do what the line asked. A one-breath cue needs a few seconds; a body or witness cue needs longer. Typical gaps run about 2–5s. Silence grows as the session deepens, reaching 10–30s or more in the rest phase. Use [[PAUSE Ns]]. Avoid long gaps right after a counted breath's numbers or in the middle of a sentence. Keep pauses short during acute-panic content, where silence can feel exposed.
 
-## Worked example
-Request: "10 minutes, I get tight-chested before presentations at work."
+## 5. Opening and closing
+Open warmly and briefly, then posture, then eyes (soft gaze is fine if eyes closed feels uneasy). Close by deepening once, returning to sounds and the room, and moving fingers or toes before the eyes open. Add a short carry-forward line only if the request suits it.
 
-Phases:
-1. Arrive: permission to pause and name the tightness.
-2. Longer-exhale breathing, to settle the body.
-3. Chest and shoulder release, plus contact with the chair.
-4. Notice the "what if" thoughts and let them pass, then rest.
-5. Return, with a brief anchor phrase for before the talk.
+## What listeners expect
+- **Opening:** nearly all sessions open with a welcome, most then give posture, eyes closed or soft gaze, and settling breaths. Many add body arrival or permission to feel as they are.
+- **Closing:** most sessions deepen once more and open the eyes. Many return attention to the room and carry the calm into the day. Some add movement, and about half add gratitude.
+- **Delivery:** soothing, warm, casual, permissive to mildly directive. Mostly second person, present tense, few or no questions. Medium to high repetition; inviting the listener to repeat a line is occasional.
+- **Fits well:** noticing sensations ("you may notice…"); naming the anxious state; safety and "you have what you need" assurances; acceptance of any experience ("even if you still feel…"); easing out of control; counted breath; locating body areas.
+- **Keep rare:** generic relax-and-release wording and body-descending imagery such as "heavier and heavier".
+- **Avoid:** well-wishing phrases (loving-kindness); abundance or gratitude lists (manifestation); power or "open to receive" affirmations (affirmation-loop).
 
-Carried across: the exhale as anchor, "tight chest" turning into "room in the chest", and a recurring line of safety.
+## 6. Common mistakes
+- Promising instant cure or telling them not to feel anxious. Normalise instead.
+- Long explanation before the first breath. Keep science to a line or two.
+- Deep or held breaths with no way out. Offer to soften the breath if it adds tension.
+- Piling up techniques. Choose one and let it breathe.
+- Reflecting on the stressor in detail. Stay with sensation.
+- Stock phrases that feel generic. Vary the wording while keeping the same function.
 
-Excerpt (phase 2):
-"Let's slow things down with the out-breath. [[PAUSE 2s]] Breathe in through your nose, easily. [[PAUSE 2s]] And let the exhale run a little longer, as if you were fogging a window. [[PAUSE 4s]] Again. In… [[PAUSE 2s]] and a slow, long breath out. [[PAUSE 5s]] There's no right way to do this. Just let each exhale go a little further, and notice your chest has a little more room. [[PAUSE 10s]]"
+## 7. Worked example
+**Request:** "I'm anxious before a job interview tomorrow; ten minutes, calm me down."
+
+**Phases:**
+1. Arrival (short): welcome, name the nerves.
+2. Settling breaths with a longer exhale.
+3. Anchor in feet and seat contact.
+4. Core: breath ratio, then releasing jaw, shoulders and stomach.
+5. Rest: two or three reassurance lines, long silence. Carry thread: the exhale and "steady".
+6. Return: widen to the room, open the eyes, one line for tomorrow.
+
+**Excerpt (core):**
+Let the next breath out be slower than the one in. [[PAUSE 4s]]
+In for four… and out for six. [[PAUSE 5s]]
+If your mind jumps to tomorrow, that's allowed. [[PAUSE 3s]]
+Just come back to the feeling of the exhale. [[PAUSE 8s]]
+Let your jaw soften, and your shoulders settle. [[PAUSE 12s]]

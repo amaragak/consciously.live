@@ -1,0 +1,259 @@
+{
+  "style": "movement-meditation",
+  "model": "claude-haiku-5-5",
+  "digest": "7f0712e1db2e161c",
+  "families": [
+    {
+      "name": "Breath cues",
+      "meaning": "Directs the listener to take a breath or to pair inhaling and exhaling with a movement.",
+      "examples": [
+        "take a deep breath",
+        "inhale and exhale"
+      ],
+      "members": [
+        "take a deep breath",
+        "inhale as you",
+        "nice deep breath",
+        "inhale and exhale",
+        "take a nice deep breath",
+        "full deep breath",
+        "breath as you",
+        "exhale and feel",
+        "hands up exhale",
+        "up exhale down",
+        "come down inhale",
+        "exhale as you come",
+        "breathe in your",
+        "feel the breath",
+        "through the nose",
+        "we breathe out"
+      ]
+    },
+    {
+      "name": "Repeat or continue",
+      "meaning": "Asks the listener to do the movement again or keep going for a bit longer.",
+      "examples": [
+        "one more time",
+        "little bit more"
+      ],
+      "members": [
+        "one more time",
+        "one more deep",
+        "little bit more",
+        "take one more",
+        "continue to walk"
+      ]
+    },
+    {
+      "name": "Return to center",
+      "meaning": "Brings attention back to a centered, stable home position after movement.",
+      "examples": [
+        "back to the center",
+        "centered and balanced"
+      ],
+      "members": [
+        "back to the center",
+        "come back to the center",
+        "centered and balanced",
+        "back to your",
+        "harmony and balance",
+        "balance and harmony"
+      ]
+    },
+    {
+      "name": "Spine and body path",
+      "meaning": "Traces where energy or movement travels through the body.",
+      "examples": [
+        "through the spine",
+        "energy up the spine"
+      ],
+      "members": [
+        "through the spine",
+        "through the body",
+        "your whole body",
+        "energy up the spine",
+        "through the legs",
+        "through your body",
+        "up your body",
+        "flow through you",
+        "around the body",
+        "energy into your",
+        "any energy you"
+      ]
+    },
+    {
+      "name": "Arm and hand placement",
+      "meaning": "Tells the listener where to position hands and arms in space.",
+      "examples": [
+        "bring your hands",
+        "hands up over the head"
+      ],
+      "members": [
+        "bring your hands",
+        "hands up over",
+        "your hands down",
+        "bring the hands up",
+        "hands up over the head",
+        "press the palms",
+        "bring the arms",
+        "float the hands",
+        "arms as you",
+        "bring your hands down",
+        "your hands down to your sides",
+        "arms float up",
+        "arms go out",
+        "arms out to your sides",
+        "out to the sides",
+        "back of the hands",
+        "down your arms"
+      ]
+    },
+    {
+      "name": "Directional movement",
+      "meaning": "Names the direction the body moves, such as up, down, sideways or back and forth.",
+      "examples": [
+        "up and down",
+        "left and right"
+      ],
+      "members": [
+        "towards each other",
+        "up and down",
+        "back and forth",
+        "away from each other",
+        "left and right",
+        "up to the chest",
+        "over the shoulder",
+        "round the back",
+        "round your back",
+        "up to your",
+        "you come down",
+        "come back down",
+        "i hope you"
+      ]
+    },
+    {
+      "name": "Attention invitation",
+      "meaning": "Invites the listener to notice sensations, feelings or the body as it is.",
+      "examples": [
+        "notice how you feel",
+        "bring your attention"
+      ],
+      "members": [
+        "notice how your",
+        "attention to your",
+        "how it feels",
+        "bring your attention",
+        "how does it feel",
+        "notice how you",
+        "how you feel",
+        "how your body feels",
+        "aware of my",
+        "feel any tension",
+        "feel the movement",
+        "feel a sense"
+      ]
+    },
+    {
+      "name": "Slow and rest",
+      "meaning": "Encourages slowing the pace and taking time or a pause.",
+      "examples": [
+        "slow it down",
+        "take a moment"
+      ],
+      "members": [
+        "slow it down",
+        "take a moment",
+        "take a few",
+        "rest of your day",
+        "you no longer need"
+      ]
+    },
+    {
+      "name": "Whole body focus",
+      "meaning": "Frames the movement as involving the entire body or a specific body region.",
+      "examples": [
+        "your whole body",
+        "neck and shoulders"
+      ],
+      "members": [
+        "neck and shoulders",
+        "your hips and your waist",
+        "your lower abdomen",
+        "your nervous system",
+        "your body you",
+        "your body your",
+        "bend your knees",
+        "tuck your tailbone under",
+        "back of your",
+        "called spinal cord breathing",
+        "both hands over your lower abdomen"
+      ]
+    },
+    {
+      "name": "Energy and flow",
+      "meaning": "Describes an energetic quality or sensation moving through the body.",
+      "examples": [
+        "feel the energy",
+        "flow through you"
+      ],
+      "members": [
+        "feel the energy",
+        "energy and vitality",
+        "feel the chi",
+        "kind of energy",
+        "ball of energy"
+      ]
+    },
+    {
+      "name": "Gentle rhythm",
+      "meaning": "Describes soft, rhythmic swaying or walking motion.",
+      "examples": [
+        "gently rock and sway",
+        "continue to walk"
+      ],
+      "members": [
+        "gently rock and sway",
+        "you are walking",
+        "shift the weight"
+      ]
+    },
+    {
+      "name": "Opening greeting",
+      "meaning": "Welcomes the listener and sets a tone at the start.",
+      "examples": [
+        "hello and welcome",
+        "I hope you"
+      ],
+      "members": [
+        "hello and welcome"
+      ]
+    },
+    {
+      "name": "Practice reminder",
+      "meaning": "Frames the session as an ongoing practice the listener can keep.",
+      "examples": [
+        "you can practice",
+        "rest of your day"
+      ],
+      "members": [
+        "you can practice"
+      ]
+    },
+    {
+      "name": "Round the back",
+      "meaning": "Describes a rounding or curving movement of the back.",
+      "examples": [
+        "round your back",
+        "round the back"
+      ],
+      "members": [
+        "knock across your lower back",
+        "knocking on the door",
+        "knocking on the door of life",
+        "door of life",
+        "called bamboo in the wind",
+        "down this is called"
+      ]
+    }
+  ]
+}

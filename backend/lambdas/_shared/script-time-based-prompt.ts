@@ -66,6 +66,7 @@ export const TIME_BASED_PAUSE_PROMPT_RULES = [
   "Ordinary pauses (`<N>`) are short beats between lines — the time to take one breath or notice one thing. They stay fixed.",
   "For the long, open silences where the listener carries on with something on their own, use `<x N>` with your suggested seconds. The app resizes these to fit the length.",
   "Use the extendable marker only where a longer silence would still feel natural, and always after a cue the listener can keep doing for that long.",
+  "**Before longer quiet:** before every longer pause (about 8+ seconds) and every `<x N>`, the spoken line immediately before it must leave the listener with something to stay with so the silence feels intentional — never like the voice randomly stopped. Prefer a natural practice invitation that *implies* the quiet (rest with the breath, stay with this feeling, let that settle). Do **not** announce every silence with an obvious line like \"I'll be quiet for a while,\" \"I'll give you some space,\" or \"I'll come back in a moment.\" Only rarely — and in varied wording — soft-frame that you'll leave them for a bit, and only when the gap would otherwise feel abrupt.",
   "",
   "### Explicit spoken timings (hard constraint)",
   "**Only** invent clocked or count-based practice when the creator **explicitly steers** that in the conversation. Default / unprompted scripts must **never** do this.",

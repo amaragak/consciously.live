@@ -1,0 +1,98 @@
+{
+  "video_id": "g-jSBBwr8Ko",
+  "pause_min_s": 4.0,
+  "short_min_s": 1.0,
+  "runtime_s": 584.0,
+  "lead_in_s": 0.0,
+  "tail_s": 0.0,
+  "segments": [
+    {
+      "type": "pause",
+      "start": 0.0,
+      "length": 4.18
+    },
+    {
+      "type": "passage",
+      "start": 4.18,
+      "length": 17.26,
+      "words": 41,
+      "position": 0.0072,
+      "role": "other",
+      "phase": "opening",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 21.44,
+      "length": 11.1
+    },
+    {
+      "type": "passage",
+      "start": 32.54,
+      "length": 443.02,
+      "words": 1099,
+      "position": 0.0557,
+      "role": "instruction",
+      "phase": "main",
+      "short_pauses": {
+        "count": 36,
+        "lengths_s": [
+          1.1,
+          1.2,
+          1.1,
+          1.4,
+          1.2,
+          1.8,
+          1.1,
+          2.0,
+          1.7,
+          1.0,
+          1.2,
+          1.1,
+          1.1,
+          1.3,
+          1.0,
+          1.1,
+          1.7,
+          1.7,
+          1.4,
+          1.5,
+          1.0,
+          1.1,
+          1.4,
+          1.1,
+          1.4,
+          1.0,
+          1.2,
+          1.0,
+          1.7,
+          1.2,
+          1.1,
+          1.4,
+          1.1,
+          1.2,
+          1.1,
+          1.8
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 475.56,
+      "length": 108.44
+    }
+  ],
+  "counts": {
+    "passages": 2,
+    "pauses": 3,
+    "words": 1140
+  },
+  "timing_check": {
+    "covered_s": 584.0,
+    "delta_s": 0.0,
+    "vs_youtube_s": 0.0
+  }
+}

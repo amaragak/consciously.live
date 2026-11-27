@@ -215,8 +215,9 @@ import {
 } from "@/lib/pending-library-generations";
 
 function mediaFileUrl(base: string, key: string): string {
+  const playKey = backgroundAudioPlaybackKey(key);
   const b = base.replace(/\/$/, "");
-  const path = key.split("/").map(encodeURIComponent).join("/");
+  const path = playKey.split("/").map(encodeURIComponent).join("/");
   return `${b}/${path}`;
 }
 
@@ -1265,10 +1266,11 @@ export function CreateWorkspace({
       ),
     );
   /**
-   * Experienced pacing: cued open-practice sits (~1–2 min) so Length still matches.
-   * Default off — standard guided density.
+   * Create is open sits only (consciously-open-sits-default-v2).
+   * Was: Guided / Open sits switch; default off = guided density.
    */
-  const [longerBreaks, setLongerBreaks] = useState(false);
+  const [longerBreaks, setLongerBreaks] = useState(true);
+  void setLongerBreaks;
   /** Dev-only Claude A/B for coach chat + script generation (prod default Sonnet). */
   const [claudeModelChoice, setClaudeModelChoice] = useState<string>(
     CLAUDE_SONNET_45_MODEL_ID,
@@ -4405,7 +4407,8 @@ export function CreateWorkspace({
         meditationStyle: styleForJob,
         journalMode: journalMode === true,
         meditationTargetMinutes,
-        ...(longerBreaks ? { longerBreaks: true } : {}),
+        longerBreaks: true,
+        deliveryStyle: "open_sits",
         transcript,
         scriptText: scriptTextForJob,
         reference_id: speakerModelId,
@@ -6302,87 +6305,11 @@ export function CreateWorkspace({
               voiceFxDial={voiceFxDial}
               stopNonce={voiceCardStopNonce}
               headerEnd={
-                <Tooltip.Provider delayDuration={200} disableHoverableContent>
-                  <div
-                    className="flex items-center gap-2"
-                    role="group"
-                    aria-label="Meditation pacing"
-                  >
-                    <span
-                      className={`inline-flex items-center gap-1 text-sm font-semibold ${
-                        longerBreaks ? "text-muted" : "text-foreground"
-                      }`}
-                    >
-                      Guided
-                      <Tooltip.Root>
-                        <Tooltip.Trigger asChild>
-                          <button
-                            type="button"
-                            className="inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded-full border border-border text-[10px] font-semibold leading-none text-muted hover:border-accent-button hover:text-foreground"
-                            aria-label="About guided pacing"
-                          >
-                            ?
-                          </button>
-                        </Tooltip.Trigger>
-                        <Tooltip.Portal>
-                          <Tooltip.Content
-                            side="bottom"
-                            align="center"
-                            sideOffset={6}
-                            className="z-[200] max-w-[16rem] rounded-lg border border-border bg-card px-2.5 py-2 text-xs leading-snug text-foreground shadow-md"
-                          >
-                            Continuous guidance with short natural pauses
-                            between lines.
-                            <Tooltip.Arrow className="fill-card stroke-border" />
-                          </Tooltip.Content>
-                        </Tooltip.Portal>
-                      </Tooltip.Root>
-                    </span>
-                    <Switch.Root
-                      checked={longerBreaks}
-                      onCheckedChange={(v) => setLongerBreaks(Boolean(v))}
-                      disabled={soundControlsDisabled}
-                      aria-label={
-                        longerBreaks
-                          ? "Switch to guided pacing"
-                          : "Switch to open sits pacing"
-                      }
-                      className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted transition-colors data-[state=checked]:border-accent-button data-[state=checked]:bg-accent-button disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-card shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
-                    </Switch.Root>
-                    <span
-                      className={`inline-flex items-center gap-1 text-sm font-semibold ${
-                        longerBreaks ? "text-foreground" : "text-muted"
-                      }`}
-                    >
-                      Open sits
-                      <Tooltip.Root>
-                        <Tooltip.Trigger asChild>
-                          <button
-                            type="button"
-                            className="inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded-full border border-border text-[10px] font-semibold leading-none text-muted hover:border-accent-button hover:text-foreground"
-                            aria-label="About open sits pacing"
-                          >
-                            ?
-                          </button>
-                        </Tooltip.Trigger>
-                        <Tooltip.Portal>
-                          <Tooltip.Content
-                            side="bottom"
-                            align="end"
-                            sideOffset={6}
-                            className="z-[200] max-w-[16rem] rounded-lg border border-border bg-card px-2.5 py-2 text-xs leading-snug text-foreground shadow-md"
-                          >
-                            Same length, with cued “take your time” sits of
-                            about a minute or two.
-                            <Tooltip.Arrow className="fill-card stroke-border" />
-                          </Tooltip.Content>
-                        </Tooltip.Portal>
-                      </Tooltip.Root>
-                    </span>
-                  </div>
-                </Tooltip.Provider>
+                /* Pacing switch removed — Create is open sits only
+                   (consciously-open-sits-default-v2).
+                <Tooltip.Provider … Guided / Open sits Switch … />
+                */
+                undefined
               }
             />
             <div className="flex items-center gap-3 py-3">

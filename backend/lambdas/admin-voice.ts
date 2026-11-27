@@ -974,7 +974,7 @@ async function handlePost(
             brand,
             apiBase,
             force,
-            // Same as Speechify samples: pcm @ 24k → AAC → MP3 for the shared stem path.
+            // Same as Speechify samples: pcm @ 44.1k → AAC → MP3 for the shared stem path.
             synthesize: async (speed) =>
               aacAdtsToMp3Buffer(
                 await pcm24kS16leToAac44100(

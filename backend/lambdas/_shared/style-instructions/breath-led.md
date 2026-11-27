@@ -1,84 +1,82 @@
 > Guidance for Breath-led meditations, not fixed rules. Use judgement for each moment; the user's request overrides any of this.
 
-# Breath-led meditation: writer's guide
+# Breath-led meditation: writer's brief
 
-Everything here is a default. If the user's request asks for something different, follow the request and use this only where it leaves choices open.
+Everything here is a default. If the request asks for something different, follow the request and use this brief only for what it leaves open.
 
 ## 1. Mechanism
-The listener's attention is narrowed onto one physical, repeating event: the breath. Because it is always present and has a rhythm, it works as an anchor, a pacer and a feedback loop. Slower or longer breathing settles the body, and a settled body calms the mind. Your writing should therefore:
-- Hand the listener something concrete to do or feel on each breath.
-- Then step back and let them do it.
-- Offer a simple way to return when attention drifts.
+The breath is the one object of attention. Attention narrows to a single, always-available sensation, so mental noise drops without effort. Shaping the breath (counts, longer exhales) adds a physiological nudge toward calm. Counting also gives a busy mind a job.
 
-Treat the breath as the subject of nearly every cue. Other material (body softening, a phrase, imagery) is welcome only if it travels on the breath, for example "breathe into the shoulders" or "let the exhale carry the tension out".
+Write so that the listener always knows what to do with the very next breath. Give one task at a time and leave room to do it. Keep the voice a quiet metronome, not a lecturer.
 
 ## 2. Phases
-Divide a session where the focus or the technique changes. Typical phases:
-- **Arrive (about 10–15%).** Posture, a first deeper breath or two, and permission to be imperfect.
-- **Notice (about 15–20%).** Natural breathing, with no change asked. Name where it can be felt: nostrils, chest, belly.
-- **Shape (about 20–30%).** Introduce one technique only: a count, a longer exhale, belly-then-chest, a hold, a pause at the turn. Demonstrate it for a few breaths, then say "on your own".
-- **Sustain (about 25–40%).** The longest phase. It has few words, a restated anchor, and a wander-and-return reminder.
-- **Widen or deepen (optional).** Extend awareness to the whole body, a quality such as ease, or the user's theme.
-- **Return (about 10%).** Natural breath, body, room, eyes open.
+Split by change of technique or depth, not by topic. Typical building blocks:
+- **Arrive** (small): posture, eyes, a first settling breath or two.
+- **Notice** (small to medium): the natural breath, where it is felt most clearly, without changing it.
+- **Shape** (the core, largest): the chosen technique, such as a count, ratio, extended exhale, or an in/out phrase pair. Introduce it with a demonstration, then hand it over with "on your own".
+- **Stay** (medium, quietest): the technique softens into plain awareness of the breath. Gentle return cues for wandering. Optional labelling, e.g. "thinking" or "planning".
+- **Widen** (optional): the breath held with the body as a whole, or with the feelings around it.
+- **Return** (small): natural breath, body, room, eyes open.
 
-A longer session gets longer Sustain stretches and perhaps one more technique or round. It does not get more talk.
+Default arc: Arrive → Notice → Shape → Stay → Return. Longer sessions run each phase longer, mostly with more silence and more cycles, instead of adding new techniques. Add rounds only if the technique is round-based.
 
-For rounds-based requests (a fast-breathing sequence, repeated cycles), build identical rounds: set-up, breaths, hold, recovery. Round 1 is the gentlest, and each later round names only what changes.
+Carry across phases:
+- One anchor phrase pair, such as "in… and out…", reused throughout.
+- The same count once chosen. Don't change numbers midway unless it's a deliberate progression, and say so.
+- A return cue with consistent wording.
 
-**Carry across sections:**
-- Keep the same count or ratio throughout.
-- Reuse one or two anchor phrases, such as "in… and out" or "back to the breath".
-- Hold one metaphor if you use one.
-- End every section on an unfinished breath ("…and the next breath") so the next section begins in motion.
-- Do not re-introduce or re-welcome in later sections.
+Each section's last line should hand the listener to the next task. For example: "Now let the counting fall away, and just feel the breath."
 
-Default arc: settle, notice, shape, sustain, release.
+## 3. How things are said
+**Anatomy of a cue:** where or what to attend to + a soft invitation + something left open. For example: "Notice where the breath is clearest, the nostrils, the chest, or the belly." The listener chooses.
 
-## 3. Saying it
-- **Cue anatomy:** the breath event, then the felt location, then a soft invitation, with the outcome left open. Example: "As you breathe in, notice the belly rising… and as you breathe out, let it fall."
-- **Counts:** state the pattern once, plainly and in numbers ("in for four, out for six"). Count aloud for the first few cycles, then hand over: "carry on at your own pace". Offer a shorter version for comfort ("if that's too long, make it three and five"). Keep the instruction itself short, and give any rationale in one line at most.
-- **Introduce one change at a time:** lengthen the exhale, then add a pause, then change the route (nose or mouth). Never stack changes in one breath.
-- **Soften:** use "you might", "if it feels right", "without forcing", and "as best you can". Never make the user fear getting it wrong.
-- **Repetition is the engine:** a short, steady line may recur ("in… and out…"). Vary the verbs and the location rather than the rhythm: soften, settle, release, ease.
-- **Wandering:** normalise it and give a loop: notice, name it lightly, return, begin again with no judgment.
-- **Language:** present tense, "you", short sentences or fragments, concrete sensation (cool air at the nostrils, the belly rising, ribs widening). Avoid physiology lectures and abstract claims.
-- **User material:** link it to the breath. A worry becomes "with each exhale, let a little of that tightness go". A goal becomes a quiet phrase ("calm" on the in-breath, "ease" on the out). Mention it in the Shape or Widen phase, not as a story.
+**Counts:** demonstrate the first two or three cycles aloud, with the numbers spoken. Then say "continue on your own, or let the count go". Name the shape plainly: "in for four, out for six". Give permission to shorten the count: "if that feels long, make it shorter". Don't push past comfort, and say so.
+
+**Sequencing:** natural breath → slower breath → counted breath → natural breath again. Add one change at a time.
+
+**Wandering:** treat it as the practice. "Whenever you notice you've drifted, come back to the next breath." Light noting ("thinking, planning") is a good option for a Stay phase.
+
+**Language:** present tense, mostly "you". Short sentences, plain sensory words (cool air at the nostrils, belly rising). Soften instructions with "you might", "see if you can", "as best you can". Use few questions, and only as gentle noticing prompts.
+
+**Repetition:** repeat the key phrase pair many times. Vary the surrounding words slightly, so the pattern holds but doesn't go stale.
+
+**User material:** bring in the user's context through the breath, not through story. A stressed day becomes "let the exhale carry some of that day out". A worry becomes a thought to label and return from. Name the context once or twice and don't rebuild it into imagery.
 
 ## 4. Pauses
-Write as [[PAUSE Ns]]. A pause gives the listener time to do what the last line asked, so its length follows the task:
-- Short gaps of about 1–3s between cue fragments.
-- 3–6s between count segments or breath cycles.
-- 10–30s once a technique is set up.
-- Occasional silences of one to several minutes, only in the Sustain phase, after a clear "stay with this" instruction.
-
-Silence tends to grow as the session deepens, then shrinks toward the return. Don't pause mid-sentence or mid-count. Don't place long silence right after a new instruction, because the listener hasn't tried it yet.
+A pause gives the listener time to do what the line asked. One breath cycle takes about 4–10s, so a cue like "breathe in slowly" earns a pause of that length. Short cues between counts or phrase pairs usually get 1–4s. Silences lengthen as the session deepens, to 10–30s and beyond in the Stay phase. Don't pause mid-sentence or between a cue and its explanation. Write pauses as [[PAUSE Ns]].
 
 ## 5. Opening and closing
-- **Opening:** a brief welcome, posture, and eyes closed or soft. Make the first breath a real one ("a full breath in, and a long sigh out"). Keep any explanation to one or two sentences.
-- **Closing:** release any control ("let the breath be natural"), notice the body and the room, and offer one line for carrying the breath into the day. Open the eyes gently, with a short thanks. Keep it short.
-- **Adapt:** for sleep, end in silence with no re-activation. For energising or intense work, end with an easy recovery breath and normal breathing before any movement.
+**Open:** a brief welcome, then posture and comfort, then eyes closed or soft gaze, then a first settling breath. State the technique in one sentence before starting it. Keep the intro short, since the breath should begin early.
+
+**Close:** return to natural breathing, then a short deepening breath, then a line of thanks or appreciation to the listener, then eyes open or movement. If the request is for sleep or a short practice, shorten the exit or leave it quiet.
+
+## What listeners expect
+- **Opening:** most sessions open with posture, then settling breaths. Many add a welcome, eyes closed or soft gaze, and body arrival. Some add permission or an intention.
+- **Closing:** many sessions close with one more deepening breath, then gratitude, then eyes open.
+- **Delivery:** soothing, casual and fairly permissive. Present tense, "you", few questions. Medium to high repetition, and rarely an invitation to repeat lines aloud.
+- **Fits:** settling in comfort ("make yourself comfortable"); counts or ratios stated plainly; noticing and labelling.
+- **Keep rare:** generic relaxation talk ("begin to relax"), body-part lists, and descending-depth imagery.
+- **Avoid:** loving-kindness wishes (loving-kindness), arm and hand placement choreography (movement), abundance affirmations (affirmation-loop).
 
 ## 6. Common mistakes
-- Too many techniques in a short session.
-- Counting every breath for the whole session, which tires the listener. Count to teach, then release.
-- Constant talking. Let the breath do the work.
-- Philosophy or lecture detours.
-- Pushing deep breathing on everyone. Allow "as deeply as is comfortable".
-- Unsafe cues for intense patterns. Name that it can be stopped at any time.
-- Not tying the user's theme to the breath.
-- Forgetting the ratio between sections.
+- Piling on techniques. Pick one anchor and one shaping method.
+- Changing the count between sections.
+- Long explanations of physiology that carry the listener away from the breath.
+- Filling every silence. The quiet middle is the practice.
+- Forcing deep or fast breathing. Always offer a gentler option.
+- Imagery journeys that replace the breath.
 
 ## 7. Worked example
-**Request:** "Ten minutes before a presentation. I feel jittery and my chest is tight."
+**Request:** "Ten minutes, I'm anxious before a presentation, help me calm down with my breathing."
 
 **Phases:**
-1. Arrive: sit upright, feet down, one full breath.
-2. Notice: find where the breath is shortest, near the tight chest.
-3. Shape: exhale longer than the inhale, in four and out six, then hand over.
-4. Sustain: long silence with an occasional "breathe out the tightness".
-5. Return: natural breath, one steadying phrase for the talk, eyes open.
+1. Arrive (short): seat, feet, a first deep breath.
+2. Notice (short): where the breath is felt, no changing.
+3. Shape (largest): in 4, out 6, demonstrated, then self-led. The presentation appears once, in the exhale.
+4. Stay (medium): drop the count, label thoughts, return.
+5. Return (short): natural breath, room, eyes open.
 
-Carry the 4–6 ratio and "slow out-breath" throughout.
+**What carries:** the "in… and out…" phrasing and the 4/6 count.
 
 **Excerpt (Shape):**
-"Now let the exhale be a little longer than the inhale. Breathe in through your nose, two, three, four. [[PAUSE 2s]] Out slowly, two, three, four, five, six. [[PAUSE 3s]] Again, in for four. [[PAUSE 2s]] And a long, soft out. [[PAUSE 3s]] Now carry on at your own pace, a longer breath out than in. If six feels like too much, make it five. [[PAUSE 20s]]"
+Now let's give the breath a shape. In through the nose for four. [[PAUSE 1s]] One, two, three, four. [[PAUSE 1s]] And out slowly for six. [[PAUSE 1s]] One, two, three, four, five, six. [[PAUSE 3s]] Again, in for four. [[PAUSE 4s]] Out for six. And if the nerves rise, let the long exhale carry some of them out. [[PAUSE 12s]]

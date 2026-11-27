@@ -1,0 +1,163 @@
+{
+  "video_id": "W8e_tAEM80k",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "0054266e84f6b20a",
+  "labels": [
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "breath",
+      "opening"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "story",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "closing"
+    ],
+    [
+      "affirmation",
+      "closing"
+    ],
+    [
+      "self-practice handover",
+      "closing"
+    ]
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "synthesis_model": "claude-sonnet-5-5",
+  "vetting_model": "claude-haiku-5-5",
+  "target_generator_model": "Claude Sonnet",
+  "whisper_model": "small.en",
+  "pause_threshold_seconds": 1.0,
+  "pause_marker": "[[PAUSE {s}s]]",
+  "results_per_query": 8,
+  "search_pool_per_query": 30,
+  "max_per_channel_per_query": 2,
+  "min_duration_minutes": 5,
+  "max_duration_minutes": 60,
+  "synthesis_includes_machine_types": true,
+  "max_transcript_chars_per_type": 500000,
+  "parallel_llm_calls": 6,
+  "skeleton_pause_seconds": 4.0,
+  "secondary_weight": 0.5,
+  "haiku_price_per_mtok": {"input": 1.0, "output": 5.0}
+}

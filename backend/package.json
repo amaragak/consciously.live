@@ -27,7 +27,10 @@
     "deploy-orpheus-serverless": "bash scripts/deploy-orpheus-serverless",
     "backfill-algolia": "tsx scripts/backfill-algolia.ts",
     "backfill-blog-hyphens": "tsx scripts/backfill-blog-hyphens.ts",
-    "seed-claude-preprompts": "tsx scripts/seed-claude-preprompts.ts"
+    "seed-claude-preprompts": "tsx scripts/seed-claude-preprompts.ts",
+    "sync-script-preprompts": "tsx scripts/sync-script-preprompts.ts",
+    "import-harvester-bundle": "tsx scripts/import-harvester-bundle.ts",
+    "generate-preprompt-defaults-data": "tsx scripts/generate-preprompt-defaults-data.ts"
   },
   "dependencies": {
     "@aws-crypto/client-node": "^5.0.2",

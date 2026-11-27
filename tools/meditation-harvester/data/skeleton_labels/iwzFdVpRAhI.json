@@ -1,0 +1,155 @@
+{
+  "video_id": "iwzFdVpRAhI",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "c1c7a77814ddcb5b",
+  "labels": [
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "imagery",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "closing"
+    ],
+    [
+      "reflection prompt",
+      "closing"
+    ],
+    [
+      "affirmation",
+      "closing"
+    ],
+    [
+      "self-practice handover",
+      "closing"
+    ]
+  ]
+}

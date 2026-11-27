@@ -1,73 +1,58 @@
 > Guidance for Story meditations, not fixed rules. Use judgement for each moment; the user's request overrides any of this.
 
-# Story style: writing guide
-
 ## Mechanism
-The listener follows a narrative instead of performing instructions. Attention rides on what happens next, which crowds out rumination. Calm comes from the story's texture: low stakes, gentle sensory detail, unhurried transitions, and a wind-down at the end. You do this with concrete scenes and a mild through-line, not with commands. If a request needs a purpose (sleep, confidence, a child's worry), put it inside the story's events and let the listener infer it.
+The listener follows a tale instead of performing instructions. Attention rides the narrative thread, so worry and planning loosen without effort. The writing produces this through concrete sensory detail, low stakes, gentle forward motion and no demands. The state comes from being carried. Keep the listener a passenger, never a worker.
 
 ## Phases
-Default arc, adjustable to the request:
-1. **Framing (about 5–10%):** a brief welcome, optionally a settling breath or two, and a promise of what kind of story this is. It ends when the first scene starts.
-2. **Setting the scene (about 15%):** the place, the narrator or "you", and the ordinary rhythm of things. It ends when something small sets the journey or problem in motion.
-3. **The journey or through-line (about 50–60%):** episodes that each bring a new place, small encounter or discovery. Keep the stakes gentle and let each episode resolve softly. Add episodes for longer sessions, since a single episode stretched thin loses the thread.
-4. **Resolution and descent (about 15%):** the goal is reached or the day ends. Sentences shorten, the light dims, bodies get heavy, and the characters rest.
-5. **Close:** a blessing or sleep line, then silence.
+Divide by change of place, time or narrative movement, not by technique.
+1. **Framing and settling** (short, roughly a tenth): welcome, what kind of story this is, easy settling breaths and posture.
+2. **Arrival** (about a fifth): ground the listener in a place and a sensory anchor. Establish the voice (you / I / a character).
+3. **Unfolding** (the bulk): a gentle journey or sequence of small scenes. A longer session adds scenes or lets each linger. It should not add plot twists.
+4. **Winding down** (about a fifth): scenes get quieter and slower. The pace drops, lights dim, the character settles.
+5. **Landing**: a drift-off line or a soft return, then silence.
 
-Carry across phases:
-- One traveller and one tone of voice.
-- A recurring image or object, such as a window, a lantern or a compass.
-- A thread set early and paid off late.
-- Set each section's ending to land mid-motion, so the next section opens by continuing it ("The train slid on...").
+Carry across: the narrator's voice and tense, one or two recurring images (a sound, light, weather, a companion) and the story's mood. Each section should end mid-flow on an image, and the next should pick up that image so the handover is seamless. Default arc: settle, enter the world, wander, slow, rest.
 
-If the request has a purpose such as confidence or a lesson, show it happening in a character or in "you" before the final third. Let the listener infer it without being told.
-
-## How to say it
-- **Introducing things:** name the place or character with one concrete sensory detail, then let it unfold. For example: "The station smelled of wet wool and warm bread."
-- **Person and tense:** default to second person, past or present, kept steady. First-person narration also works for a cosy, confiding feel. Keep the same choice all the way through.
-- **Sentences:** mostly short to medium, plain words, one image per sentence. Lists of three or four small things (sounds, foods, colours) soothe.
-- **Softening:** use "you notice", "perhaps", "there's no hurry". Any direct cue is invitational and sparse, such as "Let your eyes close as you breathe out."
-- **Repetition:** reuse a refrain or signature phrase and vary it slightly each time ("good sleeping weather" becoming "tonight, good sleeping weather"). Use rhythmic repeats ("to and fro") to deepen the sense of motion.
-- **Weaving in the user's material:** transpose it into character, setting or small events. A worry becomes a character's small trouble that resolves, and a goal becomes the destination. Use their details (names, places, interests) as scenery, not as commentary.
-- **Pacing the plot:** let something quirky or warm happen occasionally. Smooth the energy down gradually, so the late scenes have fewer events and more stillness.
+## How things are said
+- Short clauses, one image each, in plain concrete words. Use sensory detail (sound, temperature, texture, light) before description or explanation.
+- Keep events small and unhurried. Resolve any tension gently, and make humour mild.
+- Introduce a new scene with a transitional anchor ("Soon the fields give way to…"), then one or two details, then movement.
+- Prefer present or soft past narration. Use second person for immersion or first person for intimacy.
+- Soften any instruction: "if you like," "you might notice."
+- Repetition is gentle and sparing: a recurring phrase or motif, or an echoed closing line. Vary it slightly each time.
+- Weave the user's material into the story world (their goal as a journey's destination, their struggle as a character's small challenge). Don't lecture or analyse. Show change through the tale, and add at most one light line at the end.
+- Ask almost no questions.
 
 ## Pauses
-- Narration pauses are short, about 1–3s, at clause and sentence breaks, so the voice can breathe. Write them as [[PAUSE 2s]].
-- When a line asks the listener to do something, such as breathe or close their eyes, give it enough time to do it (about 5–10s).
-- Silence lengthens as the story descends. Leave a long closing silence after the last line.
-- Don't pause mid-phrase, and don't scatter pauses so thickly that the plot loses momentum.
+A pause gives the listener time to see the image just offered. Most fall at clause breaks and run short, about 1–2s ([[PAUSE 1.5s]]), a little longer after a scene-closing line (2–4s). Stay steady rather than escalating, and give the longest silence to the final drift-off. Don't pause mid-clause or between tightly linked phrases.
 
 ## Opening and closing
-- **Opening:** one or two lines of welcome, optionally a settling cue, then straight into the story. Skip long meta-explanations unless the user asks for them.
-- **Closing:** let the narrative slow and wrap with a blessing. For a sleep goal, end asleep. For a daytime goal, add a short return cue (breath, stretch, open eyes). Let the user's goal decide which.
+Open warmly and briefly, say what the story is, offer a few breaths and posture, then begin. Close by slowing the story, letting the character or the listener rest, and offering a soft sign-off or a gentle return (stretch, eyes open) if the request is not about sleep. Match the closing to the purpose.
+
+## What listeners expect
+- Most sessions open with a welcome, then settling breaths and posture. Some add an intention, permission, or soft eyes closed; half give an overview. Closings often deepen once more; some add movement, eyes open, carrying the mood into the day, or gratitude.
+- Delivery is permissive, soothing and warm. It uses "you" or a narrator, mostly present tense, few questions, little repetition, and no repeat-after-me.
+- Fitting phrasing: story narration, journey imagery and, in some, simple breath counting.
+- Keep rare: generic relaxation phrasing like "begin to relax."
+- Avoid: well-wishes and bringing a person to mind (loving-kindness), hand and arm placement (movement), and body-part scans.
 
 ## Common mistakes
-- Turning the story into a lecture or a list of instructions.
-- Dense plot, many characters or high stakes.
-- Switching person or tense mid-story.
-- Stating the moral outright. Embed it instead.
-- Dropping the through-line, so episodes feel unconnected.
-- Abrupt endings. Always descend first.
+- Writing instructions with a story veneer. Let the plot carry it.
+- Dramatic plots or cliffhangers. Keep stakes low.
+- Dense description. Give one image per breath.
+- Dropping the narrator's voice between sections.
+- Moralising endings.
 
 ## Worked example
-**Request:** "A bedtime story for me about letting go of work stress, set somewhere by water."
+Request: "A 20-minute story to help me unwind after a stressful week at work."
+- Settling (welcome, two breaths).
+- Arrival (a lakeside cabin at dusk; the narrator is "you").
+- Unfolding (lighting a stove, a walk to the water, the sound of a rowing boat). Carrying across: the lantern glow and the water's sound.
+- Winding down (back inside, wool blanket, the stove ticking).
+- Landing (drift-off).
 
-**Phases:**
-1. Framing: a welcome and one breath.
-2. A lakeside cabin at dusk, with the narrator ("you") arriving.
-3. Rowing out and collecting small things. Each is set down on the water, which carries the work thoughts away as objects.
-4. Returning in the dark, lanterns, bed.
-5. A blessing.
-
-Carry the lantern, the oar's rhythm and the phrase "the water holds it".
-
-**Excerpt (phase 3):**
-You push the little boat away from the dock.
-[[PAUSE 2s]]
-The oars dip, and lift, and dip.
-[[PAUSE 2s]]
-In your pocket there's a folded note, heavy with the day.
-[[PAUSE 3s]]
-You lean over and set it on the water.
-[[PAUSE 2s]]
-It drifts a little, and the water holds it.
-[[PAUSE 4s]]
+Excerpt:
+The path to the lake is soft with pine needles. [[PAUSE 2s]]
+Your steps slow down without you asking. [[PAUSE 1.5s]]
+Ahead, the water holds the last pale light. [[PAUSE 3s]]
+You sit on the old jetty, and the boards are still warm. [[PAUSE 2s]]

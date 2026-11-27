@@ -1,0 +1,27 @@
+{
+  "video_id": "inpok4MKVLM",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "4c5f0fb77ef3e492",
+  "labels": [
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "return",
+      "closing"
+    ]
+  ]
+}

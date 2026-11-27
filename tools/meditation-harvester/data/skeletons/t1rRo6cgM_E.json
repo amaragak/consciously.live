@@ -1,0 +1,126 @@
+{
+  "video_id": "t1rRo6cgM_E",
+  "pause_min_s": 4.0,
+  "short_min_s": 1.0,
+  "runtime_s": 658.0,
+  "lead_in_s": 0.0,
+  "tail_s": 2.75,
+  "segments": [
+    {
+      "type": "pause",
+      "start": 0.0,
+      "length": 6.93
+    },
+    {
+      "type": "passage",
+      "start": 6.93,
+      "length": 532.32,
+      "words": 865,
+      "position": 0.0105,
+      "role": "settle",
+      "phase": "opening",
+      "short_pauses": {
+        "count": 58,
+        "lengths_s": [
+          1.1,
+          1.6,
+          1.8,
+          1.6,
+          1.2,
+          1.2,
+          2.1,
+          2.7,
+          1.1,
+          1.1,
+          1.4,
+          2.7,
+          1.1,
+          1.1,
+          1.6,
+          1.6,
+          1.9,
+          1.3,
+          1.2,
+          1.6,
+          1.2,
+          1.4,
+          1.5,
+          1.0,
+          1.7,
+          1.3,
+          1.1,
+          1.3,
+          1.5,
+          1.1,
+          1.2,
+          1.1,
+          1.2,
+          1.1,
+          1.1,
+          1.4,
+          1.4,
+          1.4,
+          1.1,
+          1.3,
+          1.8,
+          2.5,
+          1.5,
+          1.0,
+          1.2,
+          1.5,
+          1.2,
+          1.0,
+          1.7,
+          1.1,
+          2.7,
+          1.7,
+          1.7,
+          1.4,
+          2.4,
+          1.4,
+          1.9,
+          1.5
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 539.25,
+      "length": 7.05
+    },
+    {
+      "type": "passage",
+      "start": 546.3,
+      "length": 108.95,
+      "words": 179,
+      "position": 0.8302,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 10,
+        "lengths_s": [
+          1.1,
+          1.0,
+          1.1,
+          1.5,
+          1.2,
+          1.6,
+          1.7,
+          2.6,
+          2.4,
+          1.2
+        ]
+      }
+    }
+  ],
+  "counts": {
+    "passages": 2,
+    "pauses": 2,
+    "words": 1044
+  },
+  "timing_check": {
+    "covered_s": 658.0,
+    "delta_s": 0.0,
+    "vs_youtube_s": 0.0
+  }
+}

@@ -1,0 +1,222 @@
+{
+  "style": "open-awareness",
+  "model": "claude-haiku-5-5",
+  "digest": "6f8cd1862670f802",
+  "families": [
+    {
+      "name": "Open the session",
+      "meaning": "Signals the start of practice and invites the listener to settle physically, such as closing or opening the eyes and taking breaths.",
+      "examples": [
+        "close your eyes",
+        "take a few deep breaths"
+      ],
+      "members": [
+        "open your eyes",
+        "close your eyes",
+        "take a few",
+        "take a moment",
+        "your eyes closed",
+        "few deep breaths",
+        "take a few deep breaths",
+        "your open eyes"
+      ]
+    },
+    {
+      "name": "Settle into the body",
+      "meaning": "Directs attention to physical posture and sensation, helping the listener feel grounded in the body.",
+      "examples": [
+        "feel the sensations in the body",
+        "allow gravity to settle you"
+      ],
+      "members": [
+        "sensations in the body",
+        "feeling of being",
+        "sensations in your",
+        "allow gravity to settle you",
+        "allow gravity to settle you into your",
+        "breaths and allow gravity to settle you",
+        "deep breaths and allow gravity to settle",
+        "few deep breaths and allow gravity",
+        "gravity to settle you into your seat",
+        "legs feel your arms",
+        "legs feel your arms at your sides",
+        "falling of your abdomen just feel",
+        "aware of the sensations of sitting feelings",
+        "become aware of the sensations of sitting",
+        "feel that you",
+        "feeling that you",
+        "feel the sensations"
+      ]
+    },
+    {
+      "name": "Notice the breath",
+      "meaning": "Points attention at the breath and its movement, such as the rise and fall of the abdomen or the nose.",
+      "examples": [
+        "notice the breath",
+        "feel the rising and falling"
+      ],
+      "members": [
+        "sensation of breathing",
+        "rising and falling",
+        "either at the tip of the nose",
+        "sensations of breathing",
+        "tip of the nose",
+        "notice the breath",
+        "falling of your abdomen",
+        "rising and falling of your abdomen",
+        "breathing notice where you feel",
+        "breathing notice where you feel the breath",
+        "nose or in the rising",
+        "nose or in the rising and falling",
+        "aware of the process of breathing notice",
+        "become aware of the process of breathing",
+        "around the breath",
+        "breath with your awareness",
+        "breath from the beginning",
+        "breath from the beginning of the inhalation",
+        "associated with the breath from the beginning",
+        "beginning of the inhalation through",
+        "beginning of the inhalation through the pause",
+        "inhalation through the pause between breaths",
+        "next inhalation from the moment",
+        "come back to the sensations of breathing",
+        "come back to the sensations",
+        "cushion and gradually become aware",
+        "end simply cover the breath",
+        "end simply cover the breath with your",
+        "exhalation to the end simply cover",
+        "pause between breaths"
+      ]
+    },
+    {
+      "name": "Notice sounds and senses",
+      "meaning": "Invites open attention to what is heard, seen or felt in the environment and body.",
+      "examples": [
+        "notice sounds in the room",
+        "sights and sounds"
+      ],
+      "members": [
+        "sounds and sensations",
+        "sounds in the room",
+        "sights and sounds",
+        "sounds or sensations",
+        "sounds or sensations in the body",
+        "gradually become aware",
+        "aware of your",
+        "gradually become aware of the sensations",
+        "gradually become aware of the process"
+      ]
+    },
+    {
+      "name": "Observe thoughts and emotions",
+      "meaning": "Asks the listener to watch thoughts, feelings and mental content as they arise and pass.",
+      "examples": [
+        "observe thoughts and feelings",
+        "thoughts arise and pass"
+      ],
+      "members": [
+        "thoughts and feelings",
+        "thoughts and emotions",
+        "content of experience",
+        "arising of thought",
+        "next thought that arises",
+        "thinking without noticing",
+        "arising in consciousness",
+        "arises and passes",
+        "space of consciousness",
+        "sense of being",
+        "aware of being",
+        "you are aware",
+        "being the meditator"
+      ]
+    },
+    {
+      "name": "Notice coming and going",
+      "meaning": "Frames experience as transient, so the listener watches phenomena come and go without holding on.",
+      "examples": [
+        "come and go naturally",
+        "arises and passes"
+      ],
+      "members": [
+        "come and go",
+        "coming and going",
+        "come and go naturally",
+        "flow of your",
+        "light and color",
+        "within your body",
+        "even thoughts themselves"
+      ]
+    },
+    {
+      "name": "Notice when the mind wanders",
+      "meaning": "Acknowledges that attention drifts and gently invites the listener to notice and return.",
+      "examples": [
+        "you've been lost in thought",
+        "bring your attention back"
+      ],
+      "members": [
+        "lost in thought",
+        "you've been lost",
+        "you've been lost in thought",
+        "your mind wanders",
+        "lost in thought simply observe",
+        "lost in thought simply observe the thought",
+        "back to the breath",
+        "bring your attention",
+        "you notice your"
+      ]
+    },
+    {
+      "name": "Reassure there is no failure",
+      "meaning": "Removes pressure by telling the listener nothing is required or wrong, so they can simply be present.",
+      "examples": [
+        "we don't need to try",
+        "you're not trying"
+      ],
+      "members": [
+        "you're not trying",
+        "we don't need",
+        "i let go",
+        "i let go just a little bit"
+      ]
+    },
+    {
+      "name": "Invite gentle exploration",
+      "meaning": "Softly suggests trying something or seeing what happens, keeping the tone open and curious.",
+      "examples": [
+        "see if you can notice",
+        "watch what happens"
+      ],
+      "members": [
+        "see if you",
+        "see if you can notice",
+        "see if you can notice the next",
+        "you can notice the next",
+        "see if you can feel",
+        "watch what happens",
+        "allow yourself to feel",
+        "you just notice",
+        "you may notice",
+        "you can feel",
+        "you can notice",
+        "notice the next",
+        "front of you",
+        "part of your",
+        "feel like you're",
+        "go just a little bit more",
+        "little bit more"
+      ]
+    },
+    {
+      "name": "Rest in awareness",
+      "meaning": "Points to the open awareness itself as the place to rest, beyond any particular object.",
+      "examples": [
+        "the space of awareness",
+        "aware of being"
+      ],
+      "members": [
+        "space of awareness"
+      ]
+    }
+  ]
+}

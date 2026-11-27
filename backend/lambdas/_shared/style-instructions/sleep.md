@@ -1,56 +1,60 @@
 > Guidance for Sleep meditations, not fixed rules. Use judgement for each moment; the user's request overrides any of this.
 
-# Sleep style
+# Writing a Sleep meditation
 
 ## Mechanism
-The aim is to carry the listener from a busy mind into sleep. The script should never ask for effort, achievement or alertness. Three things do this:
-- **Narrowing attention.** Give one gentle thing to follow at a time (a breath, a scene, a story thread).
-- **Lowering demand.** Phrase everything as permission, so there is nothing to get wrong.
-- **Slowing the text.** Content, sentence length and variety all thin as the session goes on, so the listener has less to track and drifts off.
-
-Stay safe, soft and low in stakes. Avoid surprises, plot tension, big questions and new concepts late on.
+The aim is to hand the listener's attention down gradually until there is nothing left to follow. Early cues are active (breathe, count, notice). Later cues are passive (heavier, drifting). The final lines ask for nothing. Write each phase so it needs less effort than the one before it. Slowing comes from lengthening pauses, shortening sentences, softening verbs, and repeating images the listener already knows, so no new information needs processing.
 
 ## Phases
-Default arc: **arrive → settle → carrier → deepen → fade.**
-- **Arrive (about 5–8%).** A brief welcome, plus comfort and intention if useful. Nothing to achieve.
-- **Settle (about 10–20%).** Breath and body: a slow breath, a gradual scan, or one simple technique. Next comes the handover to the carrier, signalled by a change from body to place or narrative.
-- **Carrier (the bulk, about 50–60%).** One immersive vehicle: a visualised place, a plain story, a descent or a repeated sequence. Longer sessions let this run longer and add gentle sub-scenes, not new themes.
-- **Deepen (about 15%).** The same imagery or body focus, now with fewer details, shorter lines, more heaviness and more repetition.
-- **Fade (the last few percent).** Fragments, then a permission to sleep. End there with no return.
+Default arc, adapted to the request and length:
+1. **Welcome and settle** (~5–10%). A short greeting, body position, eyes closed, and a few slow breaths. Optionally, say there is nothing to achieve and sleep may come at any time.
+2. **Anchor technique** (~10–15%). One simple task for the busy mind: counted breaths, noting thoughts as "thinking", or a longer exhale.
+3. **Body release** (~20–25%). Sweep through the body with permission-based softening and heaviness. Cues can be a scan, tense-and-release, or numbered points.
+4. **Descent or journey** (~35–45%). This is the core of the session. Use a staircase, path, field, floating, a sinking into a bed, or narrated story. Move steadily downward, inward or toward a resting place. If the request is a story, the story is this phase and the body work can shrink.
+5. **Dissolve** (~10–15%). Short fragments, mostly repeating earlier images and the word "sleep", then a soft sign-off.
 
-If the user asks for a body-scan-only or story-only session, merge or drop phases rather than padding. Carry a few threads across the whole session: one image, a recurring phrase for sinking or heaviness, and the same breath cue. Each section should end on a line that the next one can pick up, such as a place just reached, a body area just softened, or a sinking phrase.
+A longer session lets the descent run longer, with more landings and imagery, rather than adding new techniques. Each phase break is marked by a change of task, such as breath to body or body to scene. Carry across one recurring image or phrase (a color, a sound, a gravity word), restating it at each handover. Begin each section by echoing where the last one ended, so separately written sections read as one session.
 
-## How to say it
-- **Cues:** name one thing, then invite it softly, and leave the result open. Example: "Let the shoulders be heavy, however they like."
-- **Permissive wording:** use "you may notice", "if you like", "perhaps", "there's nothing to do". For thoughts, let them be passing and not a problem.
-- **Sequence within a phase:** move in one direction (head to toes, outer to inner, near to far). Give each item a short line, and let items run in one calm rhythm.
-- **Scenes:** use second person, present tense, with plain, concrete sense detail (warmth, soft sound, weight, smell). Use few adjectives. Keep stakes low and the setting safe.
-- **Repetition:** reuse a chosen refrain and vary it slightly ("heavier… a little heavier still"). Repetition is the engine of this style.
-- **Sentence length:** open with fuller sentences, then shorten them as the session deepens. Late lines can be a few words.
-- **User material:** treat it as the setting or as what is being let go. Name a worry once, place it gently somewhere (set down, drifting off), and do not unpack it. Turn goals into a calm restful state, not tasks. If the user wants a specific place or technique, use that as the carrier.
+## Cues and language
+- A good cue names one thing, invites rather than commands, and leaves the result open: "You might notice your jaw softening."
+- Introduce a new scene with one wide detail, then add detail slowly. Keep sensory language concrete (warmth, weight, sound) and avoid abstraction.
+- Sequence in a continuous direction (top to bottom, near to far, up to down) so the listener can predict the next step.
+- Use second person and present tense. Keep sentences short and soft, with trailing "as" and "and" links that make the thread feel unbroken. Questions are rare.
+- Repeat key phrases ("heavier", "sleep now") with slight variation, so they become a lull. Don't ask the listener to repeat lines unless the request does.
+- Weave in the user's material as imagery or as a thing to set down ("the day's weight can rest at the foot of the stairs"). Don't analyse it.
+- Story mode: calm narration with no plot tension and low stakes. Pare it down as the session goes.
 
 ## Pauses
-A pause gives time to do what the last line asked, so its length follows the task. Typical ranges are 1–3s after ordinary phrases and 5–15s after an invitation to feel, imagine or relax, and later in the session silences can run longer. Pauses stay fairly even through most of the session, then shorten or drop out as the last lines thin. Do not pause mid-clause. Write pauses as [[PAUSE Ns]]. Do not script the final long silence; end on the last line.
+A pause gives the listener time to do what was just asked. Counted breaths and body softening get a few seconds; imagery gets longer (roughly 5–20s). Silence tends to grow as the session deepens, then the lines themselves thin out near the end. Don't pause mid-phrase where the sentence must stay connected. Write as [[PAUSE 6s]].
 
 ## Opening and closing
-- **Open:** a calm welcome and a one-line expectation ("you can fall asleep at any point"). Add brief comfort and safety only if it fits.
-- **Close:** a soft sleep permission, one or two lines ("rest now… let go"), with no counting up, no waking and no "when you return". If the user asks for a wake-up or a nap-style return, give it.
+Open with a brief welcome and practical setup. The closing deepens once more, trails into short phrases, and stops with a quiet sign-off such as "rest well". Do not wake the listener, count up, or add gratitude. If the request asks for a different ending, follow it.
 
-## Mistakes
-- Waking cues, energising language or a "come back" ending. Avoid these unless requested.
-- Ending abruptly, or building to a peak late. Instead taper steadily.
-- Introducing new characters, facts or plot late in the session.
-- Over-explaining the technique. One short explanation is enough.
-- Abstract spiritual or affirmation-heavy lecturing. Prefer sensation and image.
-- Uniform density. Keep thinning the text.
+## What listeners expect
+- Most sessions open with welcome, posture, eyes closed and settling breaths, and often include an intention, body arrival, permission and an overview. Most close by deepening once more.
+- Soothing, permissive, warm and casual. Mostly second person, present tense, with few or no questions, medium repetition, and rarely repeated lines.
+- Fitting phrasing: descent imagery ("down through your", "heavier and heavier"), body-part locating, and invitations to let go, all used in moderation.
+- Keep rare: generic relaxation lines ("begin to relax").
+- Avoid: loving-kindness wishes, well-wishes for health, bringing a person to mind (loving-kindness); arm placement (movement); gratitude closings.
+
+## Common mistakes
+- Adding energy or goals late in the session. Keep tone flat and soft.
+- Introducing a new technique or image after the descent begins.
+- Over-explaining the method. Keep the explanation short and get on with it.
+- Ending with "open your eyes".
+- Pauses too short for imagery.
 
 ## Worked example
-Request: "30 minutes, I keep replaying work conversations; I'd like a quiet forest cabin."
-- Arrive: welcome, permission to fall asleep.
-- Settle: long exhales, then a slow head-to-toe softening.
-- Carrier: walking a path to the cabin, warm light, fire. Thoughts become passing leaves.
-- Deepen: bed, rain on the roof, sparser lines.
-- Fade: a few last words.
+Request: "10 minutes, I can't stop replaying a conversation from work."
 
-Excerpt (carrier):
-"A narrow path leads between the pines. [[PAUSE 4s]] Each step is slow and soft. [[PAUSE 3s]] If a conversation from today drifts in, let it drift on, like a leaf on the stream beside you. [[PAUSE 8s]] Ahead, the cabin window glows. [[PAUSE 5s]] Nothing to decide here. [[PAUSE 10s]]"
+Phases:
+1. Welcome and settle: breath.
+2. Noting: label the replay as "thinking".
+3. Body release.
+4. Descent: a lantern-lit staircase, setting the conversation down on a step.
+5. Dissolve.
+
+The recurring image is the lantern light.
+
+Excerpt (descent):
+"You're on a staircase now, lantern light warm on the wall. [[PAUSE 4s]] With each step down, the day grows quieter. [[PAUSE 6s]] At the next landing you might set that conversation down. [[PAUSE 10s]] It can wait here, in the light, until morning. [[PAUSE 12s]] Heavier now, and further down."

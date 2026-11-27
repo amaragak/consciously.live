@@ -1,0 +1,232 @@
+{
+  "style": "manifestation",
+  "model": "claude-haiku-5-5",
+  "digest": "4d6f79a01e9563e4",
+  "families": [
+    {
+      "name": "Breathing cues",
+      "meaning": "Directs the listener to breathe in, out, or deeply, anchoring attention to the breath and pacing the session.",
+      "examples": [
+        "take a deep breath",
+        "breathe in, breathe out"
+      ],
+      "members": [
+        "breathe in breathe out your",
+        "breathe out your",
+        "breathe out you",
+        "breathe in breathe out you",
+        "out as you",
+        "along the way breathe",
+        "along the way breathe in breathe out",
+        "breathe in breathe out breathe in breathe",
+        "breathe in breathe out we want",
+        "breathe in for the next few minutes",
+        "breathe out breathe",
+        "breathe out breathe in breathe out",
+        "breathe out we want",
+        "breathe out you are doing extremely well",
+        "guide you breathe in breathe out breathe",
+        "way breathe in breathe out",
+        "breathe in breathe out you are doing",
+        "few minutes letting the music guide you",
+        "minutes letting the music guide you breathe",
+        "music guide you breathe",
+        "music guide you breathe in breathe out",
+        "you breathe in for the next few",
+        "breathe deeply you",
+        "breathe out feel",
+        "breaths in and out",
+        "rise and fall",
+        "rise and fall of your chest"
+      ]
+    },
+    {
+      "name": "Body awareness focus",
+      "meaning": "Asks the listener to notice or direct attention to specific parts or sensations of the body.",
+      "examples": [
+        "feel your whole body",
+        "focus on your breath"
+      ],
+      "members": [
+        "rhythm of your",
+        "every cell of your being",
+        "top of your head",
+        "hold it in your",
+        "part of you",
+        "part of your body",
+        "physical body you",
+        "your body and mind",
+        "your whole body",
+        "flow into your",
+        "your head you",
+        "down to your",
+        "focus on your",
+        "rhythm of your body",
+        "your body feel",
+        "your physical world",
+        "crown of your head",
+        "fall of your chest",
+        "feel it going",
+        "make yourself comfortable"
+      ]
+    },
+    {
+      "name": "Invitation to relax and release",
+      "meaning": "Gently invites the listener to let go, relax, and allow the experience to unfold without effort.",
+      "examples": [
+        "relax and enjoy the unfolding",
+        "you let go"
+      ],
+      "members": [
+        "relax and breathe",
+        "enjoy the unfolding",
+        "flowing to you relax",
+        "flowing to you relax and enjoy",
+        "you relax and enjoy",
+        "you relax and enjoy the unfolding",
+        "allowing the gentle",
+        "you let go",
+        "made the decision"
+      ]
+    },
+    {
+      "name": "Affirming readiness and capability",
+      "meaning": "Reassures the listener that they are prepared, capable, and already on the right path.",
+      "examples": [
+        "you are ready",
+        "you are doing extremely well"
+      ],
+      "members": [
+        "you are ready",
+        "doing extremely well",
+        "you are able",
+        "you have come"
+      ]
+    },
+    {
+      "name": "Sensory and awareness prompts",
+      "meaning": "Asks the listener to notice internal sensations, energy, or mental states as they arise.",
+      "examples": [
+        "you can feel the energy",
+        "you become aware"
+      ],
+      "members": [
+        "aware of your",
+        "you become aware",
+        "bring your awareness back",
+        "feel the energy",
+        "you can feel",
+        "you can see",
+        "you find yourself",
+        "you feel yourself",
+        "moment to feel",
+        "any time you",
+        "each time you"
+      ]
+    },
+    {
+      "name": "Manifestation intent",
+      "meaning": "States the desired outcome and invites the listener to imagine or commit to bringing it into their life.",
+      "examples": [
+        "you would like to manifest",
+        "manifest in your life"
+      ],
+      "members": [
+        "i want you",
+        "aspect of your life",
+        "manifest in your",
+        "you would like to manifest",
+        "we want you",
+        "about your life",
+        "available to you",
+        "life that you",
+        "more with every",
+        "how to use"
+      ]
+    },
+    {
+      "name": "Abundance and appreciation",
+      "meaning": "Cultivates gratitude and a sense of plenty, fostering a positive emotional state.",
+      "examples": [
+        "feeling of abundance",
+        "feel appreciation for what is"
+      ],
+      "members": [
+        "feeling of abundance",
+        "appreciation for who you",
+        "each day you",
+        "eagerness for what is coming",
+        "feel appreciation for what is and eagerness",
+        "coming there is great love"
+      ]
+    },
+    {
+      "name": "Self-compassion and love",
+      "meaning": "Offers warmth, kindness, and affirmation of the listener's worth.",
+      "examples": [
+        "good to you",
+        "great love for you"
+      ],
+      "members": [
+        "good to you",
+        "back to you",
+        "good to you and you",
+        "great love here for you breathe"
+      ]
+    },
+    {
+      "name": "Inner world and being",
+      "meaning": "Directs attention inward to the mind, subconscious, and essential self.",
+      "examples": [
+        "your subconscious mind",
+        "source within you"
+      ],
+      "members": [
+        "your mind you",
+        "your entire being",
+        "your subconscious mind",
+        "source within you",
+        "state of being",
+        "thoughts and feelings"
+      ]
+    },
+    {
+      "name": "Pauses and transitions",
+      "meaning": "Creates a short pause or marks a shift in the session, such as opening the eyes or taking a moment.",
+      "examples": [
+        "take a moment",
+        "open your eyes"
+      ],
+      "members": [
+        "open your eyes",
+        "take a moment",
+        "close your eyes",
+        "go to sleep",
+        "time and space you",
+        "things that you",
+        "each day you will find",
+        "each of my",
+        "energy and you",
+        "continues to call"
+      ]
+    },
+    {
+      "name": "Journey and progression",
+      "meaning": "Frames the session as a guided movement forward, deepening inward or along a path.",
+      "examples": [
+        "deeper and deeper",
+        "we are going"
+      ],
+      "members": [
+        "deeper and deeper",
+        "we are going",
+        "long as you",
+        "next few minutes letting",
+        "next few minutes letting the music guide",
+        "you will find",
+        "moment in time",
+        "making its way"
+      ]
+    }
+  ]
+}

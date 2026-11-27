@@ -24,7 +24,12 @@ import {
   deriveLibraryMetadataFromClaude,
   fallbackLibraryMetadata,
 } from "./_shared/meditation-library-metadata";
-import { FIXED_SPEECH_PREVIEW_SPEED } from "./_shared/speaker-sample-speed";
+import {
+  FIXED_SPEECH_PREVIEW_SPEED,
+  FIXED_SPEECHIFY_ATEMPO,
+  FIXED_SPEECHIFY_EFFECTIVE_RATE_PCT,
+  FIXED_SPEECHIFY_RATE,
+} from "./_shared/speaker-sample-speed";
 import {
   GLOBAL_MEDITATION_USER_ID,
   meditationUserPk,
@@ -82,6 +87,7 @@ import {
   lengthWithin,
   loadVoicePaceTable,
   predictStemLength,
+  POST_AUDIO_SCALE_MAX,
   PRE_AUDIO_SCALE_MAX,
   PRE_AUDIO_SCALE_MIN,
   productionSlowing,
@@ -115,6 +121,11 @@ import { generateSilenceFitScript } from "./_shared/script-silence-fit-generate"
 import { generateSilenceHaikuScript } from "./_shared/script-silence-haiku-generate";
 import { generateSilenceWordsScript } from "./_shared/script-silence-words-generate";
 import { generateSilenceWordsHaikuScript } from "./_shared/script-silence-words-haiku-generate";
+import {
+  generateSkeletonScript,
+  type SkeletonRecord,
+} from "./_shared/script-skeleton-generate";
+import type { ConformanceRecord } from "./_shared/script-conformance";
 import {
   silenceFitOptionFromDelivery,
   timePacingForSilenceOption,
@@ -272,7 +283,7 @@ export type GenerationPhaseTimings = {
   concatMs?: number;
   /** Speechify PCM: float-bus finalize + dial mix. */
   olaMs?: number;
-  /** Final 24 kHz PCM → AAC @ 44.1 kHz encode. */
+  /** Final PCM → AAC @ 44.1 kHz encode. */
   aacEncodeMs?: number;
   loudnormMs?: number;
   /** Full wet bounce wall (success). */
@@ -1989,18 +2000,13 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   const targetMinutes = coerceMeditationTargetMinutes(
     body.meditationTargetMinutes,
   );
-  const deliveryStyleRaw =
-    typeof body.deliveryStyle === "string" ? body.deliveryStyle.trim() : "";
-  const deliveryStyle =
-    deliveryStyleRaw === "casual" || deliveryStyleRaw === "open_sits"
-      ? deliveryStyleRaw
-      : deliveryStyleRaw === "guided"
-        ? "guided"
-        : undefined;
-  const longerBreaks =
-    body.longerBreaks === true || deliveryStyle === "open_sits";
+  // Create is open sits only (consciously-open-sits-default-v2). Ignore body
+  // Casual/Guided so every library generate is sparse guidance + long silence.
+  // Was: honor body.deliveryStyle / longerBreaks.
+  const deliveryStyle: DeliveryId = "open_sits";
+  const longerBreaks = true;
   const pauseRenderScale = PAUSE_RENDER_SCALE;
-  const pacingDelivery: DeliveryId = deliveryStyle ?? "guided";
+  const pacingDelivery: DeliveryId = "open_sits";
   let scriptPacing:
     | { wpm: number; speechShare: number; bandFraction: number }
     | undefined;
@@ -2161,10 +2167,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   });
 
 
-  const speechifyRatePct =
-    typeof body.speechifyRate === "number" && Number.isFinite(body.speechifyRate)
-      ? body.speechifyRate
-      : speaker?.speechifyRate ?? null;
+  // API rate 0; effective rate 0 (no atempo stretch). Admin / Create body rates ignored.
+  const speechifyRatePct = FIXED_SPEECHIFY_EFFECTIVE_RATE_PCT;
   const fallbackWpm = scriptPacing?.wpm ?? 100;
   let voicePace: VoicePace = resolveVoicePace({
     entry: undefined,
@@ -2271,6 +2275,16 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   let sectionsUsed = false;
   /** Time-based mode already fitted extendable pauses in the script text. */
   let timeBasedUsed = false;
+  /** Create open-sits verification: Sonnet word budget + pre-TTS fit flag. */
+  let createOpenSitsWordBudget: number | null = null;
+  let createOpenSitsScriptFitOutside = false;
+  // Admin › Pre-prompts version used per entry id (0 = repo default fallback).
+  let createPrepromptVersions: Record<string, number> | null = null;
+  /** Skeleton the script followed + harvester dataset versions (0 = not imported). */
+  let createSkeleton: SkeletonRecord | null = null;
+  let createDatasetVersions: Record<string, number> | null = null;
+  /** Code-only fingerprint / skeleton conformance of the written script (not acted on). */
+  let createConformance: ConformanceRecord | null = null;
   let sectionPlan: ScriptSectionPlan | null = null;
   let sectionTexts: ScriptSectionText[] = [];
   let sectionFirstDraft: SectionMeasure[] | null = null;
@@ -2356,18 +2370,12 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         pauseSecondsWritten: totals.totalPauseSeconds,
         ...(fitPauseBands ? { pauseBands: fitPauseBands } : {}),
       };
-      const writeMode = scriptWriteModeFor(
-        scriptGeneration,
-        pacingDelivery,
-        targetMinutes,
-      );
-      // Admin mode wins: time → one call + fit; single → legacy one call;
-      // sections → always plan + sections.
-      // Previously: sections still skipped plan under planMinWords.
-      // const useSections =
-      //   writeMode === "sections" && totals.totalWords >= planMinWords;
-      const useSections = writeMode === "sections";
-      void planMinWords; // kept on profiles; no longer gates the sections flow
+      // Create open sits: always silence-words + one Sonnet (no Haiku), ignore
+      // admin writeMode. Was: scriptWriteModeFor(admin settings).
+      void scriptWriteModeFor;
+      void planMinWords;
+      const writeMode = "silence_words_haiku" as const;
+      const useSections = false;
       const singleCallCorrection = singleCallCorrectionForModel(
         scriptGeneration,
         claudeModel,
@@ -2383,6 +2391,15 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
             ? body.streamPhasesToTts === true
             : scriptGeneration.silenceWordsHaiku.streamPhasesToTts === true;
         silenceWordsHaikuStreamTts = streamPhases;
+        // Create: real 25% word target (no admin askSonnet bump); Haiku off.
+        const createSilenceWordsHaiku = {
+          ...scriptGeneration.silenceWordsHaiku,
+          askSonnetPctByOptionLength: {
+            guided_casual: { "5": 0, "10": 0, "20": 0 },
+            guided: { "5": 0, "10": 0, "20": 0 },
+            open_sits: { "5": 0, "10": 0, "20": 0 },
+          },
+        };
         silenceWordsHaikuPhaseBodies = [];
         silenceWordsHaikuPhasePcmJobs = new Map();
         // Prefetch TTS secrets so phase PCM+FX can start while Sonnet still streams.
@@ -2411,12 +2428,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
             : typeof jobItem.title === "string"
               ? jobItem.title
               : "";
-        const streamSpeechifyRateSsml = speechifyRateToSsml(
-          typeof body.speechifyRate === "number" &&
-            Number.isFinite(body.speechifyRate)
-            ? body.speechifyRate
-            : speaker?.speechifyRate,
-        );
+        const streamSpeechifyRateSsml = speechifyRateToSsml(FIXED_SPEECHIFY_RATE);
+        // Stream-phase OLA: Speechify tempo = FIXED_SPEECHIFY_ATEMPO; Fish tempo 1.
         const kickPhasePcm = (phaseIndex: number, ttsBody: string) => {
           silenceWordsHaikuPhaseBodies[phaseIndex] = ttsBody;
           if (!streamPhases || silenceWordsHaikuPhasePcmJobs.has(phaseIndex)) {
@@ -2442,9 +2455,11 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
                   body.skipSpeechifyLoudnorm !== true,
                 emotion: MEDITATION_SPEECHIFY_EMOTION,
                 sentenceBreakMs: speechifySentenceBreakMs,
+                pauseBands: fitPauseBands,
                 pauseScale: pauseRenderScale,
                 applyFx: !streamSkipFx,
                 voiceFxDial,
+                speechTempo: FIXED_SPEECHIFY_ATEMPO,
                 encodeAac: false,
               }),
             );
@@ -2459,42 +2474,51 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
                 voiceId: referenceId,
                 speed: speechSpeed,
                 fishTtsModel,
+                pauseBands: fitPauseBands,
                 pauseScale: pauseRenderScale,
                 applyFx: !streamSkipFx,
                 voiceFxDial,
+                speechTempo: 1,
                 encodeAac: false,
               }),
             );
           }
         };
-        console.log("generating script from Claude (silence-fit · words + Haiku)", {
+        const createStemTolFloor =
+          scriptTimeSeconds > 0 ? (15 / scriptTimeSeconds) * 100 : 5;
+        const createLengthTolerancePct = Math.max(5, createStemTolFloor);
+        console.log("generating script from Claude (create skeleton · one Sonnet)", {
           meditationStylePresent: Boolean(meditationStyle?.trim()),
           targetMinutes,
           scriptTimeSeconds,
-          option,
           writeMode,
           streamPhases,
           streamTtsPrefetch: Boolean(streamFishKey || streamSpeechifyKey),
-          reason: "admin-mode-silence-words-haiku",
+          skipHaiku: true,
+          lengthTolerancePct: createLengthTolerancePct,
+          reason: "create-harvester-mirrored-v1",
         });
-        const generated = await generateSilenceWordsHaikuScript({
+        // Was (consciously-open-sits-default-v2): generateSilenceWordsHaikuScript
+        // with option open_sits — fixed open-sits speech share from Delivery
+        // profiles and the hand-written cue spacing in the open-sit description.
+        // Now every Create follows a scaled skeleton of the style.
+        void generateSilenceWordsHaikuScript;
+        void createSilenceWordsHaiku;
+        void option;
+        const generated = await generateSkeletonScript({
           apiKey: claudeKey,
           model: claudeModel,
-          haikuModelId: scriptGeneration.styleInferModelId,
           transcript,
           meditationStyle,
           styleGuideStyle,
-          option,
-          minutes: targetMinutes,
-          profiles: deliveryProfiles,
-          silenceWordsHaiku: scriptGeneration.silenceWordsHaiku,
+          journalMode: journalModeFromJob,
+          targetMinutes,
           scriptTimeSeconds,
           effectiveWpm: voicePace.effectiveWpm,
-          lengthTolerancePct:
-            deliveryProfiles.shared.lengthTolerancePct ?? 10,
-          journalMode: journalModeFromJob,
+          lengthTolerancePct: createLengthTolerancePct,
+          shortPauseAdjustLimit:
+            scriptGeneration.silenceWordsHaiku.shortPauseAdjustLimit,
           source: "user",
-          streamingPartial: streamPhases,
           onPhaseReady: streamPhases
             ? ({ phaseIndex, ttsBody }) => {
                 kickPhasePcm(phaseIndex, ttsBody);
@@ -2507,23 +2531,29 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         }
         scriptTextUsed = generated.script;
         timeBasedUsed = true;
+        createOpenSitsWordBudget = generated.wordBudget;
+        createOpenSitsScriptFitOutside = generated.fit.outsideTolerance === true;
+        createPrepromptVersions = generated.prepromptVersions;
+        createSkeleton = generated.skeleton;
+        createDatasetVersions = generated.datasetVersions;
+        createConformance = generated.conformance;
         generationTimings.phases.scriptMs = elapsedMs(scriptStarted);
         console.log("generated script", {
           chars: scriptTextUsed.length,
           targetMinutes,
           scriptMs: generationTimings.phases.scriptMs,
-          path: "silence_words_haiku",
-          option,
+          path: "skeleton",
+          skeleton: generated.skeleton,
           wordBudget: generated.wordBudget,
+          wordsWritten: generated.wordsWritten,
           fitStep: generated.fit.fitStep,
           outsideTolerance: generated.fit.outsideTolerance,
           why: generated.fit.why,
-          haikuRan: generated.haiku.haikuRan,
-          phasesFixed: generated.haiku.phasesFixed,
           callCount: generated.usages.length,
           timing: generated.timing,
           streamPhases,
           phaseBodiesReady: silenceWordsHaikuPhaseBodies.filter(Boolean).length,
+          skipHaiku: true,
         });
       } else if (writeMode === "silence_words") {
         const scriptTimeSeconds = Math.max(
@@ -2761,7 +2791,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           model: claudeModel,
           meditationStyle,
           transcript,
-          speechSpeed: deliveryStyle === "casual" ? 1 : speechSpeed,
+          // Create is open sits only — was: casual force speechSpeed 1.
+          speechSpeed,
           journalMode: journalModeFromJob,
           targetMinutes,
           longerBreaks,
@@ -2807,7 +2838,8 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           meditationStyle,
           journalMode: journalModeFromJob,
           targetMinutes,
-          speechSpeed: deliveryStyle === "casual" ? 1 : speechSpeed,
+          // Create is open sits only — was: casual force speechSpeed 1.
+          speechSpeed,
           longerBreaks,
           deliveryStyle,
           pacing: scriptPacing,
@@ -3116,11 +3148,17 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   /** Set when the script is > 10% short on words: pauses may not cover missing words. */
   let maxLongPauseScale: number | undefined;
   let scriptShort = false;
-  // Time-based: extendable pauses already fitted in script text; do not re-scale
-  // long pauses (would move ordinary fixed pauses). Post-TTS same lock.
+  // Open sits Create: pre-fit is WPM-estimated; post-TTS OLA may still expand /
+  // shrink extendable pauses to hit length (±5% or ±15s). Ordinary pauses stay
+  // fixed unless lengthFit's last-resort short-pause adjust runs in script fit.
   if (timeBasedUsed) {
     preAudioPauseScale = 1;
-    maxLongPauseScale = 1;
+    maxLongPauseScale = POST_AUDIO_SCALE_MAX;
+    const stemTolFloor =
+      lengthTargetSeconds > 0
+        ? (15 / lengthTargetSeconds) * 100
+        : 5;
+    lengthTolerancePct = Math.max(5, stemTolFloor);
   }
   const predictBody = (bodyScript: string) => {
     const tts = withSpokenMeditationTitleIntro(bodyScript, libraryTitle);
@@ -3336,11 +3374,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   let fishKey: string | undefined;
   let speechifyKey: string | undefined;
   const speechifyLoudnessNormalization = body.skipSpeechifyLoudnorm !== true;
-  const speechifyRate = speechifyRateToSsml(
-    typeof body.speechifyRate === "number" && Number.isFinite(body.speechifyRate)
-      ? body.speechifyRate
-      : speaker?.speechifyRate,
-  );
+  const speechifyRate = speechifyRateToSsml(FIXED_SPEECHIFY_RATE);
   let runpodCreds: { apiKey: string; upstreamUrl: string } | undefined;
   try {
     if (ttsProvider === "orpheus") {
@@ -3400,7 +3434,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       body.skipVoiceFx === true ||
       (ttsProvider === "speechify" && body.skipSpeechifyLoudnorm === true);
 
-    // Speechify / Fish: pcm @ 24 kHz → per-segment FX → OLA → AAC (dial baked).
+    // Speechify / Fish: pcm @ 44.1 kHz → per-segment FX → OLA → AAC (dial baked).
     if (
       (ttsProvider === "speechify" && speechifyKey) ||
       (ttsProvider === "fish" && fishKey)
@@ -3418,8 +3452,10 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           pauseRenderScale,
         },
       );
+      // Speechify: API rate 0, atempo = FIXED_SPEECHIFY_ATEMPO. Fish: no atempo.
       const olaFit = {
-        speechTempo: voicePace.paceAdjust,
+        speechTempo:
+          ttsProvider === "speechify" ? FIXED_SPEECHIFY_ATEMPO : 1,
         longPauseScale: preAudioPauseScale,
         lengthFit: {
           targetSeconds: lengthTargetSeconds,
@@ -3740,7 +3776,6 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
         } as const;
         if (silenceWordsHaikuStreamTts && phaseBodies.length > 0) {
           // Stream path: TTS each Haiku-ready phase in parallel, then concat.
-          // (Phases were collected as Sonnet streamed; Haiku already overlapped.)
           console.log("calling TTS per streamed phase (parallel)", {
             reference_id: referenceId,
             ttsProvider,
@@ -3848,7 +3883,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       if (!voiceFxApplied) {
         try {
           mp3Buf = await loudnormMp3Buffer(mp3Buf);
-          console.log("loudnorm -16 LUFS applied to speech", {
+          console.log("loudnorm -14 LUFS applied to speech", {
             bytes: mp3Buf.byteLength,
           });
         } catch (e) {
@@ -3886,6 +3921,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     ? `programs/${jobUserId}/${stemId}`
     : `meditations/${jobUserId}/${stemId}`;
   const key = `${prefix}.mp3`;
+  const bakedAacKey = `${prefix}${AAC_EXTENSION}`;
   // Baked mix only — no dry/wet locked stems for live dial crossfade.
   // Preview keeps DualStem dry↔wet; generate bakes `voiceFxDial` into the file.
   let dryAudioKey: string | null = null;
@@ -3908,7 +3944,7 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       const loudnormStarted = Date.now();
       mp3Buf = await loudnormMp3Buffer(mp3Buf);
       generationTimings.phases.loudnormMs = elapsedMs(loudnormStarted);
-      console.log("loudnorm -16 LUFS applied to dry stem", {
+      console.log("loudnorm -14 LUFS applied to dry stem", {
         bytes: mp3Buf.byteLength,
         loudnormMs: generationTimings.phases.loudnormMs,
       });
@@ -4131,6 +4167,58 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
   }
 
   const durationSeconds = await getAudioDurationSeconds(mp3Buf);
+  const speechSecondsFinal =
+    olaLengthFit != null
+      ? olaLengthFit.speechSeconds
+      : Math.max(0, (durationSeconds ?? 0) - Math.max(0, pauseSecondsTotal));
+  const silenceSecondsFinal =
+    olaLengthFit != null
+      ? olaLengthFit.pauseSeconds
+      : Math.max(0, pauseSecondsTotal);
+  const fitHitTolerance =
+    durationSeconds != null && durationSeconds > 0
+      ? lengthWithin(durationSeconds, lengthTargetSeconds, lengthTolerancePct)
+      : false;
+  const createOpenSitsVerification =
+    createOpenSitsWordBudget != null
+      ? {
+          chosenLengthMinutes: targetMinutes,
+          chosenLengthSeconds: Math.round(lengthTargetSeconds),
+          targetWords: createOpenSitsWordBudget,
+          actualWords: spokenWordCount,
+          speechSeconds: Math.round(speechSecondsFinal * 10) / 10,
+          silenceSeconds: Math.round(silenceSecondsFinal * 10) / 10,
+          finalDurationSeconds:
+            durationSeconds != null
+              ? Math.round(durationSeconds * 10) / 10
+              : null,
+          speechShareOfFinal:
+            durationSeconds != null && durationSeconds > 0
+              ? Math.round((speechSecondsFinal / durationSeconds) * 1000) / 1000
+              : null,
+          fitHitTolerance,
+          lengthTolerancePct,
+          scriptFitOutsideTolerance: createOpenSitsScriptFitOutside,
+          postAudioScaled: olaLengthFit?.postScaled === true,
+          ...(createPrepromptVersions
+            ? { prepromptVersions: createPrepromptVersions }
+            : {}),
+          ...(createSkeleton ? { skeleton: createSkeleton } : {}),
+          ...(createDatasetVersions
+            ? { datasetVersions: createDatasetVersions }
+            : {}),
+          ...(createConformance ? { conformance: createConformance } : {}),
+        }
+      : null;
+  if (createOpenSitsVerification) {
+    console.log(
+      JSON.stringify({
+        tag: "create-open-sits-fit-verification",
+        jobId: event.jobId,
+        ...createOpenSitsVerification,
+      }),
+    );
+  }
   if (durationSeconds != null && durationSeconds > 0 && referenceId) {
     try {
       const spoken = scriptTextUsed.replace(/\[\[PAUSE[^\]]*\]\]/gi, " ");
@@ -4160,10 +4248,16 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           : {}),
         revised: lengthRevised,
         overheadSeconds: sessionLeadInSeconds + sessionTailSeconds,
-        targetWords: sectionPlan?.totalWords ?? totals.totalWords,
+        targetWords:
+          createOpenSitsWordBudget ??
+          sectionPlan?.totalWords ??
+          totals.totalWords,
         scriptShort,
         planMs,
         sectionsWriteMs,
+        ...(createOpenSitsVerification
+          ? { createOpenSitsVerification }
+          : {}),
         ...(sectionsUsed && sectionPlan
           ? {
               sectionPlan: sectionPlan.sections.map((x) => ({
@@ -4241,29 +4335,24 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
       });
     }
 
-    // Catalog key stays `.mp3` for Dynamo; always upload Safari-safe `.m4a` sibling.
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: mediaBucketName,
-        Key: key,
-        Body: mp3Buf,
-        ContentType: "audio/mpeg",
-        CacheControl: "no-store",
-      }),
-    );
-    const bakedAacKey = `${prefix}${AAC_EXTENSION}`;
+    // Dynamo catalog identity stays `.mp3`-shaped; playback is AAC-only (`.m4a`).
+    // Never encode or upload MP3 for delivery — and never put AAC bytes on the
+    // `.mp3` key as `audio/mpeg` (clients that hit it decode crushed garbage).
     const bakedIsM4a =
+      mp3Buf.length >= 8 &&
       mp3Buf[4] === 0x66 &&
       mp3Buf[5] === 0x74 &&
       mp3Buf[6] === 0x79 &&
       mp3Buf[7] === 0x70;
+    const bakedIsAdts =
+      mp3Buf.length >= 2 &&
+      mp3Buf[0] === 0xff &&
+      (mp3Buf[1]! & 0xf0) === 0xf0;
     const bakedAac = bakedIsM4a
       ? mp3Buf
       : await bufferToAacM4a(
           mp3Buf,
-          mp3Buf[0] === 0xff && (mp3Buf[1]! & 0xf0) === 0xf0
-            ? ".aac"
-            : ".mp3",
+          bakedIsAdts ? ".aac" : ".mp3",
         );
     await s3.send(
       new PutObjectCommand({
@@ -4291,8 +4380,10 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
     return json(500, { error: msg });
   }
 
-  const audioUrl = `https://${mediaCloudFrontDomain}/${key}`;
-  console.log("done", { audioUrl });
+  // Serve AAC playback URL — catalog `key` may stay `.mp3`-shaped in Dynamo.
+  const playbackAacKey = `${prefix}${AAC_EXTENSION}`;
+  const audioUrl = `https://${mediaCloudFrontDomain}/${playbackAacKey}`;
+  console.log("done", { audioUrl, catalogKey: key, playbackAacKey });
 
   let scriptForLibrary = scriptTextUsed;
   let scriptTruncated = false;
@@ -4401,6 +4492,21 @@ export async function handler(event: JobBody): Promise<APIGatewayProxyStructured
           ...(scriptChunks.length > 0 ? { scriptChunks } : {}),
           rating: null,
           liveMix: true,
+          deliveryStyle: "open_sits",
+          longerBreaks: true,
+          ...(createOpenSitsVerification
+            ? { createOpenSitsVerification }
+            : {}),
+          // Which Pre-prompt / style-guide versions wrote this script.
+          ...(createPrepromptVersions
+            ? { prepromptVersions: createPrepromptVersions }
+            : {}),
+          // Skeleton (style, source id, scale) + harvester dataset versions.
+          ...(createSkeleton ? { skeletonPacing: createSkeleton } : {}),
+          ...(createDatasetVersions
+            ? { harvesterDatasetVersions: createDatasetVersions }
+            : {}),
+          ...(createConformance ? { scriptConformance: createConformance } : {}),
           ...(typeof body.leadInSeconds === "number" &&
           Number.isFinite(body.leadInSeconds) &&
           body.leadInSeconds >= 0

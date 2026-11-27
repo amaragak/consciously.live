@@ -13,8 +13,18 @@ export const BED_GAIN_PEAK_VOLUME = SOUNDSCAPE_ELEMENT_VOLUME;
 /** Narration / voice sample level — always full scale in preview and bake. */
 export const SPEECH_ELEMENT_VOLUME = 1;
 
-/** Bed-only lead-in before speech starts (live mix and baked mix). */
+/**
+ * Short bed lead-in for Create voice/bed audition previews.
+ * Library / generate sessions use {@link DEFAULT_MEDITATION_LEAD_IN_SECONDS}
+ * (or the per-meditation `leadInSeconds` field).
+ */
 export const BED_VOICE_INTRO_SECONDS = 1.5;
+
+/**
+ * Default bed-only lead-in for meditation playback when the library row
+ * omits `leadInSeconds`. Matches generate `FIXED_SESSION_LEAD_IN_SECONDS`.
+ */
+export const DEFAULT_MEDITATION_LEAD_IN_SECONDS = 20;
 
 /**
  * After the voice stem ends: hold beds at level, then fade them out before

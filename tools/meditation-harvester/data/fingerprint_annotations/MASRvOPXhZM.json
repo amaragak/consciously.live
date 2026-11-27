@@ -1,0 +1,43 @@
+{
+  "video_id": "MASRvOPXhZM",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "welcome"
+    ],
+    "closing_moves": [
+      "gratitude"
+    ],
+    "techniques": [
+      "breath_counting_or_ratio",
+      "body_part_sequence",
+      "repeated_affirmations",
+      "movement_cues",
+      "story_narration"
+    ],
+    "body_sequence_direction": "head_to_feet",
+    "imagery_themes": [
+      "nature",
+      "light",
+      "people"
+    ],
+    "person_main": "you",
+    "listener_i_statements": false,
+    "tense_main": "present",
+    "question_rate": "low",
+    "repetition_level": "medium",
+    "listener_repeats": false,
+    "directiveness": 3,
+    "energy": 3,
+    "certainty": 3,
+    "warmth": 4,
+    "formality": 2
+  },
+  "words": 2216,
+  "questions_per_1k_words": 3.61,
+  "usage": {
+    "in": 5562,
+    "out": 219
+  }
+}

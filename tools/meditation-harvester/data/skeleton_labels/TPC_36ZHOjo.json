@@ -1,0 +1,47 @@
+{
+  "video_id": "TPC_36ZHOjo",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "99040790be30ed80",
+  "labels": [
+    [
+      "settle",
+      "opening"
+    ],
+    [
+      "imagery",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "imagery",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "self-practice handover",
+      "main"
+    ],
+    [
+      "return",
+      "closing"
+    ],
+    [
+      "close",
+      "closing"
+    ]
+  ]
+}

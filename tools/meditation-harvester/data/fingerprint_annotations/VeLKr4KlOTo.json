@@ -1,0 +1,43 @@
+{
+  "video_id": "VeLKr4KlOTo",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "other"
+    ],
+    "closing_moves": [
+      "deepen_once_more",
+      "other",
+      "eyes_open"
+    ],
+    "techniques": [
+      "imagery_journey",
+      "reflection_questions",
+      "repeated_affirmations"
+    ],
+    "body_sequence_direction": "none",
+    "imagery_themes": [
+      "light",
+      "future_success",
+      "other"
+    ],
+    "person_main": "you",
+    "listener_i_statements": false,
+    "tense_main": "as_if_true",
+    "question_rate": "medium",
+    "repetition_level": "high",
+    "listener_repeats": false,
+    "directiveness": 4,
+    "energy": 3,
+    "certainty": 5,
+    "warmth": 2,
+    "formality": 3
+  },
+  "words": 654,
+  "questions_per_1k_words": 7.65,
+  "usage": {
+    "in": 2868,
+    "out": 211
+  }
+}

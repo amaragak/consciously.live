@@ -1,0 +1,230 @@
+{
+  "style": "reflection",
+  "model": "claude-haiku-5-5",
+  "digest": "a4625e1d25202882",
+  "families": [
+    {
+      "name": "Loving-kindness wishes",
+      "meaning": "Offers the listener or others good wishes, such as being filled with kindness, peaceful, safe, well, happy, or loved.",
+      "examples": [
+        "i be peaceful",
+        "i love you"
+      ],
+      "members": [
+        "filled with loving kindness",
+        "i be peaceful",
+        "i be safe",
+        "i be well",
+        "i be filled",
+        "i be filled with loving kindness",
+        "i be happy",
+        "i love you",
+        "loving kindness and compassion",
+        "compassion and love",
+        "being that represents compassion",
+        "thank you so much"
+      ]
+    },
+    {
+      "name": "Gratitude and self-forgiveness",
+      "meaning": "Invites the listener to feel thankful or to forgive and accept themselves.",
+      "examples": [
+        "i am grateful",
+        "i forgive myself"
+      ],
+      "members": [
+        "me i am grateful",
+        "life i am grateful",
+        "i forgive myself i",
+        "i receive i",
+        "my body i"
+      ]
+    },
+    {
+      "name": "Begin the session",
+      "meaning": "Signals the start of the practice and invites the listener to settle in.",
+      "examples": [
+        "take a moment",
+        "i invite you to begin"
+      ],
+      "members": [
+        "take a moment",
+        "i invite you to begin",
+        "thank you for joining me",
+        "joining me today",
+        "take a few"
+      ]
+    },
+    {
+      "name": "Breath instruction",
+      "meaning": "Directs the listener to breathe in a particular way or to notice the breath.",
+      "examples": [
+        "take a deep breath",
+        "breathe in and out"
+      ],
+      "members": [
+        "through your nose",
+        "breathe in and out",
+        "feel your breath",
+        "part of your",
+        "breath in and out",
+        "movement of the breath",
+        "nose and out",
+        "breath in through your nose",
+        "deeply through your nose",
+        "out through your mouth",
+        "feel the breath"
+      ]
+    },
+    {
+      "name": "Body scan and sensing",
+      "meaning": "Guides attention through the body and asks the listener to notice sensations.",
+      "examples": [
+        "your entire body",
+        "notice how your body"
+      ],
+      "members": [
+        "your entire body",
+        "how your body",
+        "how your body feels",
+        "your body feel",
+        "attention to your",
+        "aware of your",
+        "awareness to your",
+        "notice how your",
+        "your body feeling",
+        "your body where",
+        "allow your body",
+        "areas in your body",
+        "come into the body",
+        "feel your body",
+        "body and you",
+        "your body and your",
+        "top of your head",
+        "you feel most",
+        "where you feel",
+        "your own being",
+        "your throat your",
+        "part of you",
+        "you think about",
+        "you could ever",
+        "you can even",
+        "things in your",
+        "going on inside",
+        "energy into your"
+      ]
+    },
+    {
+      "name": "Energy and warmth sensations",
+      "meaning": "Directs attention to felt qualities like warmth or energy moving through the body.",
+      "examples": [
+        "feel the warmth",
+        "feel the energy"
+      ],
+      "members": [
+        "feel the energy",
+        "feel the warmth",
+        "flow into your",
+        "begins to move",
+        "body and heart"
+      ]
+    },
+    {
+      "name": "Invitation to look or open",
+      "meaning": "Prompts the listener to open or close their eyes or see what is present.",
+      "examples": [
+        "open your eyes",
+        "close your eyes"
+      ],
+      "members": [
+        "open your eyes",
+        "close your eyes",
+        "begin to open your eyes",
+        "see if you"
+      ]
+    },
+    {
+      "name": "Bring attention back",
+      "meaning": "Redirects wandering attention to the body, breath, or awareness.",
+      "examples": [
+        "bring your awareness back",
+        "back to your breath"
+      ],
+      "members": [
+        "bring to mind",
+        "back to your",
+        "back to your breath",
+        "bring your awareness back",
+        "focus on your",
+        "always come back",
+        "come and go"
+      ]
+    },
+    {
+      "name": "Reassurance and no effort needed",
+      "meaning": "Reassures the listener that they are safe, right, or need not force or fix anything.",
+      "examples": [
+        "you are safe",
+        "don't have to force"
+      ],
+      "members": [
+        "you are ready",
+        "you are right",
+        "you are safe",
+        "don't have to force",
+        "doesn't mean you",
+        "go let go"
+      ]
+    },
+    {
+      "name": "Remember inner truth",
+      "meaning": "Points the listener toward their deeper self or inner being.",
+      "examples": [
+        "truth of who you are",
+        "your own being"
+      ],
+      "members": [
+        "truth of who you",
+        "feeling of being",
+        "know that you",
+        "out of the heart",
+        "out of our",
+        "heart and mind",
+        "each of us"
+      ]
+    },
+    {
+      "name": "Guided timing and pacing",
+      "meaning": "Frames the time or stage of the session and the transition to what comes next.",
+      "examples": [
+        "rest of your day",
+        "over and over"
+      ],
+      "members": [
+        "rest of your day",
+        "over and over",
+        "moment as you",
+        "we are going",
+        "where are you",
+        "continuing to relax",
+        "begin to deepen your",
+        "begin to sense",
+        "you are feeling",
+        "you are going",
+        "you so much",
+        "you can feel",
+        "you might sense",
+        "sense that you",
+        "i invite you",
+        "phrases may i",
+        "put your hand",
+        "relax your shoulders",
+        "grow in you",
+        "out as you",
+        "mind may i",
+        "through your entire",
+        "your nervous system"
+      ]
+    }
+  ]
+}

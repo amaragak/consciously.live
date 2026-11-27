@@ -1,0 +1,29 @@
+{
+  "style": "story",
+  "model": "claude-haiku-5-5",
+  "digest": "e8f0eb8598834d54",
+  "families": [
+    {
+      "name": "Breath-based settling",
+      "meaning": "Invites the listener to slow down and settle into the body through a deliberate breath.",
+      "examples": [
+        "take a few deep breaths",
+        "breathe in slowly"
+      ],
+      "members": [
+        "few deep breaths"
+      ]
+    },
+    {
+      "name": "Permission to take action",
+      "meaning": "Gives the listener gentle permission to take a particular step or allow themselves something, lowering pressure.",
+      "examples": [
+        "you can take a moment",
+        "you can let go"
+      ],
+      "members": [
+        "you can take"
+      ]
+    }
+  ]
+}

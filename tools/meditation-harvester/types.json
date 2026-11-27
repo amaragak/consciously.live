@@ -1,0 +1,62 @@
+{
+  "body-scan": {
+    "label": "Body scan",
+    "definition": "Attention is moved through the body part by part, noticing sensation and releasing tension.",
+    "default_queries": ["guided body scan meditation"]
+  },
+  "visualization": {
+    "label": "Visualization",
+    "definition": "Guided imagery: the listener is led through an imagined place, scene or journey.",
+    "default_queries": ["guided visualization meditation"]
+  },
+  "breath-led": {
+    "label": "Breath-led",
+    "definition": "The breath is the main anchor or technique: breath awareness, counting, or a breathing pattern.",
+    "default_queries": ["guided breathing meditation"]
+  },
+  "manifestation": {
+    "label": "Manifestation",
+    "definition": "The listener imagines a desired future or self as already real, sets intentions, rehearses the feeling of having it.",
+    "default_queries": ["guided manifestation meditation"]
+  },
+  "affirmation-loop": {
+    "label": "Affirmation loop",
+    "definition": "Repeated affirmations (usually 'I am...') are the main content, often with space to repeat them.",
+    "default_queries": ["guided affirmation meditation"]
+  },
+  "story": {
+    "label": "Story",
+    "definition": "A narrative is told to the listener (a tale, parable or story they follow) rather than direct instructions.",
+    "default_queries": ["guided meditation story"]
+  },
+  "reflection": {
+    "label": "Reflection",
+    "definition": "Questions and prompts lead the listener to reflect on their life, emotions, values, choices or gratitude.",
+    "default_queries": ["guided self reflection meditation"]
+  },
+  "sleep": {
+    "label": "Sleep",
+    "definition": "Built to take the listener into sleep: slows down, lengthens silences, fades out without a wake-up.",
+    "default_queries": ["guided sleep meditation"]
+  },
+  "loving-kindness": {
+    "label": "Loving-kindness",
+    "definition": "Metta / compassion practice: wishing wellbeing to self, loved ones, strangers, difficult people and all beings.",
+    "default_queries": ["loving kindness meditation guided"]
+  },
+  "anxiety-relief": {
+    "label": "Anxiety relief",
+    "definition": "Aimed at calming anxiety, stress or panic: grounding, reassurance, settling the nervous system.",
+    "default_queries": ["guided meditation for anxiety"]
+  },
+  "movement-meditation": {
+    "label": "Movement meditation",
+    "definition": "Guidance given while moving: walking meditation, mindful movement, gentle yoga or stretching.",
+    "default_queries": ["guided walking meditation"]
+  },
+  "open-awareness": {
+    "label": "Open awareness",
+    "definition": "Resting as awareness itself: choiceless awareness, noticing whatever arises, non-dual pointers to what is aware.",
+    "default_queries": ["open awareness meditation guided"]
+  }
+}

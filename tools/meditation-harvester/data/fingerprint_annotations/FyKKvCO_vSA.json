@@ -1,0 +1,44 @@
+{
+  "video_id": "FyKKvCO_vSA",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "welcome",
+      "overview",
+      "intention_or_purpose",
+      "permission_or_acceptance"
+    ],
+    "closing_moves": [
+      "eyes_open",
+      "other"
+    ],
+    "techniques": [
+      "repeated_affirmations",
+      "loving_kindness_phrases",
+      "reflection_questions",
+      "other"
+    ],
+    "body_sequence_direction": "none",
+    "imagery_themes": [
+      "people"
+    ],
+    "person_main": "you",
+    "listener_i_statements": true,
+    "tense_main": "present",
+    "question_rate": "low",
+    "repetition_level": "high",
+    "listener_repeats": true,
+    "directiveness": 2,
+    "energy": 2,
+    "certainty": 2,
+    "warmth": 4,
+    "formality": 2
+  },
+  "words": 850,
+  "questions_per_1k_words": 2.35,
+  "usage": {
+    "in": 3253,
+    "out": 223
+  }
+}

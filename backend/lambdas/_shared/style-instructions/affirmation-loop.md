@@ -1,73 +1,66 @@
 > Guidance for Affirmation loop meditations, not fixed rules. Use judgement for each moment; the user's request overrides any of this.
 
-# Affirmation loop: writer's guide
+# Affirmation loop: writer's brief
 
-Everything here is a default. If the request asks for something different, follow the request and use this only for what it leaves open.
+Everything here is a default. The user's request wins on theme, length, tone, person, structure and pacing.
 
-## 1. Mechanism
-- Short first-person statements, repeated and given space, let the listener say the line inwardly and feel whether it lands. The listener's attention rests on the line, not on following instructions.
-- Repetition builds familiarity. Familiar lines feel more believable over time. Variation keeps the listener from tuning out.
-- Each affirmation is a small task: hear it, repeat it, let it settle. Write lines that are easy to repeat and that the listener can plausibly feel are true.
-- When the user is doubting a belief, move toward it gradually (willingness, "I am learning to…") so the listener doesn't reject it.
+## Mechanism
+The listener's attention rests on one short line at a time. Repetition and a gap after each line let the words move from "something I hear" to "something I say and feel." The session works by choosing lines that are believable enough to land, saying them plainly, and leaving room to take them in. Your job is to write true-feeling statements for this person, not to write a lot of them.
 
-## 2. Phases
-Typical building blocks:
-- **Arrival:** a brief purpose line and a few breaths. Short sessions keep this to a few lines.
-- **Core affirmations:** the bulk of the session. It can be split by theme or by a progression, for example a settling theme, then the main theme, then a deepening or embodied one.
-- **Integration:** a quiet stretch where the listener repeats silently or rests, with few or no spoken lines.
-- **Close:** a short return and a thank-you.
+## Phases
+Default arc: arrival, intention, first affirmation block, deepening block, silent absorption, close.
+- **Arrival** (short): a few settling breaths, with posture and eyes closed if the request is a meditation. Shorten it for a pure affirmation list.
+- **Intention:** one or two sentences on why these words, and an invitation to repeat aloud or silently.
+- **Affirmation blocks:** the main body. Each block takes one theme, such as worth, safety, receiving, strength, gratitude or trust. A change of theme starts a new section.
+- **Deepening block:** lines get slower, simpler and more inward. Plain statements such as "I am enough" or "I am safe" suit this part.
+- **Absorption:** a stretch of mostly silence, with at most a repeated anchor line.
+- **Close:** gratitude, then return.
 
-A change of theme, grammatical form, or depth marks a new section.
-- A longer session gains more cycles of the core material, not new ideas. Let each cycle return with fewer words and more space, or in a new order.
-- Carry a few anchor lines through every section. The anchor could be a refrain at the end of each cluster or a returning opening phrase.
-- Each section should end on a settled line that the next section can pick up.
-- Default arc: arrive, widen from the easiest truths toward the user's core theme, deepen, rest, close.
+Longer sessions mostly gain more blocks and more cycles through the same material, not more explanation. Use one thread across blocks, such as one core line that returns, so separately written sections read as one session. At each handover, finish on a settled line and start the next section by naming the new theme.
 
-## 3. How lines are said
-- Write in the first person ("I am…"), present tense, positive framing, with one idea per line.
-- Group two or three lines in a short cluster on one theme, then pause. Use a one-word or two-word line occasionally.
-- Introduce a new theme with a plain bridge line ("Now we turn to…"). Invite the listener with permissive phrases ("repeat silently, or simply listen").
-- Use "I am" as the signature stem and swap it now and then for "I trust", "I allow", "I choose", "I release", or "Thank you for…". Vary the ending, not the rhythm.
-- Include some sensory or physical words so lines can be felt as well as thought ("warmth in my chest"). Keep language plain. Avoid abstract jargon.
-- Echo a line twice when it carries the point.
-- Weave the user's context in directly. Turn their goal, struggle or wording into an affirmation in their own terms ("I am prepared for Thursday's interview"). Use more than one angle on it (body, action, feeling) instead of restating it.
-- Use "you" only in short coaching bridges. The affirmations themselves are in the first person.
+## How to say it
+- **Anatomy of an affirmation:** short, "I am…" or "I…" plus a plain verb, one idea per line. If the user's goal is distant, bridge with a believable stepping line ("I am willing to…", "I am learning to…") before the bolder one.
+- **Cue the repetition:** say once, "Repeat after me, aloud or in your mind." Then let the lines carry it.
+- **Sequence:** move from the most believable line to the boldest. Group three or four related lines, then rest.
+- **Vary in the loop:** return to a core line in slightly different words, or say it, then say it again with a small change. Repeating exactly is fine when the request is a single mantra.
+- **Soften:** use "you may," "if it feels true," "notice what happens." Keep questions few.
+- **Person and tense:** mostly "I am" in present tense, as if already true. A short "you" frame around it is fine for opening and closing.
+- **User material:** turn their goal, struggle or journal text into their own words. For example, an "I'm afraid I'll fail the exam" becomes "I am prepared, and I am calm." Name specifics lightly. Keep the wording sensory and concrete, not abstract.
 
-## 4. Pauses
-- A pause gives time to repeat and feel the line. Its length follows the task: a short gap (1–3s) between clauses, a longer gap (a few seconds, up to about 10s) after a cluster the listener is meant to repeat.
-- Silence can lengthen as the session deepens. The final silence is the longest.
-- Don't pause mid-phrase. Don't leave long gaps in the opening before the first line has settled.
-- Write as [[PAUSE Ns]].
+## Pauses
+A pause gives the listener time to say or feel the line before it, so the pause follows the work asked for. Short plain lines need only a few seconds. Longer or more charged lines need more. Gaps tend to widen as the session deepens (typically about 2s in early lists, 5–10s in slower sessions, and a long silence of a minute or more for absorption). Write [[PAUSE Ns]]. Do not pause mid-sentence or between a cue and the line it introduces.
 
-## 5. Opening and closing
-- **Open** with one or two sentences saying what this is and how to use it, then a few breaths, then the first affirmation. Keep it short. For a quick session, begin almost immediately.
-- **Close** by repeating the anchor line once more, with fewer words. Invite the listener to carry it into the day, then a brief thank-you. If the request is for sleep, end on the quietest line and fade rather than waking them.
+## Opening and closing
+Open with a brief welcome and a breath or two, then the first affirmations. Close with a deepening breath, a line of gratitude, and a gentle return ("open your eyes when you're ready"). Match the request: a morning session should be brighter, a sleep session should end quieter without a "wake up."
 
-## 6. Common mistakes
-- Explaining too much. Essay-style talking pushes the affirmations to the side.
-- Stacking many lines with no space.
-- Using claims too distant for the listener to believe.
-- Too many different themes in one cluster.
-- Identical loops with no variation or deepening.
-- Negations ("I am not afraid"). State what is wanted instead.
+## What listeners expect
+- Most sessions open with a welcome, and many with posture, eyes closed, settling breaths and body arrival. Some state an intention. Many close with a deepening breath, gratitude, eyes open and a carry-into-the-day line.
+- Delivery is soft and warm, between permissive and assertive, mostly present tense and "as if true," with "I" statements, few questions, and heavy repetition inviting the listener to repeat.
+- Fits: worth and enough-ness ("I am enough"), abundance and needs met, safety, strength, trust and alignment, openness to receive, gratitude and self-forgiveness, and present-moment grounding ("right here, right now").
+- Use sparingly: generic relaxation and body-scan language.
+- Avoid: wishes for others like "may you be happy" (loving-kindness), arm and hand placement (movement), and manifestation-style abundance speeches.
 
-## 7. Worked example
-**Request:** "Ten minutes before a job interview. I get nervous and doubt my qualifications."
+## Common mistakes
+- A long lecture before the affirmations. Keep the rationale short.
+- Lines too bold to believe. Add a bridge.
+- Too many themes at once. One theme per block.
+- Identical lines that never change. Vary slightly.
+- Even pause lengths regardless of line weight.
+- Ending abruptly after the last line with no return.
 
-**Phases:**
-1. Arrival: breath and purpose.
-2. Settling affirmations: safety and calm.
-3. Core affirmations: competence and being prepared, using the user's experience.
-4. Embodied cycle: the interview itself, a returning anchor.
-5. Silent rest.
-6. Close.
+## Worked example
+Request: "Ten minutes, I'm anxious before a job interview, I want to feel capable."
+- Arrival: a few breaths, grounded in the chair.
+- Intention: why these words, repeat silently.
+- Block 1, calm and safe: "I am safe in this moment."
+- Block 2, capable: bridge from willingness to "I am prepared."
+- Absorption: one core line, then silence.
+- Close: thank yourself, breath, eyes open.
 
-The anchor "I am ready" carries through all of them.
+Core line carried across blocks: "I can handle this."
 
-**Excerpt (phase 3):**
-Now let's name what is true.
-I know my work. [[PAUSE 2s]]
-I have prepared well. [[PAUSE 8s]]
-I am qualified for this role. [[PAUSE 2s]]
-I bring real experience into the room. [[PAUSE 10s]]
-I am ready. [[PAUSE 6s]]
+Excerpt (Block 2):
+Say it once, then let it settle. I am prepared. [[PAUSE 5s]]
+I know my strengths. [[PAUSE 5s]]
+I speak clearly and calmly. [[PAUSE 6s]]
+Whatever they ask, I can handle this. [[PAUSE 8s]]

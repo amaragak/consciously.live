@@ -1,0 +1,45 @@
+{
+  "video_id": "ZtqVVKqdVqA",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "settling_breaths",
+      "posture",
+      "intention_or_purpose",
+      "overview"
+    ],
+    "closing_moves": [],
+    "techniques": [
+      "breath_counting_or_ratio",
+      "noting_or_labelling",
+      "imagery_journey",
+      "story_narration"
+    ],
+    "body_sequence_direction": "none",
+    "imagery_themes": [
+      "nature",
+      "water",
+      "light",
+      "home",
+      "people"
+    ],
+    "person_main": "you",
+    "listener_i_statements": false,
+    "tense_main": "present",
+    "question_rate": "low",
+    "repetition_level": "low",
+    "listener_repeats": false,
+    "directiveness": 3,
+    "energy": 2,
+    "certainty": 2,
+    "warmth": 3,
+    "formality": 2
+  },
+  "words": 2169,
+  "questions_per_1k_words": 1.84,
+  "usage": {
+    "in": 5703,
+    "out": 226
+  }
+}

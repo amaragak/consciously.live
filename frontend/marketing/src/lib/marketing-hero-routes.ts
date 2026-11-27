@@ -1,6 +1,7 @@
 /** Marketing routes that use a hero / field treatment — page pattern gutter is off. */
 const MARKETING_HERO_ROUTES = new Set([
   "/",
+  "/newhome",
   "/meditate",
   "/journal",
   "/manifest",

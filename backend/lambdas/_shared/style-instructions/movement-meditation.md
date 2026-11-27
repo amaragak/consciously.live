@@ -1,53 +1,70 @@
 > Guidance for Movement meditation meditations, not fixed rules. Use judgement for each moment; the user's request overrides any of this.
 
-# Movement meditation: writing guide
+# Movement meditation: writer's brief
 
 ## Mechanism
-The listener's attention rides on their body in motion. Each cue gives them something to do and something to feel, so the voice keeps them moving and noticing together. Movement anchors attention more firmly than stillness, so you need less coaxing and more clarity. Calm comes from slow, breath-linked motion and from noticing sensation, not from relaxation talk. Write so the listener can do the movement without looking at anything.
+Attention rides on a physical action. The listener's body is busy, so the voice anchors the mind to what the body is doing: a sensation, a direction, a breath timed to a motion. This works when each line gives one thing to do or feel. Dense abstraction breaks the link to the body. Calm comes from rhythm, repeated movements and breath-matching, more than from imagery. Everything here is a default. If the request names a different focus, mood or format, follow it and use this brief for whatever is left open.
 
 ## Phases
-Divide by change of activity or focus, not by time. Typical kinds:
-- **Arrive:** orient, set pace and safety, one or two breaths.
-- **Warm or ground:** simple movements or the first steps. Feet, breath and joints.
-- **Main body:** one movement or one sweep of attention at a time, each repeated a few rounds.
-- **Widen:** from one part of the body to the whole body, or to surroundings and senses.
-- **Integrate:** slow down, centre, feel the after-effect.
-- **Close:** stop, check in, carry it forward.
+Build the session from these phase types, in roughly this order:
+1. **Arrival** (about 10%): stance or posture, a few breaths, a note on safety or setup.
+2. **Warm-up / anchoring** (15–20%): small, simple movements, or the feet and contact with the ground.
+3. **Main movement or walk** (40–50%): the core sequence. Either one movement is taught, repeated and varied, or attention travels through the body parts and then widens to the senses and surroundings.
+4. **Slowing and centering** (10–15%): the same movement at a slower tempo, then a return to a stable center.
+5. **Closing stillness and carry-forward** (about 10%).
 
-Default arc: energise or ground, then deepen, then settle. Longer sessions add more movements or sensory layers and give each a few more rounds. They don't make the arrival or the close longer. Carry a thread across sections: one breath rhythm, a repeated image (water, roots, a wave), or a body anchor such as the feet. End each section on a settled cue ("back to centre", "pace easing") so the next starts cleanly. Name the next movement at the start of its section.
+- A new phase begins when the focus, the technique or the tempo changes.
+- Longer sessions give the main phase more movements or a further widening of attention. They do not need more arrival or closing.
+- Carry one thread through every section: a breath pattern, a named image, or one recurring phrase. At the end of each section, say where the body is now and what comes next, so sections written separately still read as one session.
 
-## How to say it
-- **Cue anatomy:** body part or action, then breath, then a feeling to notice. Example: "Arms float up as you breathe in, and settle as you breathe out. Notice the ribs widening."
-- Introduce a movement in one line, say why it helps in a clause, then run rounds. Shorten the cues each round ("again… and down… once more") so the voice recedes as the body learns it.
-- **Soften:** "as far as is comfortable", "if it suits you", "or just imagine it". Offer a seated or smaller version when the request implies limited mobility.
-- Use short, concrete, present-tense sentences, in the second person or inclusive "we". Use plain body words, not anatomy lectures.
-- **Walking or sensory sweeps:** go in one order (feet, legs, torso, arms, whole body, then sight, sound, smell, touch) with one question or noticing per cue. For wandering, give a standing instruction: "when attention drifts, return to the feet."
-- Repeat signature phrases for rhythm ("slow it down", "back to the breath") and vary the images.
-- **User context:** turn goals, stress or moods into the movement's meaning. Examples: "let the shake loosen the deadline in your shoulders", or "each step lands you back in today". One or two touches per section is enough. Don't drift into therapy talk.
+## How things are brought in and said
+- **Anatomy of a cue:** name the body part or direction, then the action, then the breath, then what to notice. For example: "Hands rise, palms up, as you inhale. Let them drift down as you exhale." Leave the exact range, pace and depth to the listener.
+- **Introduce each movement once.** Give it a plain name, show it slowly, then run it with breath. Add a short reason only when it helps ("this loosens the shoulders").
+- **Sequence** movements from large and simple to small and refined. Sequence body awareness in one direction, such as feet to head, and attend to one area at a time.
+- **Repeat to build rhythm.** Use "once more" and shortened echoes of the same cue ("up… and down"). Vary only one element per round.
+- **Soften instructions** with "you might", "as far as is comfortable" and "if it helps". Offer a seated or smaller option. Keep the tone casual and warm.
+- **Language:** present tense, "you", short sentences. Use concrete sensation words (weight, contact, stretch, warmth) and directions (up, down, side to side). Avoid ornate metaphor. Use a single image only if it carries the movement.
+- **Return to center** between phases ("come back to the middle, feet even").
+- **Weave the user's material** into the movement itself. For example, a stress goal becomes "send the tension out through the hands on the exhale". A request for energy becomes brighter, quicker movement. Name their context lightly, once or twice.
 
 ## Pauses
-A pause gives time to do what was just asked. Writing it as [[PAUSE Ns]]: mid-movement beats are about 1–3s. Silence after a breath or a new sensory cue is about 4–10s. Open walking or hold phases can take 15–60s when the user wants a walk-on-your-own feel. Silence tends to grow as the session deepens. Don't pause in the middle of a movement instruction, or between an instruction and its breath count.
+A pause gives the listener time to do the thing just asked. Write them as [[PAUSE Ns]].
+- During active movement, keep pauses short, about 1–3s. Longer pauses break the rhythm.
+- For "walk and notice" cues, allow 8–30s or more, because the listener needs time to feel.
+- Silence tends to lengthen as the session settles, and the longest gaps come in the quiet middle or just before the close.
+- Don't pause mid-instruction or right after a cue that has no action to complete.
 
 ## Opening and closing
-- **Open** with a few words on pace, safety and space. Cover footing, awareness of surroundings, and a chair or smaller version if relevant. Then begin moving within the first minute.
-- **Close** by slowing the movement to stillness, one or two full breaths, and a body check-in ("notice what's awake"). End with a line that carries the practice into the day. Adapt the tone to the request: energising for morning, soothing for evening.
+- **Open** with a short welcome. Then give the stance and any safety or space note, two or three breaths, and a clear first movement. Say what the practice is for in one line.
+- **Close** by slowing the movement, then bringing the hands or attention to the center. Add a slow breath or a gentle sway, a short thanks, and one line on carrying the feeling into the day. Adapt the length of this to the session.
+
+## What listeners expect
+- **Open:** most sessions begin with a welcome. Many then give an overview and a posture cue. Most follow with settling breaths. Some set an intention and many note body arrival.
+- **Close:** most sessions deepen once more, then return attention (many sessions), give gratitude (most sessions), and carry it into the day (many sessions).
+- **Delivery:** moderately directive, casual, a little warm. Present tense, mostly "you". Few questions. Medium repetition, and the listener is rarely asked to repeat words aloud.
+- **Phrasing that fits:** directional movement ("up and down"), hand and arm placement ("hands over the head"), the path through the spine, attention invitations, "one more time", and return to center.
+- **Keep rare:** generic relaxation and "heavier and heavier" descent imagery.
+- **Avoid:** loving-kindness wishes, health or safety wishes, say-their-name practice (loving-kindness); abundance affirmations (affirmation-loop, manifestation).
 
 ## Common mistakes
-- Talking about benefits more than guiding the motion. Keep explanations to one clause.
-- Movement cues without breath or sensation, or cues too complex to follow without seeing.
-- Listing too many different movements. Fewer movements with more rounds work better.
-- Constant silence in a movement piece, which loses the listener, or constant talk in a walking piece, which leaves no room to walk.
-- Forcing intensity or a "correct" range. Keep it permissive.
+- Talking over the movement with philosophy or teaching. Keep rationale to a clause.
+- Long, unpaused cue strings. Give one action per beat.
+- Eyes-closed relaxation cues in a moving practice. Keep the eyes open or soft unless the move is still.
+- No setup or safety note, or no easier option.
+- Pauses so long the listener loses the thread, or so short the breath doesn't fit.
 
 ## Worked example
-**Request:** "10-minute morning stretch to shake off a stressful week, desk-bound, tight shoulders."
+Request: "10 minutes, standing, to shake off work stress."
+- **Arrival:** feet apart, knees soft, three breaths.
+- **Warm-up:** shoulder rolls and wrist circles.
+- **Main:** a sway, then arms sweeping up on the inhale and down on the exhale ("release the day"), then shaking out.
+- **Slowing:** the sweep at half speed.
+- **Close:** hands on the belly and a thank-you.
+- **Carried across:** the "inhale gather, exhale release" breath.
 
-**Phases:**
-1. Arrive: stand, two breaths, notice tension. Thread: "release".
-2. Shoulders and neck: rolls and gentle side stretches. Rhythm: breath in as you lift, breath out as you drop.
-3. Spine and ribs: slow twists and side leans. Thread: breath opening space.
-4. Shake out: loose-limbed release, then stillness.
-5. Close: hands on belly, carry release into the day.
-
-**Excerpt (phase 2):**
-"Lift both shoulders toward your ears as you breathe in. [[PAUSE 1s]] Let them drop with a long breath out. [[PAUSE 2s]] Again. Up… and let go. [[PAUSE 2s]] Now roll them back, slowly, a big circle. Feel the week loosen. [[PAUSE 3s]] One more. Then rest, and notice what feels lighter. [[PAUSE 5s]]"
+Excerpt:
+Let your arms rise as you inhale, palms facing up. [[PAUSE 2s]]
+Exhale, and let them float down, shoulders dropping with them. [[PAUSE 2s]]
+Once more. Up, gathering. [[PAUSE 2s]]
+And down, letting the day go through your hands. [[PAUSE 3s]]
+Slower now. Notice your feet staying steady. [[PAUSE 6s]]

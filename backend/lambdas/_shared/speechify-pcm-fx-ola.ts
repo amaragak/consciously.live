@@ -1,6 +1,6 @@
 /**
- * pcm_24000 (s16le mono) → per-segment ffmpeg IR FX → PCM overlap-add → AAC.
- * Speechify and Fish both feed this path with provider-specific TTS.
+ * pcm @ VOICE_FX_PCM_SR (s16le mono) → per-segment ffmpeg IR FX → PCM
+ * overlap-add → AAC. Speechify and Fish both feed this path.
  */
 import type { S3Client } from "@aws-sdk/client-s3";
 import {
@@ -54,16 +54,16 @@ export type SpeechifyPcmFxOlaSectionTiming = {
 export type SpeechifyDryPcmChunk = {
   /** Speech segment index (0-based among spoken chunks). */
   i: number;
-  /** Sample offset on the dry timeline @ 24 kHz. */
+  /** Sample offset on the dry timeline @ VOICE_FX_PCM_SR. */
   startSample: number;
-  /** Raw s16le mono @ 24 kHz. */
+  /** Raw s16le mono @ VOICE_FX_PCM_SR. */
   pcm: Buffer;
 };
 
 export type SpeechifyPcmFxOlaResult = {
   /** Dial-baked wet delivery AAC @ 44.1 kHz. Empty when encodeAac is false. */
   deliveryAac: Buffer;
-  /** Dial-baked wet PCM @ 24 kHz (for stitching sections before one AAC encode). */
+  /** Dial-baked wet PCM @ VOICE_FX_PCM_SR (stitch before one AAC encode). */
   mixedPcm?: Buffer;
   /** Per-segment dry PCM for async archive (not served). */
   dryChunks: SpeechifyDryPcmChunk[];
@@ -82,7 +82,7 @@ export type SpeechifyPcmFxOlaResult = {
       fxMs?: number;
       /** Float bus finalize + dial mix (cheap). */
       olaMs?: number;
-      /** Final 24 kHz PCM → AAC @ 44.1. */
+      /** Final PCM → AAC @ 44.1. */
       aacEncodeMs?: number;
     };
   };
@@ -120,7 +120,7 @@ function elapsedMs(started: number): number {
  *   /** When false, OLA dry only and encode (no FX). * /
  *   applyFx: boolean;
  *   voiceFxDial: number;
- *   /** Provider TTS → raw s16le mono @ 24 kHz. * /
+ *   /** Provider TTS → raw s16le mono @ VOICE_FX_PCM_SR. * /
  *   synthesizePcm24k: (text: string) => Promise<Buffer>;
  *   /** Label for empty-pipeline errors. * /
  *   providerLabel?: string;
@@ -333,7 +333,7 @@ export async function synthesizePcmFxOla(params: {
   /** When false, OLA dry only and encode (no FX). */
   applyFx: boolean;
   voiceFxDial: number;
-  /** Provider TTS → raw s16le mono @ 24 kHz. */
+  /** Provider TTS → raw s16le mono @ VOICE_FX_PCM_SR. */
   synthesizePcm24k: (text: string) => Promise<Buffer>;
   /** Label for empty-pipeline errors. */
   providerLabel?: string;
@@ -599,7 +599,7 @@ type LengthFitOptions = {
 
 export type PcmFxOlaWithFit = SpeechifyPcmFxOlaResult & { lengthFit: PcmLengthFitResult };
 
-/** Speechify pcm_24000 → FX OLA → AAC. */
+/** Speechify pcm_44100 → FX OLA → AAC. */
 export async function synthesizeSpeechifyPcmFxOla(params: {
   s3: S3Client;
   bucket: string;
@@ -624,6 +624,7 @@ export async function synthesizeSpeechifyPcmFxOla(params: {
     pauseScale: params.pauseScale,
     applyFx: params.applyFx,
     voiceFxDial: params.voiceFxDial,
+    // Default: post-PCM atempo from FIXED_SPEECHIFY_ATEMPO (API rate left at 0 / unset).
     speechTempo: params.speechTempo,
     longPauseScale: params.longPauseScale,
     lengthFit: params.lengthFit,
@@ -646,7 +647,7 @@ export async function synthesizeSpeechifyPcmFxOla(params: {
   });
 }
 
-/** Fish pcm @ 24 kHz → same FX OLA → AAC path as Speechify. */
+/** Fish pcm @ 44.1 kHz → same FX OLA → AAC path as Speechify. */
 export async function synthesizeFishPcmFxOla(params: {
   s3: S3Client;
   bucket: string;

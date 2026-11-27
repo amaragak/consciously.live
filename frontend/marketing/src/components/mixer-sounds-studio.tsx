@@ -103,8 +103,9 @@ function playingFromMix(
 }
 
 function mediaFileUrl(base: string, key: string): string {
+  const playKey = backgroundAudioPlaybackKey(key);
   const b = base.replace(/\/+$/, "");
-  const k = key.replace(/^\/+/, "");
+  const k = playKey.replace(/^\/+/, "");
   return `${b}/${k}`;
 }
 

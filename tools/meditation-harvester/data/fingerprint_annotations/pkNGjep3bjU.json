@@ -1,0 +1,45 @@
+{
+  "video_id": "pkNGjep3bjU",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "welcome",
+      "posture",
+      "eyes_closed_or_soft_gaze",
+      "body_arrival",
+      "intention_or_purpose",
+      "permission_or_acceptance"
+    ],
+    "closing_moves": [
+      "deepen_once_more",
+      "return_attention",
+      "eyes_open",
+      "gratitude"
+    ],
+    "techniques": [
+      "body_part_sequence",
+      "breath_counting_or_ratio",
+      "noting_or_labelling"
+    ],
+    "body_sequence_direction": "head_to_feet",
+    "imagery_themes": [],
+    "person_main": "you",
+    "listener_i_statements": false,
+    "tense_main": "mixed",
+    "question_rate": "low",
+    "repetition_level": "low",
+    "listener_repeats": false,
+    "directiveness": 2,
+    "energy": 1,
+    "certainty": 4,
+    "warmth": 4,
+    "formality": 3
+  },
+  "words": 1490,
+  "questions_per_1k_words": 1.34,
+  "usage": {
+    "in": 4332,
+    "out": 268
+  }
+}

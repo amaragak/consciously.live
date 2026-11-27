@@ -1,6 +1,6 @@
 /**
  * Fish Audio TTS helpers.
- * Meditation FX path uses pcm @ 24 kHz (same as Speechify pcm_24000).
+ * Meditation FX path uses pcm @ 44.1 kHz (same as Speechify pcm_44100).
  */
 import {
   GetSecretValueCommand,
@@ -126,7 +126,7 @@ async function fishTtsRequest(
   throw new Error(lastErr);
 }
 
-/** Fish stream → raw 16-bit LE mono PCM @ 24 kHz (matches Speechify pcm_24000). */
+/** Fish stream → raw 16-bit LE mono PCM @ VOICE_FX_PCM_SR (matches Speechify pcm_44100). */
 export async function fishTtsPcm24k(params: FishTtsParams): Promise<Buffer> {
   const buf = await fishTtsRequest(params, {
     format: "pcm",

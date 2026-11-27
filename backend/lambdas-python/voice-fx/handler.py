@@ -27,7 +27,8 @@ from pedalboard import Delay, Gain, HighpassFilter, LowpassFilter, Pedalboard, R
 from pedalboard.io import AudioFile
 import boto3
 
-TARGET_LUFS_I = -16.0
+# Match Speechify / ffmpeg voice loudnorm (~−14 LUFS integrated).
+TARGET_LUFS_I = -14.0
 
 # Set once per container, so the first request can report the cold start it paid
 # for (importing pedalboard's native extension) separately from its own work.

@@ -216,7 +216,7 @@ function fishCostTooltipText(m: LibraryMeditationItem): string | null {
   if (ttsProvider === "speechify") {
     const bytes = est?.bytes;
     lines.push(
-      "Speechify · simba-3.2",
+      "Speechify · simba-3.5",
       bytes != null
         ? `${bytes.toLocaleString()} UTF-8 bytes (cost not estimated)`
         : "cost not estimated (no script bytes)",

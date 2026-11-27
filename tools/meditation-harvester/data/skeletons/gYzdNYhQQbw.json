@@ -1,0 +1,55 @@
+{
+  "video_id": "gYzdNYhQQbw",
+  "pause_min_s": 4.0,
+  "short_min_s": 1.0,
+  "runtime_s": 2965.0,
+  "lead_in_s": 0.0,
+  "tail_s": 0.0,
+  "segments": [
+    {
+      "type": "pause",
+      "start": 0.0,
+      "length": 17.68
+    },
+    {
+      "type": "passage",
+      "start": 17.68,
+      "length": 418.58,
+      "words": 1194,
+      "position": 0.006,
+      "role": "other",
+      "phase": "opening",
+      "short_pauses": {
+        "count": 11,
+        "lengths_s": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.2,
+          1.0,
+          1.2,
+          1.0,
+          1.4,
+          1.1,
+          1.1
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 436.26,
+      "length": 2528.74
+    }
+  ],
+  "counts": {
+    "passages": 1,
+    "pauses": 2,
+    "words": 1194
+  },
+  "timing_check": {
+    "covered_s": 2965.0,
+    "delta_s": -0.0,
+    "vs_youtube_s": -0.0
+  }
+}

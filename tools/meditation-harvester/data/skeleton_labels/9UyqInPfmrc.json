@@ -1,0 +1,75 @@
+{
+  "video_id": "9UyqInPfmrc",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "87864c63f6892299",
+  "labels": [
+    [
+      "settle",
+      "opening"
+    ],
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "imagery",
+      "main"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "close",
+      "closing"
+    ]
+  ]
+}

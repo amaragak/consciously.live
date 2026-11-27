@@ -1,0 +1,368 @@
+{
+  "video_id": "qjETlM9Avaw",
+  "stats": {
+    "duration_s": 2559,
+    "word_count": 54,
+    "speech_s": 19,
+    "silence_pct": 99,
+    "wpm_while_speaking": 169,
+    "words_per_minute_of_runtime": 1.3,
+    "pause_count": 1,
+    "pause_median_s": 2539.4,
+    "pause_max_s": 2539,
+    "pause_buckets": {
+      "1-2s": 0,
+      "2-5s": 0,
+      "5-10s": 0,
+      "10-30s": 0,
+      "30-60s": 0,
+      "60s+": 1
+    },
+    "first_words_at_s": 0.0,
+    "last_words_at_s": 19.1,
+    "pacing_by_tenth": [
+      {
+        "silence_pct": 93,
+        "words": 54,
+        "pauses": 1,
+        "pause_median_s": 2539.4,
+        "pause_max_s": 2539.4
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      }
+    ]
+  },
+  "words": [
+    [
+      0.0,
+      0.36,
+      " I"
+    ],
+    [
+      0.36,
+      0.72,
+      " AM"
+    ],
+    [
+      0.72,
+      1.22,
+      " THAT"
+    ],
+    [
+      1.22,
+      1.7,
+      " I"
+    ],
+    [
+      1.7,
+      2.04,
+      " AM"
+    ],
+    [
+      2.92,
+      3.24,
+      " These"
+    ],
+    [
+      3.24,
+      3.38,
+      " are"
+    ],
+    [
+      3.38,
+      3.48,
+      " the"
+    ],
+    [
+      3.48,
+      3.66,
+      " words"
+    ],
+    [
+      3.66,
+      4.0,
+      " written"
+    ],
+    [
+      4.0,
+      4.36,
+      " in"
+    ],
+    [
+      4.36,
+      4.48,
+      " the"
+    ],
+    [
+      4.48,
+      4.84,
+      " spiritual"
+    ],
+    [
+      4.84,
+      5.42,
+      " literature"
+    ],
+    [
+      5.42,
+      5.7,
+      " of"
+    ],
+    [
+      5.7,
+      5.84,
+      " the"
+    ],
+    [
+      5.84,
+      6.16,
+      " Torah,"
+    ],
+    [
+      6.52,
+      6.7,
+      " which"
+    ],
+    [
+      6.7,
+      6.82,
+      " is"
+    ],
+    [
+      6.82,
+      6.96,
+      " the"
+    ],
+    [
+      6.96,
+      7.14,
+      " first"
+    ],
+    [
+      7.14,
+      7.5,
+      " five"
+    ],
+    [
+      7.5,
+      7.74,
+      " books"
+    ],
+    [
+      7.74,
+      7.98,
+      " of"
+    ],
+    [
+      7.98,
+      8.08,
+      " the"
+    ],
+    [
+      8.08,
+      8.22,
+      " Old"
+    ],
+    [
+      8.22,
+      8.62,
+      " Testament,"
+    ],
+    [
+      8.9,
+      9.52,
+      " in"
+    ],
+    [
+      9.52,
+      9.68,
+      " which"
+    ],
+    [
+      9.68,
+      9.88,
+      " God"
+    ],
+    [
+      9.88,
+      10.22,
+      " tells"
+    ],
+    [
+      10.22,
+      10.64,
+      " Moses,"
+    ],
+    [
+      11.18,
+      11.36,
+      " This"
+    ],
+    [
+      11.36,
+      11.5,
+      " is"
+    ],
+    [
+      11.5,
+      11.72,
+      " my"
+    ],
+    [
+      11.72,
+      11.98,
+      " name"
+    ],
+    [
+      11.98,
+      12.52,
+      " forever,"
+    ],
+    [
+      12.88,
+      13.08,
+      " the"
+    ],
+    [
+      13.08,
+      13.28,
+      " name"
+    ],
+    [
+      13.28,
+      13.48,
+      " by"
+    ],
+    [
+      13.48,
+      13.7,
+      " which"
+    ],
+    [
+      13.7,
+      13.92,
+      " I"
+    ],
+    [
+      13.92,
+      14.14,
+      " shall"
+    ],
+    [
+      14.14,
+      14.36,
+      " be"
+    ],
+    [
+      14.36,
+      14.66,
+      " known"
+    ],
+    [
+      14.66,
+      15.06,
+      " for"
+    ],
+    [
+      15.06,
+      15.42,
+      " all"
+    ],
+    [
+      15.42,
+      15.8,
+      " future"
+    ],
+    [
+      15.8,
+      16.48,
+      " generations."
+    ],
+    [
+      17.12,
+      17.44,
+      " I"
+    ],
+    [
+      17.44,
+      17.88,
+      " AM"
+    ],
+    [
+      17.88,
+      18.38,
+      " THAT"
+    ],
+    [
+      18.38,
+      18.82,
+      " I"
+    ],
+    [
+      18.82,
+      19.14,
+      " AM."
+    ]
+  ]
+}

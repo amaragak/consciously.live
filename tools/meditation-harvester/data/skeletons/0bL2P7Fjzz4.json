@@ -1,0 +1,150 @@
+{
+  "video_id": "0bL2P7Fjzz4",
+  "pause_min_s": 4.0,
+  "short_min_s": 1.0,
+  "runtime_s": 949.0,
+  "lead_in_s": 0.0,
+  "tail_s": 0.0,
+  "segments": [
+    {
+      "type": "pause",
+      "start": 0.0,
+      "length": 5.23
+    },
+    {
+      "type": "passage",
+      "start": 5.23,
+      "length": 419.86,
+      "words": 807,
+      "position": 0.0055,
+      "role": "other",
+      "phase": "opening",
+      "short_pauses": {
+        "count": 22,
+        "lengths_s": [
+          1.1,
+          1.5,
+          1.1,
+          1.1,
+          2.7,
+          1.2,
+          3.6,
+          3.0,
+          2.7,
+          1.6,
+          1.1,
+          1.7,
+          1.0,
+          1.2,
+          1.2,
+          2.3,
+          1.1,
+          3.0,
+          1.3,
+          2.5,
+          2.4,
+          2.4
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 425.09,
+      "length": 6.19
+    },
+    {
+      "type": "passage",
+      "start": 431.28,
+      "length": 194.89,
+      "words": 355,
+      "position": 0.4545,
+      "role": "instruction",
+      "phase": "main",
+      "short_pauses": {
+        "count": 11,
+        "lengths_s": [
+          1.0,
+          1.3,
+          1.1,
+          1.2,
+          2.2,
+          2.0,
+          1.6,
+          2.1,
+          1.3,
+          1.8,
+          1.4
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 626.17,
+      "length": 5.84
+    },
+    {
+      "type": "passage",
+      "start": 632.01,
+      "length": 79.21,
+      "words": 153,
+      "position": 0.666,
+      "role": "instruction",
+      "phase": "main",
+      "short_pauses": {
+        "count": 4,
+        "lengths_s": [
+          1.4,
+          2.1,
+          2.3,
+          2.1
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 711.22,
+      "length": 5.7
+    },
+    {
+      "type": "passage",
+      "start": 716.92,
+      "length": 225.77,
+      "words": 434,
+      "position": 0.7554,
+      "role": "instruction",
+      "phase": "main",
+      "short_pauses": {
+        "count": 12,
+        "lengths_s": [
+          1.0,
+          1.2,
+          1.5,
+          1.0,
+          2.3,
+          1.4,
+          2.4,
+          2.4,
+          1.5,
+          1.4,
+          2.0,
+          2.4
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 942.69,
+      "length": 6.31
+    }
+  ],
+  "counts": {
+    "passages": 4,
+    "pauses": 5,
+    "words": 1749
+  },
+  "timing_check": {
+    "covered_s": 949.0,
+    "delta_s": 0.0,
+    "vs_youtube_s": 0.0
+  }
+}

@@ -805,11 +805,12 @@ function buildLibraryItems(params: {
     if (merged.has(obj.key) || claimedOnly.has(obj.key) || excluded.has(obj.key)) {
       continue;
     }
+    const playKey = meditationPlaybackS3Key(obj.key);
     merged.set(obj.key, {
       id: null,
       sk: null,
-      s3Key: obj.key,
-      audioUrl: `https://${cfDomain}/${obj.key}`,
+      s3Key: playKey,
+      audioUrl: `https://${cfDomain}/${playKey}`,
       title: "Uncatalogued audio",
       meditationType: null,
       meditationStyle: null,

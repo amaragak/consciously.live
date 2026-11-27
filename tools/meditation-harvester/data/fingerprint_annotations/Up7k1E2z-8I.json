@@ -1,0 +1,31 @@
+{
+  "video_id": "Up7k1E2z-8I",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [],
+    "closing_moves": [],
+    "techniques": [
+      "repeated_affirmations"
+    ],
+    "body_sequence_direction": "none",
+    "imagery_themes": [],
+    "person_main": "i",
+    "listener_i_statements": true,
+    "tense_main": "as_if_true",
+    "question_rate": "none",
+    "repetition_level": "high",
+    "listener_repeats": true,
+    "directiveness": 3,
+    "energy": 2,
+    "certainty": 5,
+    "warmth": 3,
+    "formality": 3
+  },
+  "words": 1016,
+  "questions_per_1k_words": 0.0,
+  "usage": {
+    "in": 3253,
+    "out": 161
+  }
+}

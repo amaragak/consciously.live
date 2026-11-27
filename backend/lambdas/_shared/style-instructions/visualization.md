@@ -1,56 +1,61 @@
 > Guidance for Visualization meditations, not fixed rules. Use judgement for each moment; the user's request overrides any of this.
 
+# Visualization: writing guide
+
 ## Mechanism
-Visualization moves attention from the room to an imagined place and lets the body respond as if it were there. The effect depends on concrete sensory detail and on leaving room for the listener to build the image. You supply a few vivid anchors, usually touch, temperature, light or sound, and then invite the listener to fill in the rest. A scene that is fully specified gives them nothing to do. A scene that is too vague never becomes real.
+The listener is led to build an inner scene and be inside it. Attention moves from the room to the body, then to one imagined place. The state shifts because the mind is busy with sensory detail, which crowds out rumination. Writing does this by placing the listener in the scene (second person, present tense), giving one concrete sensory cue at a time, and leaving room for the listener to fill it in. The listener's own imagery beats yours, so name the category and leave the specifics open ("a scent you'd find there").
 
 ## Phases
-Default arc: **settle → bridge → scene → integration → return.** A phase ends when the focus, the technique or the place changes.
-- **Settle (about 10–20%).** Breath and a short body release. Keep it brief, because the imagery is the point.
-- **Bridge (about 5–10%).** A threshold the listener passes through: a door, steps, a light, a path. It signals that the real place begins here and deepens the state.
-- **Scene (about 50–60%).** The core. Move through two or three beats, such as arriving, exploring, and meeting or receiving something. Each beat adds one new sense or one new element.
-- **Integration (about 10–15%).** The meaning of the scene lands: the goal feels already real, or a worry is left behind, or a gift is accepted. Tie this to the user's request.
-- **Return (about 5–10%).** Retrace the threshold, re-enter the body, open the eyes.
+Default arc: **arrival, deepening, entering the scene, exploring/anchoring, return.**
+- **Arrival**: posture, eyes, settling breaths, and sometimes a tension release or brief body scan. It ends when the body is quiet and the first image can be introduced.
+- **Deepening/threshold**: a descent device (steps, a lift, counting, a tunnel, a doorway). This is the handover from body to imagination. Skip it for light, short scenes.
+- **The scene**: the main phase, usually 50–60% of the session. Split it into sub-sections by change of place, sense, or purpose (arriving and looking, then touching and sounds, then the user's own purpose within the scene).
+- **Integration**: the scene's meaning for the user's request (a goal, a worry released, a gift received). This is where the user's own material lives.
+- **Return**: retrace the path or release the image, then come back to the body and the room.
 
-Longer sessions add scene beats and longer open silences, not more settling. Carry one thread throughout: a recurring image, a light, or a phrase that returns slightly changed. Each section should end in the middle of the scene's world, and the next should open in that same place, so separately written sections read as one journey.
+Longer sessions gain more places or stages and longer silent stretches in the scene, not a longer arrival. Carry a single anchor image (a light, a path, a door) and a few repeated phrases across phases. Each section's last line should set up the next move, such as "ahead of you, a door", and the next section should open on that image rather than restart.
 
 ## How to say it
-- **Cue anatomy:** name the sense or element, invite gently, and leave the detail open. For example: "Notice what the ground feels like under your feet… maybe cool, maybe warm."
-- **Sequencing:** go wide to near (sky, then path, then hands), or one sense at a time. Add one new thing per cue.
-- **Questions** like "What can you see? Who is here?" hand the building to the listener. Use them sparingly and follow them with space.
-- **Voice:** second person, present tense, short plain sentences. Make instructions permissive ("you might", "if you like", "let it be as it is") so the image never feels wrong.
-- **Repetition:** a short anchor phrase at each threshold, or an "each step takes you deeper" rhythm, builds depth. Vary the wording slightly each time.
-- **The user's material:** turn their goal, worry or place into a concrete object or setting inside the scene (a locked door they open, a goal glimpsed in the distance). Do not state it as an abstract theme.
-- **Intention-style requests:** have the listener step into the finished scene and feel it from inside, rather than watching it from outside.
+- **Anatomy of a cue**: one sense or action, a soft invitation, and an open detail. For example: "Notice what's under your feet… the surface might be warm, or cool."
+- Sequence from wide to near, then to the sensed. First the place and light, then what you see, hear, smell and touch, then the feeling. Add movement in small steps.
+- Questions ("What do you see?") work as prompts when followed by silence. Use them sparingly, and more with a goal or a child as the listener.
+- Soften with "you might", "perhaps", "if you like", and give choices ("walk, or float").
+- Use short, plain sentences. Allow repetition of anchors ("deeper and deeper", "safe here") and vary the object each time.
+- Include safety and permission ("you are completely safe"), and tell the listener the place can be revisited.
+- **Weaving in the user's material**: put their goal, worry or place inside the scene as an object or event. For example, a worry becomes a box left at the foot of the stairs; a goal plays out on a cavern wall. Use their own words for the details. Let the scene's imagery carry the meaning rather than explaining it.
 
 ## Pauses
-A pause gives the listener time to do what the line asked. Between sentences, 2–3s is typical. Use 10–30s after an open invitation to see or feel something, and 60s or more only where the user asks for silent exploration. Silence can lengthen as the scene deepens and shorten again in the return. Avoid pausing mid-sentence or mid-image. Write pauses as [[PAUSE Ns]].
+Pauses give time to do what the line asked. A short, simple cue takes about 2–3 seconds. "Look around", "feel it" and "enjoy" invite 10–30 seconds. A fully open exploration can take one long silence in the middle, introduced explicitly ("I'll leave you here for a while"). Silence tends to lengthen as the scene deepens. Keep lines in a stretch of settling or counting close together. Avoid long silence mid-sentence, directly after an instruction that needs the next line, or right after the first image. Write as [[PAUSE Ns]].
 
 ## Opening and closing
-Open with one line that sets the purpose, a few breaths, and then the first image. Skip long preambles and teaching. Close by retracing the threshold, naming the body, and offering that the place can be revisited. Adapt the close to the request: end in stillness for sleep, or with energy and movement for the day.
+Open with a brief welcome and posture, eyes closed, and settling breaths, with a body release if it suits. State the purpose briefly only if the user has one. Close by deepening once, then returning: retrace the path or let the scene fade, notice the body and the room, move the fingers, open the eyes. Add a line about carrying the feeling forward or returning any time. Keep the final words short.
+
+## What listeners expect
+- **Open**: posture (nearly all sessions), settling breaths (nearly all), eyes closed (most), welcome (most), intention (most), body arrival and permission (many).
+- **Close**: deepen once more (most), return attention (most), eyes open (many), carry into the day (many).
+- **Delivery**: soothing, between permissive and assertive, second person, mostly present tense, confident about outcomes, rarely questions, medium repetition, little invitation to repeat.
+- **Fits**: calm and safety ("safe and secure"); descending and deepening ("down through your"); inner world; "you can return any time"; noticing change ("you find yourself").
+- **Keep rare**: generic relax-and-release wording and body-part locating.
+- **Avoid**: well-wishing phrases (loving-kindness), arm and hand placement cues (movement), abundance affirmations (affirmation-loop), bringing a person to mind (loving-kindness).
 
 ## Common mistakes
-- Listing every detail of a scene, which leaves the listener nothing to imagine. Give anchors and leave gaps.
-- Staying in the settle phase too long.
-- Abstract affirmations in place of images. Tie the message to something the listener sees or holds.
-- Introducing a new place every few lines. Let one place deepen.
-- Using absolutes ("you will feel…"). Use permissive wording.
-- Rushing the return. Count up or retrace the steps.
+- Opening with long lectures or theory. Use one line of purpose and move on.
+- Describing the scene without the senses, or with too many details at once.
+- Over-specifying so the listener's own imagery is shut out.
+- Rushing the descent or the return, or ending the scene abruptly.
+- Hollow reassurance that never ties to the user's request.
+- Counting or descending devices in a short scene where they add nothing.
 
 ## Worked example
-Request: "10-minute visualization to feel confident before a job interview."
+Request: "10 minutes, calm before a job interview; I'm nervous about speaking."
+Phases: (1) Arrival: breath and shoulders, 1 min. (2) Threshold: a path down to a clearing, counting down from five, 1.5 min. (3) Scene: a quiet clearing with the senses, 3 min. (4) Integration: a rehearsal where the speaker's voice is steady, and a talisman object to take along, 3 min. (5) Return: climbing back up, 1.5 min. The carried thread is the clearing's light, which comes back in the integration and return.
 
-Phases:
-1. Settle: slow breath, drop the shoulders.
-2. Bridge: walk up a short stair toward a warm light.
-3. Scene: enter a calm room, meet a steady version of yourself, and watch the interview go well.
-4. Integration: accept a small object that stands for confidence.
-5. Return: descend the stair, and feel the chair and breath.
-
-What carries across: the warm light, and the phrase "steady and ready."
-
-Excerpt from the scene phase:
-You push open the door, and the room is bright and quiet. [[PAUSE 3s]]
-Notice the chair waiting for you… how it feels as you sit. [[PAUSE 4s]]
-Across the table, someone looks up and smiles. [[PAUSE 3s]]
-What do you notice in your own voice as you begin to speak? [[PAUSE 15s]]
-Steady and ready. [[PAUSE 4s]]
+Excerpt from phase 3:
+You step into the clearing, and the grass is soft under your feet.
+[[PAUSE 3s]]
+Notice the light here. It might be gold, or silver-green.
+[[PAUSE 4s]]
+Somewhere close, there's the sound of water. Let it move through you.
+[[PAUSE 12s]]
+What does the air smell like in this place?
+[[PAUSE 8s]]

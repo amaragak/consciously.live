@@ -98,13 +98,34 @@ export async function transcribeJournalAudio(params: {
   return { text, storage };
 }
 
-/** Prefer CDN MP3 for previews and mixer jobs (`background-audio/…` beds). */
+/** Catalog / API bed key (`background-audio/….mp3` path shape). */
 export function backgroundAudioStreamingKey(key: string): string {
   const k = key.trim();
   if (!k) return k;
   const lower = k.toLowerCase();
   if (!lower.startsWith("background-audio/") || !lower.endsWith(".wav")) return k;
   return `${k.slice(0, -4)}.mp3`;
+}
+
+/** Bed playback: AAC-in-MP4 only. Never fetch leftover catalog `.mp3`. */
+export function backgroundAudioPlaybackKey(key: string): string {
+  const catalog = backgroundAudioStreamingKey(key);
+  if (!catalog) return catalog;
+  const pathOnly = catalog.split(/[?#]/)[0] ?? catalog;
+  const lower = pathOnly.toLowerCase();
+  const bedIdx = lower.indexOf("background-audio/");
+  if (bedIdx < 0) return catalog;
+  const bedPath = pathOnly.slice(bedIdx);
+  const bedLower = bedPath.toLowerCase();
+  if (bedLower.endsWith(".m4a")) return bedPath;
+  if (
+    bedLower.endsWith(".mp3") ||
+    bedLower.endsWith(".wav") ||
+    bedLower.endsWith(".opus")
+  ) {
+    return `${bedPath.slice(0, bedPath.lastIndexOf("."))}.m4a`;
+  }
+  return catalog;
 }
 
 export type BackgroundAudioItem = {

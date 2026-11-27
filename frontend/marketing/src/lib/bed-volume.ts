@@ -13,8 +13,14 @@ export const BED_GAIN_PEAK_VOLUME = SOUNDSCAPE_ELEMENT_VOLUME;
 /** Narration / voice sample level — always full scale in preview and bake. */
 export const SPEECH_ELEMENT_VOLUME = 1;
 
-/** Bed-only lead-in before speech starts (live mix and baked mix). */
+/**
+ * Short bed lead-in for Create voice/bed audition previews.
+ * Library playback uses {@link DEFAULT_MEDITATION_LEAD_IN_SECONDS}.
+ */
 export const BED_VOICE_INTRO_SECONDS = 1.5;
+
+/** Default meditation bed lead-in when `leadInSeconds` is omitted (matches generate). */
+export const DEFAULT_MEDITATION_LEAD_IN_SECONDS = 20;
 
 export function bedElementVolume(gain: number): number {
   const g = Math.min(100, Math.max(0, Number.isFinite(gain) ? gain : 0));

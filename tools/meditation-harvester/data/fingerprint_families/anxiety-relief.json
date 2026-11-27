@@ -1,0 +1,345 @@
+{
+  "style": "anxiety-relief",
+  "model": "claude-haiku-5-5",
+  "digest": "658804f9d9aa7422",
+  "families": [
+    {
+      "name": "Eyes open or closed cue",
+      "meaning": "Tells the listener to shut or open their eyes to set up the practice.",
+      "examples": [
+        "close your eyes",
+        "open your eyes"
+      ],
+      "members": [
+        "close your eyes",
+        "open your eyes",
+        "your eyes closed",
+        "your eyes feel"
+      ]
+    },
+    {
+      "name": "Invitation to notice",
+      "meaning": "Gently invites the listener to see, observe or check on something.",
+      "examples": [
+        "see if you",
+        "i invite you"
+      ],
+      "members": [
+        "see if you",
+        "i invite you",
+        "i'd like to invite you"
+      ]
+    },
+    {
+      "name": "Counting breath rhythm",
+      "meaning": "Counts the listener through a breath pattern to pace inhale and exhale.",
+      "examples": [
+        "breathe in for four",
+        "two three four"
+      ],
+      "members": [
+        "two three four",
+        "one two three four",
+        "breathe in for four",
+        "out for eight"
+      ]
+    },
+    {
+      "name": "Thoughts pass through",
+      "meaning": "Reassures that thoughts and sensations arrive and leave without needing control.",
+      "examples": [
+        "thoughts come and go",
+        "come and go"
+      ],
+      "members": [
+        "come and go",
+        "thoughts come and go"
+      ]
+    },
+    {
+      "name": "Reassurance of safety",
+      "meaning": "Tells the listener they are safe and fine, easing alarm.",
+      "examples": [
+        "you are safe",
+        "you are okay"
+      ],
+      "members": [
+        "you are safe",
+        "you are okay",
+        "i am safe i"
+      ]
+    },
+    {
+      "name": "Body part locating",
+      "meaning": "Directs attention to a specific part or area of the body.",
+      "examples": [
+        "part of your body",
+        "top of the head"
+      ],
+      "members": [
+        "part of your",
+        "part of your body",
+        "front of you",
+        "through the body",
+        "back to the body",
+        "how the body",
+        "palms of your hands",
+        "rest of your",
+        "top of the head",
+        "forehead relax your",
+        "muscles in your face",
+        "muscles of your"
+      ]
+    },
+    {
+      "name": "Breath through nose and mouth",
+      "meaning": "Specifies the route the breath takes in and out.",
+      "examples": [
+        "through your nose",
+        "out through your mouth"
+      ],
+      "members": [
+        "through your nose",
+        "out through your mouth",
+        "nose and out through",
+        "breathe out through your",
+        "deep breaths in through"
+      ]
+    },
+    {
+      "name": "Exhale cue",
+      "meaning": "Prompts the listener to breathe out, often to release tension.",
+      "examples": [
+        "you breathe out",
+        "breathe out you"
+      ],
+      "members": [
+        "you breathe out",
+        "breathe out you"
+      ]
+    },
+    {
+      "name": "Pause to begin",
+      "meaning": "Asks the listener to pause and start settling in.",
+      "examples": [
+        "take a moment",
+        "you can begin"
+      ],
+      "members": [
+        "take a moment",
+        "you can begin"
+      ]
+    },
+    {
+      "name": "Releasing and letting go",
+      "meaning": "Encourages the listener to release effort, tension or control.",
+      "examples": [
+        "you let go",
+        "go of any"
+      ],
+      "members": [
+        "you let go",
+        "go of any"
+      ]
+    },
+    {
+      "name": "Keep breathing steadily",
+      "meaning": "Encourages the listener to carry on with the breath without strain.",
+      "examples": [
+        "continue to breathe",
+        "deepen the breath"
+      ],
+      "members": [
+        "continue to breathe",
+        "deepen the breath"
+      ]
+    },
+    {
+      "name": "Reassurance of having enough",
+      "meaning": "Tells the listener they already have what they need and nothing must be fixed.",
+      "examples": [
+        "everything you need",
+        "nothing you need to fix"
+      ],
+      "members": [
+        "everything you need",
+        "you have everything",
+        "nothing you need",
+        "nowhere else you need"
+      ]
+    },
+    {
+      "name": "Naming the anxious state",
+      "meaning": "Names stress or feelings so the listener feels understood.",
+      "examples": [
+        "stress and anxiety",
+        "how you feel"
+      ],
+      "members": [
+        "stress and anxiety",
+        "how you feel",
+        "you may be feeling",
+        "you may feel"
+      ]
+    },
+    {
+      "name": "Stop trying to control",
+      "meaning": "Eases the listener out of effort, control and forced change.",
+      "examples": [
+        "trying to change",
+        "out of control"
+      ],
+      "members": [
+        "trying to change",
+        "out of control",
+        "mind is trying"
+      ]
+    },
+    {
+      "name": "Permission to relax",
+      "meaning": "Gives the listener explicit permission or ability to relax.",
+      "examples": [
+        "you can relax",
+        "give yourself permission"
+      ],
+      "members": [
+        "you can relax",
+        "give yourself permission"
+      ]
+    },
+    {
+      "name": "Focus on the breath",
+      "meaning": "Directs attention toward the breath as the anchor of the practice.",
+      "examples": [
+        "aware of your breath",
+        "focus on your breathing"
+      ],
+      "members": [
+        "bring your awareness",
+        "aware of your breath",
+        "attention on the breath",
+        "attention to the breath",
+        "focus on your breathing",
+        "notice your breath"
+      ]
+    },
+    {
+      "name": "Few deep breaths",
+      "meaning": "Suggests taking a small set of deep breaths to start calming.",
+      "examples": [
+        "few deep breaths",
+        "take a deep breath"
+      ],
+      "members": [
+        "few deep breaths",
+        "take a deep breath",
+        "take a few"
+      ]
+    },
+    {
+      "name": "Return to body or breath",
+      "meaning": "Brings attention back to the body or breath when the mind wanders.",
+      "examples": [
+        "back to the body",
+        "back to the breath"
+      ],
+      "members": [
+        "back to the breath"
+      ]
+    },
+    {
+      "name": "Settle in comfort",
+      "meaning": "Helps the listener get physically comfortable before starting.",
+      "examples": [
+        "make yourself comfortable",
+        "comfortable for you"
+      ],
+      "members": [
+        "comfortable for you",
+        "make yourself comfortable",
+        "finding a comfortable"
+      ]
+    },
+    {
+      "name": "Noticing sensations and feelings",
+      "meaning": "Invites the listener to observe what they feel in body and mind.",
+      "examples": [
+        "start to notice",
+        "you may notice"
+      ],
+      "members": [
+        "start to notice",
+        "you may notice",
+        "begin to notice",
+        "begin to feel",
+        "feel a little bit",
+        "feel a sense"
+      ]
+    },
+    {
+      "name": "Attention placement",
+      "meaning": "Asks the listener to direct or bring their attention somewhere.",
+      "examples": [
+        "bring your attention",
+        "focus your attention"
+      ],
+      "members": [
+        "bring your attention",
+        "you can bring",
+        "attention on your",
+        "focus your attention"
+      ]
+    },
+    {
+      "name": "Sense of ease",
+      "meaning": "Evokes a feeling of calm, ease and relaxation in the body.",
+      "examples": [
+        "sense of ease",
+        "ease into your"
+      ],
+      "members": [
+        "sense of ease",
+        "ease into your"
+      ]
+    },
+    {
+      "name": "Guide's own voice",
+      "meaning": "Refers to the guide and their voice to build connection.",
+      "examples": [
+        "sound of my voice",
+        "i want you"
+      ],
+      "members": [
+        "sound of my voice",
+        "i want you"
+      ]
+    },
+    {
+      "name": "Present moment, not past or future",
+      "meaning": "Redirects the listener away from past or future worry to now.",
+      "examples": [
+        "right now i",
+        "about the future"
+      ],
+      "members": [
+        "right now i",
+        "about the future",
+        "about the past"
+      ]
+    },
+    {
+      "name": "Acceptance of any experience",
+      "meaning": "Tells the listener whatever they feel is acceptable, even if imperfect.",
+      "examples": [
+        "even if you",
+        "any time you"
+      ],
+      "members": [
+        "any time you",
+        "even if it's",
+        "even if you",
+        "you don't need"
+      ]
+    }
+  ]
+}

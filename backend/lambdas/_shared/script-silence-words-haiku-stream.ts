@@ -206,6 +206,8 @@ export async function streamSilenceWordsSonnetWithProgressiveHaiku(params: {
    * inflated Sonnet ask. Gated mode scales to wordBudget instead.
    */
   askSonnetPct?: number;
+  /** When true, stream phases to TTS without a Haiku word-fix pass. */
+  skipHaiku?: boolean;
   source?: AiUsageSource;
   onPhaseReady?: (phase: SilenceWordsHaikuPhaseReady) => void | Promise<void>;
 }): Promise<{
@@ -278,6 +280,18 @@ export async function streamSilenceWordsSonnetWithProgressiveHaiku(params: {
         });
       }
       phaseResults[i] = row;
+
+      // Create open sits: one Sonnet only — fire TTS as soon as the phase closes.
+      if (params.skipHaiku === true) {
+        void Promise.resolve(
+          params.onPhaseReady?.({
+            phaseIndex: i,
+            phase,
+            ttsBody: phase.body,
+          }),
+        );
+        continue;
+      }
 
       if (Math.abs(miss) <= params.phaseTriggerPct + 1e-9) {
         void Promise.resolve(

@@ -1,59 +1,74 @@
 > Guidance for Loving-kindness meditations, not fixed rules. Use judgement for each moment; the user's request overrides any of this.
 
-# Loving-kindness: writing guide
+# Loving-kindness: writing brief
 
 ## Mechanism
-- The listener's attention rests on a short, silently repeated wish, offered to someone. The wish is the anchor, so keep it steady and simple. The writer's job is to hold the anchor, then change the recipient.
-- Warmth comes from sincerity and a specific person, not from forced feeling. Say so: no feeling is required, and wandering is part of the practice.
-- The widening of recipients is the arc. Moving from easy to harder recipients trains the heart gradually.
-- Keep the pace gentle. Don't lecture mid-practice. Explain only what the listener needs to act.
+- The listener's attention rests on a few silent wishes aimed at a specific being, so goodwill is practiced rather than just discussed.
+- Wishes work through repetition plus a vivid recipient: a name, a face, a felt presence.
+- Warmth is invited, not demanded. Feeling may be absent, and the practice still works.
+- Resistance is part of the material. Meet it gently with permission to stay with the phrases or return to self.
+- Decision rule: if a request fits this mechanism (wish, recipient, repeat, soften), it fits the style. Adapt recipients and phrases to the user, and keep the engine.
 
 ## Phases
-Build the session from these, in whatever order the request and listener suit:
-1. **Arrival** (about 10–15%): posture, a few breaths, optionally attention to the heart. Plant the intention.
-2. **Anchor phrases**: introduce the 3–4 phrases once and let them settle. By default, begin with an easy recipient: yourself, or a loved one if self-kindness is hard. Use the same phrases throughout.
-3. **Recipient rounds**: each is one block with its own change of person. Common ones are a benefactor or loved one, self, a neutral person, someone struggling, a difficult person, a group, and all beings. Each block has a cue to call the person to mind, a short phrase round, and a silent rest.
-4. **Release and return**: drop the phrases, rest in the feeling, carry it into the day.
+Divide by recipient or focus. Each phase has one cue, a few rounds of wishes, a short note, and a silence.
+1. **Arrival**: posture, breath, intention, naming the practice.
+2. **Anchor phrases**: introduce 3–4 short wishes. Default recipient is self, or an easy loved one if the user finds self-kindness hard.
+3. **Easy recipient**: a benefactor, loved one or friend. This builds felt warmth.
+4. **Widening**: self or a neutral person, then a difficult person, then groups.
+5. **All beings**: largest circle, longest silence.
+6. **Rest and return**: drop the phrases, feel the heart, carry the feeling into the day.
 
-Divide at each change of recipient. Longer sessions gain more recipients or repeated rounds and longer silent rests, rather than more talking. Short sessions use fewer recipients, perhaps just self, one other and all beings. The difficult person comes late, after warmth is established, and always comes with an escape: return to yourself if it's too hard.
-
-Carry the same phrases, the same pronoun pattern, and a repeating handover line such as "Now let that person go and bring to mind…". Close each section on a rest and open the next with the new recipient, so separately written sections join up.
+Default arc: arrival, self, loved one, neutral, difficult, all beings, rest, return. Short sessions (about 5–10 minutes) drop recipients or merge them. Longer sessions add recipients (a group, a community, an earlier self) and give each phase more rounds and silence. They do not add new techniques.
+- Boundary cue: a new recipient, or a shift from phrases to rest.
+- Share phrases across all phases, changing only the pronoun ("may I", "may you", "may we", "may all beings"). Handover: end each phase by letting the person go, or "let the phrases rest", and open the next with "when you're ready".
+- Difficult-person phases deserve a softening line and an exit: "If this is too much, return to yourself."
 
 ## How to say it
-- Cue anatomy: name the person type, invite gently, leave it open. "Bring to mind someone who makes you smile; a name, an image, or just a feeling of them."
-- Give a permissive fallback: "If no one comes, a pet or a simple sense of someone will do."
-- Phrase rounds: run the full phrase set one or two times, each line on its own, then rest. Vary the cue between rounds, not the phrases.
-- Use second person, present tense, short plain sentences. Soften with "you might", "see if you can", "if it feels right".
-- Add one sensory anchor per block, such as warmth in the chest or a hand on the heart, not a pile of images.
-- Weave the user's context in as the recipients or as wording: their named people, their struggle, their own phrases. Make the phrases reflect their need (for example, "may I be at ease with this") while keeping them short and repeatable.
-- Offer a reminder about wandering in the middle: "If you drift, begin again."
+- A cue names who, how to invite them, and what to do next. Example: "Bring to mind someone who makes you smile. Picture them, or say their name."
+- Introduce the wishes once, then say them as call-and-response, usually three rounds. Vary by trimming or shifting person, not by inventing new content.
+- Use plain, warm, present-tense lines. Short sentences, soft invitations ("see if you can", "you might"), and few questions.
+- Phrases should be short, general and speakable. Examples: safe, happy, healthy, live with ease. If the user's theme suggests it, swap in their wording.
+- Weave in the user's context through the recipient or the phrases (e.g. a brother they're estranged from becomes the difficult-person recipient). Mirror their words without analyzing them.
+- In long silences, offer one reminder at most: "If you drift, begin again."
 
 ## Pauses
-Write [[PAUSE Ns]]. A pause gives the listener time to do what the line asked. Between phrase lines, a few seconds (roughly 2–5s). After a cue that asks the listener to call someone to mind, a few more. After a full phrase round, a long silent rest, from about 15s to a minute or more in longer sessions. Silence generally grows as the session deepens. Don't pause mid-sentence, and don't leave long silences immediately after the opening line.
+- A pause gives time to do the line. A wish needs a few seconds ([[PAUSE 3s]] is typical, 2–5s). A recipient cue needs more, since the listener has to find someone ([[PAUSE 6s]] to [[PAUSE 15s]]).
+- Silence lengthens as the session deepens: wishes first, then 20–60s after the recipient cue, with a longer final silence.
+- Don't pause mid-phrase or mid-thought. Only the ends of wishes and cues get silences.
 
 ## Opening and closing
-- Open with a short settle and one clear statement of what the listener will do. Leave a brief silence before the first words.
-- Close by dropping the phrases, resting, then returning gently: eyes opening, carrying the warmth into the day. Skip sales or channel talk. Adapt both to the request, for example a bedtime session ends softly with no return.
+- Open briefly: welcome, a comfortable posture, eyes closed or soft gaze, a few settling breaths, and the practice named with its phrases. Offer them as optional.
+- Close by letting the phrases go and resting in the heart. Then open the eyes, and offer carrying the warmth into the day.
+- If the user asks for a short or sleep-oriented session, trim the settling, not the wishes.
+
+## What listeners expect
+- Most sessions open with posture, eyes closed or soft gaze, settling breaths, body arrival, and intention. A welcome and an overview are common. The closing is a deepen-once-more, then eyes open (most sessions), then carry into the day (many sessions).
+- Delivery is soft, permissive, warm and slow. Use "you" (most often), with "I" in the wishes. Phrases repeat heavily, and the listener is invited to repeat silently. Questions are few.
+- Fitting phrasing: wishes for safety, health, ease and happiness; bringing a person to mind ("say their name"); naming the practice; connection and care.
+- Keep rare: relaxation filler, body-part tours, descending imagery.
+- Avoid: affirmations of power or abundance (affirmation-loop), gratitude lists (reflection), energy-flow or arm-movement cues (movement-meditation).
 
 ## Common mistakes
-- Changing the phrases for each recipient. Keep them consistent.
-- Starting with a difficult person or skipping the fallback.
-- Long talks, theory or quotations in the middle of the practice.
-- Pausing evenly everywhere. Rests should follow a round, not each line.
-- Demanding a feeling. Invite an intention instead.
-- Ending abruptly after the last recipient. Give a rest and a return.
+- Long explanations before practice. Give two sentences, then begin.
+- Commanding a feeling. Say "see if" and allow neutrality.
+- Too many phrases (more than 4) or changing them each round.
+- Skipping the loved-one step before the difficult person.
+- Ending abruptly after "all beings". Return gently.
 
 ## Worked example
-**Request:** "10 minutes, I've been harsh on myself since a work mistake, and I want to soften toward a colleague I'm annoyed with."
+Request: "10 minutes, I'm anxious and snappy with my partner."
+Phases:
+1. Arrival, with an intention.
+2. Self wishes, using "calm" in place of "healthy".
+3. Partner as the loved one.
+4. Self again, softened.
+5. All beings.
+6. Rest and return.
+Carried across: the shared phrases and the heart as the anchor.
 
-**Phases:**
-1. Arrival: breath and hand on the heart.
-2. Self: phrases of ease and kindness for the one who made the mistake.
-3. Benefactor: someone who believes in them, to warm the heart.
-4. Colleague: the same phrases, with a fallback to self.
-5. All beings, then a rest and return.
-
-The carried thread is the same four phrases, and the warmth in the chest.
-
-**Excerpt (phase 2):**
-"Let your hand rest on your chest. Bring to mind the part of you still replaying that mistake. [[PAUSE 4s]] Now offer it these words, silently. May I be kind to myself. [[PAUSE 3s]] May I be at ease with this. [[PAUSE 3s]] May I be safe. [[PAUSE 3s]] May I be at peace. [[PAUSE 20s]]"
+Excerpt (phase 3):
+Bring your partner to mind, at an easy moment. [[PAUSE 6s]]
+Say their name silently, and sense them near. [[PAUSE 5s]]
+May you be safe. [[PAUSE 3s]]
+May you be calm. [[PAUSE 3s]]
+May you live with ease. [[PAUSE 20s]]

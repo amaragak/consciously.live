@@ -6568,45 +6568,399 @@ export async function fetchDevUiSettings(): Promise<DevUiSettings> {
   }
 }
 
-export type ClaudePrepromptRow = {
-  id: string;
-  title: string;
-  feature: string;
-  kind: string;
-  sourcePath: string;
-  text: string;
-  sortOrder: number;
-  deployedAt?: string;
+// Was: ClaudePrepromptRow / fetchAdminClaudePreprompts (read-only Claude catalog).
+// Now: versioned script-generation pre-prompts + style guides (Admin › Pre-prompts).
+
+export type PrepromptGroup = "preprompt" | "style_guide" | "dataset";
+export type PrepromptSource = "deploy" | "manual" | "harvester";
+
+/** Per-style summary on a harvester dataset version. */
+export type DatasetStyleSummary = {
+  style: string;
+  meditationType: string;
+  skeletons?: number;
+  primary?: number;
+  medianRuntimeS?: number | null;
+  videos?: number;
+  speechShareMedian?: number | null;
+  /** Delivery fingerprints: median ratings (1–5) and family counts. */
+  directivenessMedian?: number | null;
+  certaintyMedian?: number | null;
+  families?: { marker: number; generic: number; foreign: number };
 };
 
-export async function fetchAdminClaudePreprompts(): Promise<{
-  prompts: ClaudePrepromptRow[];
-  meta: { deployedAt: string; count: number; ids: string[] } | null;
-}> {
+export type PrepromptEntrySummary = {
+  id: string;
+  name: string;
+  description: string;
+  group: PrepromptGroup;
+  repoPath: string;
+  requiredPlaceholders: string[];
+  sortOrder: number;
+  latestVersion: number;
+  lastRepoVersion: number;
+  preferredVersionNumbers: number[];
+  replacedManualAt?: string;
+  replacedManualNote?: string;
+  latestSource: PrepromptSource;
+  latestCreatedAt: string;
+  latestAuthorEmail?: string;
+  latestDeployId?: string;
+  latestBundleId?: string;
+  lastHarvesterBundleId?: string;
+  updatedAt: string;
+  /** false = not synced to the database yet (before first deploy). */
+  seeded: boolean;
+  latestPreferred: boolean;
+  latestPreferredVersion: number | null;
+  /** Edits past the most recent preferred version (null = none preferred). */
+  editsPastPreferred: number | null;
+};
+
+export type PrepromptVersion = {
+  id: string;
+  version: number;
+  text: string;
+  createdAt: string;
+  source: PrepromptSource;
+  deployId?: string;
+  authorEmail?: string;
+  note?: string;
+  preferred?: boolean;
+  preferredLabel?: string;
+  replacedManualEdit?: boolean;
+  replacedManualFrom?: string;
+  restoredFromVersion?: number;
+  /** Harvester bundle version stamp. */
+  bundleId?: string;
+  bundleHash?: string;
+  importedVia?: string;
+  /** Datasets only. */
+  contentHash?: string;
+  chunkVersion?: number;
+  chunkCount?: number;
+  byteLength?: number;
+  summary?: DatasetStyleSummary[];
+};
+
+export type HarvesterSkeletonSegment =
+  | { type: "pause"; start: number; length: number }
+  | {
+      type: "passage";
+      start: number;
+      length: number;
+      words: number;
+      position?: number;
+      role: string;
+      phase: string;
+      short_pauses?: { count: number; lengths_s?: number[] };
+    };
+
+export type HarvesterSkeletonMeta = {
+  id: string;
+  title?: string;
+  channel?: string;
+  views?: number | null;
+  likes?: number | null;
+  runtime_s: number;
+  style: string;
+  fit: string;
+  counts?: { passages?: number; pauses?: number; words?: number };
+};
+
+export type HarvesterMoveShare = { move: string; share: number };
+
+export type HarvesterPhraseFamily = {
+  id: string;
+  name: string;
+  meaning?: string;
+  examples?: string[];
+  class: string;
+  rate_per_1k?: number;
+  prevalence?: number;
+  other_rate_per_1k?: number;
+  other_prevalence?: number;
+  belongs_to?: string[];
+};
+
+type HarvesterSpread = {
+  median?: number;
+  p25?: number;
+  p75?: number;
+  min?: number;
+  max?: number;
+  mean?: number;
+};
+
+export type HarvesterFingerprint = {
+  label?: string;
+  videos?: { annotated?: number; primary?: number; secondary?: number };
+  opening?: { moves?: HarvesterMoveShare[]; usual_order?: string[] };
+  closing?: { moves?: HarvesterMoveShare[]; usual_order?: string[] };
+  delivery?: Partial<
+    Record<"directiveness" | "energy" | "certainty" | "warmth" | "formality", HarvesterSpread>
+  >;
+  voice?: {
+    person?: Record<string, number>;
+    listener_i_statements?: number;
+    tense?: Record<string, number>;
+    question_rate?: Record<string, number>;
+  };
+  repetition?: { level?: Record<string, number>; listener_repeats?: number };
+  families?: {
+    marker?: HarvesterPhraseFamily[];
+    generic?: HarvesterPhraseFamily[];
+    foreign?: HarvesterPhraseFamily[];
+  };
+};
+
+export type HarvesterDatasetView = {
+  version: PrepromptVersion;
+  summary: DatasetStyleSummary[];
+  style?: string;
+  skeletons?: HarvesterSkeletonMeta[];
+  skeleton?: HarvesterSkeletonMeta & { segments: HarvesterSkeletonSegment[] };
+  profile?: Record<string, unknown>;
+  fingerprint?: HarvesterFingerprint;
+};
+
+export type ConformanceFamilyHit = {
+  id: string;
+  name: string;
+  hits: number;
+  phrases: string[];
+  belongsTo?: string[];
+  per1k?: number;
+  stylePer1k?: number;
+  overused?: boolean;
+};
+
+export type ConformanceMoves = { expected: string[]; present: string[]; missing: string[] };
+
+export type ConformanceRecord = {
+  version: number;
+  style: string;
+  fingerprintVersion: number;
+  score: number;
+  components: {
+    phrasing: number | null;
+    moves: number | null;
+    structure: number;
+    words: number;
+  };
+  foreign: { families: number; hits: number; list: ConformanceFamilyHit[] };
+  generic: { families: number; hits: number; overused: number; list: ConformanceFamilyHit[] };
+  marker: { families: number; hits: number };
+  moves: { opening: ConformanceMoves; closing: ConformanceMoves } | null;
+  structure: {
+    plannedBlocks: number;
+    writtenBlocks: number;
+    plannedPassages: number;
+    plannedGroups: number;
+    writtenGroups: number;
+    groupMatchShare: number;
+    roleChecks: number;
+    roleCueShare: number;
+    roleMisses: Array<{ block: number; roles: string[] }>;
+  };
+  words: {
+    target: number;
+    written: number;
+    ratio: number;
+    blocksWithinTolerance: number;
+    blocks: Array<{ block: number; target: number; written: number }>;
+  };
+};
+
+export type ConformanceGeneration = {
+  at: string;
+  jobId: string;
+  style: string;
+  meditationType: string;
+  requestedMinutes: number | null;
+  skeletonSourceId: string | null;
+  prepromptVersions?: Record<string, number>;
+  datasetVersions?: Record<string, number>;
+  conformance: ConformanceRecord;
+};
+
+export type ConformanceStyleAverage = {
+  style: string;
+  meditationType: string;
+  count: number;
+  averageScore: number;
+  noForeignShare: number;
+  movesPresentShare: number | null;
+};
+
+export type HarvesterImportSummary = {
+  bundle: { id: string; hash: string; generatedAt: string | null; schema: string };
+  importedVia: "deploy" | "admin";
+  styleGuides: Array<{
+    style: string;
+    meditationType: string | null;
+    entryId: string | null;
+    action: "created" | "appended" | "unchanged" | "skipped";
+    version: number;
+    error?: string;
+  }>;
+  datasets: Array<{
+    id: string;
+    action: "created" | "appended" | "unchanged" | "skipped";
+    version: number;
+    styles: number;
+  }>;
+  skeletonsPerStyle: DatasetStyleSummary[];
+  rejected: Array<{ section: string; key: string; reason: string }>;
+};
+
+export type PrepromptEntryDetail = {
+  entry: PrepromptEntrySummary;
+  latest: PrepromptVersion | null;
+  versions: PrepromptVersion[];
+  defaultText: string;
+  sampleValues: Record<string, string>;
+  repoFileName: string;
+};
+
+export type PrepromptPreview = {
+  missingPlaceholders: string[];
+  sampleValues: Record<string, string>;
+  filledText: string;
+  assembled: {
+    systemStable: string;
+    meditationContext: string;
+    taskContent: string;
+  };
+};
+
+async function prepromptsRequest<T>(
+  path: string,
+  init?: { method?: "GET" | "POST"; body?: unknown },
+): Promise<T> {
   const base = getMedimadeApiBase();
   if (!base) throw new Error("VITE_MEDIMADE_API_URL is not set");
-  const res = await medimadeFetch(`${base}/admin/preprompts`, {
-    headers: medimadeApiAuthHeaders(),
+  const res = await medimadeFetch(`${base}/admin/preprompts${path}`, {
+    method: init?.method ?? "GET",
+    headers:
+      init?.body !== undefined
+        ? medimadeJsonHeaders()
+        : medimadeApiAuthHeaders(),
+    ...(init?.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
   });
-  const data = (await res.json()) as {
-    prompts?: ClaudePrepromptRow[];
-    meta?: { deployedAt?: string; count?: number; ids?: string[] } | null;
+  const data = (await res.json().catch(() => ({}))) as T & {
     error?: string;
     detail?: string;
   };
   if (!res.ok) {
     throw new Error(data.detail ?? data.error ?? res.statusText);
   }
-  const prompts = Array.isArray(data.prompts) ? data.prompts : [];
-  const meta =
-    data.meta && typeof data.meta.deployedAt === "string"
-      ? {
-          deployedAt: data.meta.deployedAt,
-          count: typeof data.meta.count === "number" ? data.meta.count : prompts.length,
-          ids: Array.isArray(data.meta.ids) ? data.meta.ids : [],
-        }
-      : null;
-  return { prompts, meta };
+  return data;
+}
+
+export async function fetchAdminPrepromptEntries(): Promise<{
+  entries: PrepromptEntrySummary[];
+  meta: { syncedAt: string; deployId: string | null } | null;
+}> {
+  const data = await prepromptsRequest<{
+    entries?: PrepromptEntrySummary[];
+    meta?: { syncedAt: string; deployId: string | null } | null;
+  }>("");
+  return {
+    entries: Array.isArray(data.entries) ? data.entries : [],
+    meta: data.meta ?? null,
+  };
+}
+
+export function fetchAdminPrepromptEntry(
+  id: string,
+): Promise<PrepromptEntryDetail> {
+  return prepromptsRequest<PrepromptEntryDetail>(
+    `/${encodeURIComponent(id)}`,
+  );
+}
+
+export async function saveAdminPrepromptVersion(
+  id: string,
+  body: { text: string; note?: string },
+): Promise<PrepromptVersion> {
+  const data = await prepromptsRequest<{ version: PrepromptVersion }>(
+    `/${encodeURIComponent(id)}/versions`,
+    { method: "POST", body },
+  );
+  return data.version;
+}
+
+export async function setAdminPrepromptPreferred(
+  id: string,
+  version: number,
+  body: { preferred: boolean; label?: string },
+): Promise<{ version: PrepromptVersion; preferredVersionNumbers: number[] }> {
+  return prepromptsRequest(
+    `/${encodeURIComponent(id)}/versions/${version}/prefer`,
+    { method: "POST", body },
+  );
+}
+
+export async function restoreAdminPrepromptVersion(
+  id: string,
+  version: number,
+  body?: { note?: string },
+): Promise<PrepromptVersion> {
+  const data = await prepromptsRequest<{ version: PrepromptVersion }>(
+    `/${encodeURIComponent(id)}/versions/${version}/restore`,
+    { method: "POST", body: body ?? {} },
+  );
+  return data.version;
+}
+
+export async function importAdminHarvesterBundle(
+  bundle: unknown,
+): Promise<HarvesterImportSummary> {
+  const data = await prepromptsRequest<{ summary: HarvesterImportSummary }>(
+    "/import",
+    { method: "POST", body: { bundle } },
+  );
+  return data.summary;
+}
+
+export async function fetchAdminHarvesterDataset(
+  id: string,
+  q?: { version?: number; style?: string; skeleton?: string },
+): Promise<HarvesterDatasetView> {
+  const params = new URLSearchParams();
+  if (q?.version) params.set("version", String(q.version));
+  if (q?.style) params.set("style", q.style);
+  if (q?.skeleton) params.set("skeleton", q.skeleton);
+  const qs = params.toString();
+  const data = await prepromptsRequest<{ view: HarvesterDatasetView }>(
+    `/${encodeURIComponent(id)}/dataset${qs ? `?${qs}` : ""}`,
+  );
+  return data.view;
+}
+
+export async function fetchAdminConformance(q?: { days?: number }): Promise<{
+  generations: ConformanceGeneration[];
+  byStyle: ConformanceStyleAverage[];
+}> {
+  const data = await prepromptsRequest<{
+    generations?: ConformanceGeneration[];
+    byStyle?: ConformanceStyleAverage[];
+  }>(`/conformance${q?.days ? `?days=${q.days}` : ""}`);
+  return {
+    generations: Array.isArray(data.generations) ? data.generations : [],
+    byStyle: Array.isArray(data.byStyle) ? data.byStyle : [],
+  };
+}
+
+export function previewAdminPreprompt(
+  id: string,
+  body: { text?: string },
+): Promise<PrepromptPreview> {
+  return prepromptsRequest<PrepromptPreview>(
+    `/${encodeURIComponent(id)}/preview`,
+    { method: "POST", body },
+  );
 }
 
 export async function patchDevUiSettings(

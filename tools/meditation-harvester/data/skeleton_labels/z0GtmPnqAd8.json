@@ -1,0 +1,47 @@
+{
+  "video_id": "z0GtmPnqAd8",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "a4a7e7e0fa734a50",
+  "labels": [
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "settle",
+      "opening"
+    ],
+    [
+      "breath",
+      "opening"
+    ],
+    [
+      "breath",
+      "opening"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "return",
+      "closing"
+    ],
+    [
+      "close",
+      "closing"
+    ]
+  ]
+}

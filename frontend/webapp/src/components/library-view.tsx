@@ -144,6 +144,7 @@ import {
   type LibraryMeditationRow,
   type SpeechifyEmotionPlayback,
 } from "@/components/library-meditation-card";
+import { meditationSessionDurationSeconds } from "@consciously/common";
 import {
   armReflectMeditationHandoff,
   meditationIdFromLibraryItem,
@@ -285,12 +286,25 @@ function fishCostTooltipText(m: LibraryMeditationItem): string | null {
     }
     lines.push("");
   }
-  lines.push(`Length: ${formatDuration(m.durationSeconds)}`);
+  lines.push(
+    `Length: ${formatDuration(
+      meditationSessionDurationSeconds({
+        voiceSeconds: m.durationSeconds,
+        liveMix: m.liveMix,
+        leadInSeconds: m.leadInSeconds,
+        fadeOut: m.fadeOut,
+        backgroundNatureKey: m.backgroundNatureKey,
+        backgroundMusicKey: m.backgroundMusicKey,
+        backgroundDrumsKey: m.backgroundDrumsKey,
+        backgroundNoiseKey: m.backgroundNoiseKey,
+      }),
+    )}`,
+  );
   let voiceUsd = 0;
   if (ttsProvider === "speechify") {
     const bytes = est?.bytes;
     lines.push(
-      "Speechify · simba-3.2",
+      "Speechify · simba-3.5",
       bytes != null
         ? `${bytes.toLocaleString()} UTF-8 bytes (cost not estimated)`
         : "cost not estimated (no script bytes)",

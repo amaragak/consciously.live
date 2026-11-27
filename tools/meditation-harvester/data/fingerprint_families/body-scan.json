@@ -1,0 +1,252 @@
+{
+  "style": "body-scan",
+  "model": "claude-haiku-5-5",
+  "digest": "5463916310ab5414",
+  "families": [
+    {
+      "name": "Locating body regions",
+      "meaning": "Directs the listener's attention to a specific part of the body, moving through it in sequence.",
+      "examples": [
+        "top of your head",
+        "toes of the left foot"
+      ],
+      "members": [
+        "aware of your",
+        "top of your head",
+        "region of the body",
+        "bottom of your",
+        "toes of the left foot",
+        "top of the foot",
+        "down to your",
+        "back of the neck",
+        "top of the head",
+        "your body as a whole",
+        "your right foot",
+        "your lower back",
+        "back of the head",
+        "space between the eyebrows",
+        "your left knee",
+        "your left shoulder",
+        "shoulders and neck",
+        "side of your",
+        "your left foot",
+        "back of the knee"
+      ]
+    },
+    {
+      "name": "Attention placement and return",
+      "meaning": "Tells the listener to direct or bring their awareness back to the body or breath when it wanders.",
+      "examples": [
+        "bringing your attention",
+        "back to the breath"
+      ],
+      "members": [
+        "your attention to your",
+        "bringing your attention",
+        "back to your",
+        "focus on your",
+        "bring your awareness",
+        "your attention back",
+        "awareness to your",
+        "bring your attention",
+        "back to the breath",
+        "attention to the top",
+        "bringing your awareness",
+        "focus your attention",
+        "attention to move",
+        "attention to the bottom"
+      ]
+    },
+    {
+      "name": "Breath cycle awareness",
+      "meaning": "Anchors attention to the rhythm of inhaling and exhaling as it happens.",
+      "examples": [
+        "each out breath",
+        "rise and fall"
+      ],
+      "members": [
+        "out breath letting go",
+        "each in breath",
+        "letting the breath",
+        "each out breath",
+        "through the nose",
+        "breath all the way",
+        "breathing with them",
+        "through your nose",
+        "breath as it moves",
+        "rise and fall",
+        "feel the breath",
+        "moves in and out",
+        "through the nostrils",
+        "breath as it moves in and out",
+        "breath in any way"
+      ]
+    },
+    {
+      "name": "Letting go and allowing",
+      "meaning": "Invites the listener to release effort, tension or control and let things be.",
+      "examples": [
+        "you let go",
+        "go of any tension"
+      ],
+      "members": [
+        "you let go",
+        "go of any",
+        "go of the tendency",
+        "you can allow"
+      ]
+    },
+    {
+      "name": "Noticing sensations",
+      "meaning": "Asks the listener to observe and feel whatever physical sensations are present.",
+      "examples": [
+        "you can feel",
+        "any and all sensations"
+      ],
+      "members": [
+        "you can feel",
+        "any and all sensations",
+        "part of your body",
+        "feeling the sensations",
+        "sensations in this region",
+        "you are experiencing",
+        "sensations in your body",
+        "feel your body"
+      ]
+    },
+    {
+      "name": "Permission and invitation",
+      "meaning": "Gently offers the listener choice and reassurance, framing the practice as optional.",
+      "examples": [
+        "i invite you",
+        "you may find"
+      ],
+      "members": [
+        "i invite you",
+        "you may find",
+        "see if you",
+        "you find them",
+        "you may wish",
+        "you might feel",
+        "you are safe",
+        "exactly as you find"
+      ]
+    },
+    {
+      "name": "Whole-body awareness",
+      "meaning": "Widens attention from parts of the body to the body as one complete whole.",
+      "examples": [
+        "your entire body",
+        "your whole body"
+      ],
+      "members": [
+        "your entire body",
+        "sense of your body",
+        "your physical body",
+        "sense of your body as a whole",
+        "through the whole",
+        "your whole body",
+        "body as a whole lying"
+      ]
+    },
+    {
+      "name": "Starting the practice",
+      "meaning": "Sets up the session by prompting the listener to settle, close eyes and pause.",
+      "examples": [
+        "take a moment",
+        "close your eyes"
+      ],
+      "members": [
+        "take a moment",
+        "close your eyes",
+        "lying on your back",
+        "finding a comfortable",
+        "body scan meditation"
+      ]
+    },
+    {
+      "name": "Ending the practice",
+      "meaning": "Signals the close of the session by inviting the eyes to open and the listener to return.",
+      "examples": [
+        "open your eyes",
+        "you're ready"
+      ],
+      "members": [
+        "your eyes open",
+        "open your eyes"
+      ]
+    },
+    {
+      "name": "Accepting experience as it is",
+      "meaning": "Reassures the listener that no particular feeling or way of experiencing is required or wrong.",
+      "examples": [
+        "no right way to feel",
+        "exactly as you find"
+      ],
+      "members": [
+        "different from how",
+        "no right way",
+        "no right way to feel",
+        "true for you",
+        "trying to change"
+      ]
+    },
+    {
+      "name": "Moment-to-moment presence",
+      "meaning": "Frames the practice as continuous, unfolding attention over time.",
+      "examples": [
+        "moment by moment",
+        "over and over again"
+      ],
+      "members": [
+        "moment by moment",
+        "moment to moment",
+        "come and go",
+        "time to time",
+        "over the course",
+        "time when you",
+        "over and over again",
+        "long as you"
+      ]
+    },
+    {
+      "name": "Awareness of inner state",
+      "meaning": "Directs attention to the listener's feelings, mind and overall state.",
+      "examples": [
+        "how you feel",
+        "body and mind"
+      ],
+      "members": [
+        "body and mind",
+        "how you feel",
+        "you are feeling",
+        "through the body",
+        "find that you",
+        "eyebrows and the space between",
+        "feeling in your"
+      ]
+    },
+    {
+      "name": "Going deeper",
+      "meaning": "Encourages the listener to settle more fully into the practice and relaxation.",
+      "examples": [
+        "deeper and deeper"
+      ],
+      "members": [
+        "deeper and deeper"
+      ]
+    },
+    {
+      "name": "Movement across body",
+      "meaning": "Describes awareness travelling through or down the body.",
+      "examples": [
+        "down the body",
+        "through the body"
+      ],
+      "members": [
+        "down the body",
+        "down into the thigh"
+      ]
+    }
+  ]
+}

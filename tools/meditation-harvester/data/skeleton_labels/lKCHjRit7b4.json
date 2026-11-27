@@ -1,0 +1,31 @@
+{
+  "video_id": "lKCHjRit7b4",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "e87b468ccf4acc50",
+  "labels": [
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "reflection prompt",
+      "main"
+    ],
+    [
+      "close",
+      "closing"
+    ]
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "video_id": "6p_yaNFSYao",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "posture",
+      "settling_breaths",
+      "other"
+    ],
+    "closing_moves": [
+      "deepen_once_more",
+      "carry_into_day"
+    ],
+    "techniques": [
+      "breath_counting_or_ratio",
+      "imagery_journey",
+      "noting_or_labelling",
+      "body_part_sequence"
+    ],
+    "body_sequence_direction": "other_order",
+    "imagery_themes": [
+      "other"
+    ],
+    "person_main": "you",
+    "listener_i_statements": false,
+    "tense_main": "present",
+    "question_rate": "none",
+    "repetition_level": "low",
+    "listener_repeats": false,
+    "directiveness": 3,
+    "energy": 2,
+    "certainty": 4,
+    "warmth": 2,
+    "formality": 3
+  },
+  "words": 288,
+  "questions_per_1k_words": 0.0,
+  "usage": {
+    "in": 2254,
+    "out": 224
+  }
+}

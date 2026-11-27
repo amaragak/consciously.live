@@ -485,7 +485,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
           SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
           AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
           SPEECHIFY_VOICE_ID: "geffen_32",
-          SPEECHIFY_TTS_MODEL: "simba-3.2",
+          SPEECHIFY_TTS_MODEL: "simba-3.5",
           BLOG_REVALIDATE_SECRET_ARN: blogRevalidateSecret.secretArn,
           MARKETING_ORIGIN: authWebappOrigin,
         },
@@ -697,7 +697,7 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         FISH_TTS_MODEL: "s2.1-pro-free",
         SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
         SPEECHIFY_VOICE_ID: "geffen_32",
-        SPEECHIFY_TTS_MODEL: "simba-3.2",
+        SPEECHIFY_TTS_MODEL: "simba-3.5",
         OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
         CLAUDE_SECRET_ARN: claudeApiKeySecret.secretArn,
         CONSCIOUSLY_API_URL: httpApi.apiEndpoint,
@@ -787,8 +787,10 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         entry: path.join(__dirname, "../../lambdas/admin-preprompts.ts"),
         handler: "handler",
         runtime: lambda.Runtime.NODEJS_20_X,
-        timeout: cdk.Duration.seconds(30),
-        memorySize: 512,
+        // Harvester import parses + gzips a ~2–5 MB bundle and writes versions.
+        // Was: timeout 30s, memorySize 512.
+        timeout: cdk.Duration.seconds(60),
+        memorySize: 1024,
         role,
         environment: {
           VOICE_ADMIN_TABLE_NAME: voiceAdminTable.tableName,
@@ -797,15 +799,70 @@ export class ConsciouslyApiAdminNestedStack extends cdk.NestedStack {
         },
       },
     );
-    addNestHttpRoutes(this, httpApi, {
-      id: "AdminPrepromptsRoute",
-      path: "/admin/preprompts",
-      methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
-      integration: new integrations.HttpLambdaIntegration(
-        "AdminPrepromptsIntegration",
-        adminPreprompts,
-      ),
-    });
+    // Was: single route GET /admin/preprompts (read-only Claude catalog).
+    // Now versioned pre-prompts: list, entry, versions, prefer, restore, preview.
+    const prepromptIntegration = new integrations.HttpLambdaIntegration(
+      "AdminPrepromptsIntegration",
+      adminPreprompts,
+    );
+    const prepromptRoutes: Array<{
+      id: string;
+      path: string;
+      methods: apigwv2.HttpMethod[];
+    }> = [
+      {
+        id: "AdminPrepromptsRoute",
+        path: "/admin/preprompts",
+        methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
+      },
+      {
+        id: "AdminPrepromptsEntryRoute",
+        path: "/admin/preprompts/{id}",
+        methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
+      },
+      {
+        id: "AdminPrepromptsVersionsRoute",
+        path: "/admin/preprompts/{id}/versions",
+        methods: [
+          apigwv2.HttpMethod.GET,
+          apigwv2.HttpMethod.POST,
+          apigwv2.HttpMethod.OPTIONS,
+        ],
+      },
+      {
+        id: "AdminPrepromptsVersionRoute",
+        path: "/admin/preprompts/{id}/versions/{n}",
+        methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
+      },
+      {
+        id: "AdminPrepromptsPreferRoute",
+        path: "/admin/preprompts/{id}/versions/{n}/prefer",
+        methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      },
+      {
+        id: "AdminPrepromptsRestoreRoute",
+        path: "/admin/preprompts/{id}/versions/{n}/restore",
+        methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      },
+      {
+        id: "AdminPrepromptsPreviewRoute",
+        path: "/admin/preprompts/{id}/preview",
+        methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      },
+      {
+        id: "AdminPrepromptsImportRoute",
+        path: "/admin/preprompts/import",
+        methods: [apigwv2.HttpMethod.POST, apigwv2.HttpMethod.OPTIONS],
+      },
+      {
+        id: "AdminPrepromptsDatasetRoute",
+        path: "/admin/preprompts/{id}/dataset",
+        methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.OPTIONS],
+      },
+    ];
+    for (const r of prepromptRoutes) {
+      addNestHttpRoutes(this, httpApi, { ...r, integration: prepromptIntegration });
+    }
 
     const adminAppSettingsFn = new lambda_nodejs.NodejsFunction(
       this,

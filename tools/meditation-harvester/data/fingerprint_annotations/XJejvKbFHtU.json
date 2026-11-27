@@ -1,0 +1,42 @@
+{
+  "video_id": "XJejvKbFHtU",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "other"
+    ],
+    "closing_moves": [
+      "other"
+    ],
+    "techniques": [
+      "repeated_affirmations",
+      "reflection_questions",
+      "imagery_journey",
+      "loving_kindness_phrases"
+    ],
+    "body_sequence_direction": "none",
+    "imagery_themes": [
+      "light",
+      "nature",
+      "water"
+    ],
+    "person_main": "you",
+    "listener_i_statements": true,
+    "tense_main": "present",
+    "question_rate": "medium",
+    "repetition_level": "high",
+    "listener_repeats": true,
+    "directiveness": 3,
+    "energy": 3,
+    "certainty": 5,
+    "warmth": 4,
+    "formality": 2
+  },
+  "words": 4530,
+  "questions_per_1k_words": 6.62,
+  "usage": {
+    "in": 9516,
+    "out": 202
+  }
+}

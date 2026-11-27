@@ -223,7 +223,7 @@ export class ConsciouslyApiJournalNestedStack extends cdk.NestedStack {
           FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
           FISH_TTS_MODEL: "s2.1-pro-free",
           AI_USAGE_TABLE_NAME: aiUsageTable.tableName,
-          SPEECHIFY_TTS_MODEL: "simba-3.2",
+          SPEECHIFY_TTS_MODEL: "simba-3.5",
         },
       },
     );

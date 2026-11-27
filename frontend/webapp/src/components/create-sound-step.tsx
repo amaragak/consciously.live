@@ -55,10 +55,10 @@ import {
   speechifySpeakersForPicker,
 } from "@/lib/fish-speakers";
 import {
-  deliveryDescription,
-  longerBreaksFromDelivery,
-  MEDITATION_DELIVERY_OPTIONS,
-  readMeditationDeliveryPref,
+  // deliveryDescription,
+  // longerBreaksFromDelivery,
+  // MEDITATION_DELIVERY_OPTIONS,
+  // readMeditationDeliveryPref,
   writeMeditationDeliveryPref,
   type MeditationDelivery,
 } from "@/lib/meditation-delivery";
@@ -86,6 +86,7 @@ import {
   getDeliveryPacing,
   listFishSpeakers,
   listStyleVoicePrefs,
+  peekFishSpeakersCache,
   peekBackgroundAudioCache,
   preloadBackgroundAudioCoverImages,
   DEFAULT_COMPOSITION_TAG_TYPES,
@@ -140,7 +141,7 @@ import {
 import { isMelodicMusicKey } from "@/lib/sound-taxonomy";
 import {
   FIXED_SPEECH_PREVIEW_SPEED,
-  effectiveSpeechifyRate,
+  meditationSpeechifyRate,
   speakerPreviewLoudDrySampleKey,
   speakerPreviewLoudFxSampleKey,
   speakerSampleSpeedOrRate,
@@ -192,8 +193,10 @@ function mediaFileUrl(
   key: string,
   cacheBust?: string | null,
 ): string {
+  // Never fetch leftover catalog `.mp3` beds — AAC sibling only.
+  const playKey = backgroundAudioPlaybackKey(key);
   const b = base.replace(/\/$/, "");
-  const path = key.split("/").map(encodeURIComponent).join("/");
+  const path = playKey.split("/").map(encodeURIComponent).join("/");
   const url = `${b}/${path}`;
   const v = cacheBust?.trim();
   if (!v) return url;
@@ -631,7 +634,10 @@ export const CreateSoundStep = forwardRef<
   const showCreateAudioDevControls = shouldRenderDevUi(
     devUi.createAudioDevControls,
   );
-  const [speakers, setSpeakers] = useState<FishSpeaker[]>([]);
+  const [speakers, setSpeakers] = useState<FishSpeaker[]>(() => {
+    const cached = peekFishSpeakersCache();
+    return cached ? createSpeakersForPicker(cached) : [];
+  });
   const [styleVoicePrefs, setStyleVoicePrefs] = useState<
     Record<string, VoicePreferredTraits>
   >({});
@@ -641,16 +647,21 @@ export const CreateSoundStep = forwardRef<
   const [musicLevel, setMusicLevel] = useState(SOUND_VOLUME_RECOMMENDED);
   const [leadInSeconds, setLeadInSeconds] = useState<0 | 20>(20);
   const [fadeOut, setFadeOut] = useState(true);
-  const [delivery, setDelivery] = useState<MeditationDelivery>(() =>
-    readMeditationDeliveryPref("guided"),
-  );
-  const longerBreaks = longerBreaksFromDelivery(delivery);
+  // Create is open sits only (consciously-open-sits-default-v2). Delivery
+  // picker commented out below; always generate as open_sits.
+  // Was: readMeditationDeliveryPref("guided") + Casual/Guided/Open sits control.
+  const [delivery, setDelivery] = useState<MeditationDelivery>("open_sits");
+  const longerBreaks = true; // longerBreaksFromDelivery(delivery);
   function setLongerBreaks(next: boolean) {
-    setDelivery(next ? "open_sits" : "guided");
+    // Was: setDelivery(next ? "open_sits" : "guided");
+    void next;
+    setDelivery("open_sits");
   }
   function setDeliveryAndRemember(next: MeditationDelivery) {
-    setDelivery(next);
-    writeMeditationDeliveryPref(next);
+    // Was: setDelivery(next); writeMeditationDeliveryPref(next);
+    void next;
+    setDelivery("open_sits");
+    writeMeditationDeliveryPref("open_sits");
   }
   const [voiceCardStopNonce, setVoiceCardStopNonce] = useState(0);
   const [claudeModelChoice, setClaudeModelChoice] = useState(
@@ -866,7 +877,10 @@ export const CreateSoundStep = forwardRef<
 
   useEffect(() => {
     let cancelled = false;
-    void listFishSpeakers()
+    // Prefer network (picks up Pro/Fish unhide) but fall back to cache so the
+    // step never stays on "Choosing voice…" if refresh fails.
+    void listFishSpeakers({ refresh: true })
+      .catch(() => listFishSpeakers())
       .then((list) => {
         if (cancelled) return;
         const next = createSpeakersForPicker(list);
@@ -1196,8 +1210,8 @@ export const CreateSoundStep = forwardRef<
     // Wait for the beds/compositions catalog — otherwise an empty list becomes
     // silence and gets locked in before Our Picks can load (common on Skip to audio).
     if (factoryMixesLoading) return;
-    // Catalog still empty after load → keep waiting; never lock silence as default.
-    if (compositions.length === 0) return;
+    // After the catalog request finishes, settle picks even if compositions are
+    // empty (API failure) so the UI never sticks on "Choosing voice…".
     // Story Narrate: always a fresh random Our Pick — don't inherit Create lock.
     const lock = freshOurPickSound ? null : flowSoundLock;
     // Silence without a voice was almost always a pre-catalog race — don't honor it.
@@ -2179,24 +2193,17 @@ export const CreateSoundStep = forwardRef<
       ? ""
       : cfg.backgroundDrumsKey;
         const rateN = Number(speechifyRateInput.trim());
-    const pacedSpeechifyRate = effectiveSpeechifyRate(
-      speaker?.speechifyRate,
-      cfg.pacingPercent,
-    );
+    const pacedSpeechifyRate = meditationSpeechifyRate(cfg.pacingPercent);
         return {
           reference_id: referenceId,
       voiceFxDial: cfg.voiceFxDial,
           voiceFxPreset: voiceFxOn ? VOICE_FX_PRESET_MEDITATION_MIXER : null,
-      // Casual keeps the voice at its natural rate (no meditation slowing).
-      speed: delivery === "casual" && !cfg.longerBreaks ? 1 : speechSpeed,
-      deliveryStyle: (cfg.longerBreaks
-        ? "open_sits"
-        : delivery === "casual"
-          ? "casual"
-          : "guided") as MeditationDelivery,
+      // Open sits only — Fish keeps meditation slowing; Speechify uses post-TTS atempo.
+      speed: speechSpeed,
+      deliveryStyle: "open_sits" as MeditationDelivery,
       ttsProvider:
         speaker?.brand === "speechify" ? ("speechify" as const) : ("fish" as const),
-      ...(cfg.longerBreaks ? { longerBreaks: true as const } : {}),
+      longerBreaks: true as const,
           speakerName: speaker?.name ?? null,
       speakerPortraitUrl: speaker?.portraitImageUrl?.trim() || null,
       leadInSeconds: cfg.leadInSeconds,
@@ -3138,6 +3145,8 @@ export const CreateSoundStep = forwardRef<
             })}
           </div>
           <div className="mt-auto h-px bg-border" />
+          {/* Delivery picker removed — Create is open sits only
+              (consciously-open-sits-default-v2).
           <div className="flex items-start gap-3">
             <span className="w-16 shrink-0 pt-1.5 text-[13px] font-semibold text-foreground">
               Delivery
@@ -3172,6 +3181,7 @@ export const CreateSoundStep = forwardRef<
               </p>
             </div>
           </div>
+          */}
           <div className="flex items-start gap-3">
             <span className="w-16 shrink-0 pt-0.5 text-[13px] font-semibold text-foreground">
               Echo

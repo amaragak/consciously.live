@@ -1,0 +1,43 @@
+{
+  "video_id": "zn-DBZiQ9-c",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "other"
+    ],
+    "closing_moves": [],
+    "techniques": [
+      "breath_counting_or_ratio",
+      "imagery_journey",
+      "noting_or_labelling",
+      "story_narration",
+      "other"
+    ],
+    "body_sequence_direction": "none",
+    "imagery_themes": [
+      "nature",
+      "water",
+      "light",
+      "people",
+      "other"
+    ],
+    "person_main": "you",
+    "listener_i_statements": true,
+    "tense_main": "present",
+    "question_rate": "low",
+    "repetition_level": "medium",
+    "listener_repeats": true,
+    "directiveness": 2,
+    "energy": 1,
+    "certainty": 2,
+    "warmth": 3,
+    "formality": 2
+  },
+  "words": 581,
+  "questions_per_1k_words": 0.0,
+  "usage": {
+    "in": 2664,
+    "out": 207
+  }
+}

@@ -45,6 +45,8 @@ docs/design/journal/JournalImport*
 docs/design/home/HomeFull*
 docs/design/listen/Listen*
 docs/design/read/Read*
+# Local newhome design dump (shipped assets live under frontend/marketing/public/newhome/)
+docs/design/newhome/
 
 # Local generated images (Nano Banana and other one-off stills)
 tmp/
@@ -123,6 +125,13 @@ frontend/webapp/docs/design/journal-tabs-v2/
 docs/design/offline-downloads/
 docs/design/card-menu-sheet/
 docs/design/create-desktop-fixes-v3/
+
+# Meditation harvester: local-only (large audio, venv, secrets)
+tools/meditation-harvester/.venv/
+tools/meditation-harvester/.env
+tools/meditation-harvester/.env.*
+tools/meditation-harvester/data/audio/
+tools/meditation-harvester/__pycache__/
 
 # Local one-off debug dumps (never ship)
 backend/scripts/_dump-*.ts

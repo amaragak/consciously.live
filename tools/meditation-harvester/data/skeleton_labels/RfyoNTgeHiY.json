@@ -1,0 +1,39 @@
+{
+  "video_id": "RfyoNTgeHiY",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "627bd7ee4771adab",
+  "labels": [
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "body",
+      "opening"
+    ],
+    [
+      "imagery",
+      "main"
+    ],
+    [
+      "imagery",
+      "main"
+    ],
+    [
+      "imagery",
+      "main"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "affirmation",
+      "main"
+    ],
+    [
+      "imagery",
+      "main"
+    ]
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "video_id": "fUeEnkjKyDs",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "ed7c6a0b21f82906",
+  "labels": [
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "settle",
+      "opening"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "body",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "self-practice handover",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "affirmation",
+      "closing"
+    ]
+  ]
+}

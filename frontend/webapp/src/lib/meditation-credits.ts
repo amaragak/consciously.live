@@ -2,7 +2,9 @@
  * Client-side meditation credit estimate for Create › Sound.
  * Single source for the cost number and the breakdown popover.
  *
- * Credits = product of factors (length × delivery [× future factors]).
+ * Credits = length [× Pro voice]. Create is open sits only (×1 delivery), so
+ * the Delivery row is omitted. Pro (Fish) still multiplies by
+ * {@link DEFAULT_PRO_VOICE_MULTIPLIER} (default 2×).
  * Server remains source of truth at charge time; this drives the UI.
  */
 
@@ -44,19 +46,13 @@ export const DEFAULT_CHARS_PER_CREDIT_STANDARD = 1800;
 /** Pro (Fish) multiplier — server-configurable; default 2×. */
 export const DEFAULT_PRO_VOICE_MULTIPLIER = 2;
 
-const DELIVERY_LABEL: Record<MeditationDelivery, string> = {
-  casual: "Casual",
-  guided: "Guided",
-  open_sits: "Open sits",
-};
-
 /** Length factor: 5→×1, 10→×2, 15→×3, 20→×4 (and proportional for other lengths). */
 export function lengthCreditMultiplier(lengthMinutes: number): number {
   const m = Math.max(1, Math.round(lengthMinutes || 10));
   return Math.max(1, Math.round(m / 5));
 }
 
-/** Delivery factor: Casual ×3, Guided ×2, Open sits ×1. */
+/** Delivery factor: Casual ×3, Guided ×2, Open sits ×1. Kept for non-Create callers. */
 export function deliveryCreditMultiplier(delivery: MeditationDelivery): number {
   if (delivery === "casual") return 3;
   if (delivery === "open_sits") return 1;
@@ -118,14 +114,11 @@ export function meditationCreditFactors(
       detail: `${lengthMinutes} min`,
       multiplier: lengthCreditMultiplier(lengthMinutes),
     },
-    {
-      key: "delivery",
-      label: "Delivery",
-      detail: DELIVERY_LABEL[delivery],
-      multiplier: deliveryCreditMultiplier(delivery),
-    },
   ];
-  // Pro voices are not in use today — leave the hook for a future row.
+  // Was: Delivery row (Casual ×3 / Guided ×2 / Open sits ×1). Create is open
+  // sits only — delivery multiplier is always ×1, so the row was removed.
+  void delivery;
+  // Pro (Fish) voices: ×2 (or `proMultiplier` when set).
   if (input.isProVoice) {
     const pro = Math.max(
       1,

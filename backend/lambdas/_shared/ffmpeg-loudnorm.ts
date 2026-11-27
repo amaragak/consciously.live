@@ -1,6 +1,7 @@
 /**
  * EBU R128 loudness normalization for MP3 via ffmpeg (two-pass loudnorm).
- * Target matches common podcast / voice streaming delivery (-16 LUFS integrated).
+ * Target matches Speechify delivery (~−14 LUFS integrated) so Fish/Orpheus
+ * stems sit at the same level.
  *
  * Lambda ffmpeg layer has FDK AAC but not libmp3lame — encode the loudnorm
  * output with the bundled `lame` CLI (see audio-mp3.ts).
@@ -13,8 +14,8 @@ import { wavPathToMp3Buffer } from "./audio-mp3";
 
 const execFileAsync = promisify(execFile);
 
-/** Integrated loudness target (LUFS). */
-export const OUTPUT_LUFS_I = -16;
+/** Integrated loudness target (LUFS). Matches Speechify ~−14. */
+export const OUTPUT_LUFS_I = -14;
 
 type LoudnormMeasure = {
   input_i: string;

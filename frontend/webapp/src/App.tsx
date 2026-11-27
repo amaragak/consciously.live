@@ -240,6 +240,7 @@ export function App() {
           <Route path="stress-test" element={<AdminStressTestPanel />} />
           <Route path="dev-ui" element={<AdminDevUiPanel />} />
           <Route path="preprompts" element={<AdminPrepromptsPanel />} />
+          <Route path="preprompts/:entryId" element={<AdminPrepromptsPanel />} />
           <Route
             path="category-images"
             element={<AdminLibraryCategoriesPanel />}

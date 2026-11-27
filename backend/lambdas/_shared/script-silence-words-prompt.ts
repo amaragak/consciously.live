@@ -16,29 +16,43 @@ import {
   scriptLabClosingPhaseTagRulesForType,
 } from "./script-lab-shared-prompt-rules";
 import { styleGuidePromptBlock } from "./style-guide-for-prompt";
+import type { TimeBasedPromptParts } from "./script-time-based-prompt";
+import { PREPROMPT_DEFAULTS } from "./preprompts/preprompt-defaults-data";
 import {
-  TIME_BASED_PAUSE_PROMPT_RULES,
-  type TimeBasedPromptParts,
-} from "./script-time-based-prompt";
+  fillPrepromptPlaceholders,
+  normalizePrepromptText,
+  PREPROMPT_ID,
+} from "./preprompts/preprompt-registry";
 import type { SilenceFitOptionId } from "./script-silence-fit-settings";
 
-// Reuse time-based personalisation / gender (same copy).
-const PERSONALIZATION = [
-  "PERSONALIZATION (non-negotiable): the product’s value is that this script is for this person. Concrete facts from User lines / the brief / journal must appear in the spoken script — do not abstract them away.",
-  "Keep: place names (cities, hotels, beaches, streets), companions and roles (sister, partner, friend, named people), events and trips, body specifics, and other distinctive details the creator supplied.",
-  "Forbidden substitutions when the user was specific: “a trip” / “a holiday” for a named place; “someone close” / “the people you love” for a named companion; “that memory” for a named situation. Prefer the creator’s own nouns.",
-  "Required touchpoints (at least three, each earned): (1) opening acknowledgment of their concrete situation, (2) mid-script callback to a distinctive detail (place, person, or fact), (3) closing nod to the same thread. Technique structure (body scan, breath, etc.) must serve that personalization — not replace it.",
-  "When Guide paraphrases conflict with User/brief wording, prefer the User/brief. Whimsy and playfulness from the brief stay; still keep the practice calming and coherent.",
-].join(" ");
+// Was: PERSONALIZATION / GENDER / TIME_BASED_PAUSE_PROMPT_RULES / open_sits
+// optionDescription / system opener lines inline in this file (and in
+// script-time-based-prompt.ts for the pause rules).
+// Now: versioned Pre-prompts (Admin › Pre-prompts). Defaults live in
+// ./preprompts/defaults/*.txt and are embedded in preprompt-defaults-data.ts;
+// Create loads the live (latest) versions and passes them in via `preprompts`.
+// const PERSONALIZATION = [ "PERSONALIZATION (non-negotiable): …" ].join(" ");
+// const GENDER = [ "GENDER (non-negotiable): …" ].join(" ");
 
-const GENDER = [
-  "GENDER (non-negotiable): use gender-neutral language throughout. Never assign a gender to the listener, a future self, an inner voice, a guide, a partner, a child, or anyone else in imagery — unless the creator's own words in the conversation already specified that gender.",
-  "Forbidden unless the user said it: she/he/her/his/him/hers, herself/himself, woman/man/girl/boy, lady/gentleman, calling the listener sister/brother, 'the woman/man you will become', or any invented gendered name.",
-  "KEEP when the creator said it: kinship and gendered people they named (my sister, my brother, my mum, my daughter, she/he for that person) and proper names of people. That is personalization, not inventing gender for the listener.",
-  "Address the listener as you. For a third person who is not gendered in the chat, use they/them, this person, the one, that future you, that version of you — never she/he.",
-  "Bad: “Imagine the version of yourself in a year. She knows that she is clear.” Good: “Imagine the version of yourself in a year. They know they are clear.” or “That future you knows you are clear.”",
-  "If the user wrote she/he/her/his or named a gendered person, you MUST keep that same language when referring to that person. Do not extend it to anyone else, and do not scrub it into they/them or 'someone close'.",
-].join(" ");
+/** Live (or default) text for each pre-prompt the silence-words prompt reads. */
+export type SilenceWordsPrepromptTexts = {
+  systemPrefix: string;
+  personalization: string;
+  gender: string;
+  pauseRules: string;
+  openSitsOptionDescription: string;
+};
+
+export function defaultSilenceWordsPrepromptTexts(): SilenceWordsPrepromptTexts {
+  const d = (id: string) => normalizePrepromptText(PREPROMPT_DEFAULTS[id] ?? "");
+  return {
+    systemPrefix: d(PREPROMPT_ID.systemPrefix),
+    personalization: d(PREPROMPT_ID.personalization),
+    gender: d(PREPROMPT_ID.gender),
+    pauseRules: d(PREPROMPT_ID.pauseRules),
+    openSitsOptionDescription: d(PREPROMPT_ID.openSitsOptionDescription),
+  };
+}
 
 function fmtClockMin(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));
@@ -52,15 +66,21 @@ function optionDescription(params: {
   option: SilenceFitOptionId;
   speechMinLabel: string;
   scriptMinLabel: string;
+  openSitsText: string;
 }): string {
-  const { option, speechMinLabel, scriptMinLabel } = params;
+  const { option, speechMinLabel, scriptMinLabel, openSitsText } = params;
   if (option === "guided") {
     return `This is a guided meditation. Lead the listener through the practice step by step, and give them time to do each thing you describe. You speak for about ${speechMinLabel} of the ${scriptMinLabel} minutes. Leave a long pause every minute or two, each after an instruction they can carry on with.`;
   }
   if (option === "guided_casual") {
     return `This is closer to a spoken reflection than a formal meditation. Go straight into what the listener asked for, with no settling-in opening and no long wind-down. Spend most of the time speaking: stay with their situation, offer ways of looking at it, and ask questions worth thinking about. General material is fine where their input runs out. You speak for about ${speechMinLabel} of the ${scriptMinLabel} minutes. Keep most pauses brief, with a long pause every two to three minutes after a question or prompt.`;
   }
-  return `This is a mostly silent sit. Set up the practice, then leave long stretches of silence, coming back with a line or two to re-anchor the listener or move on. Before each long silence, say what to stay with and that you'll be quiet for a while. Never go silent on a cue that needs a follow-up. You speak for about ${speechMinLabel} of the ${scriptMinLabel} minutes. Most phases end in a long pause.`;
+  // open_sits — Create default (consciously-open-sits-default-v2).
+  // Was: inline array of lines (now preprompts/defaults/open-sits-option-description.txt).
+  return fillPrepromptPlaceholders(openSitsText, {
+    speechMinLabel,
+    scriptMinLabel,
+  });
 }
 
 /** Delivery id used for pauseRulesForPrompt / style guide strip. */
@@ -89,7 +109,25 @@ export function buildSilenceWordsScriptPrompt(params: {
   minLongPauses: number;
   longestSingleSilenceSeconds: number;
   journalMode?: boolean;
+  /**
+   * Live pre-prompt texts (Admin › Pre-prompts). Omitted keys use the embedded
+   * repo defaults, so sync callers (Admin script lab, tests) keep working.
+   */
+  preprompts?: Partial<SilenceWordsPrepromptTexts>;
+  /**
+   * Live style guide markdown for `styleGuideStyle || meditationStyle`.
+   * Omitted = embedded STYLE_GUIDE_BY_TYPE.
+   */
+  styleGuideMarkdown?: string | null;
 }): TimeBasedPromptParts {
+  const pre: SilenceWordsPrepromptTexts = {
+    ...defaultSilenceWordsPrepromptTexts(),
+    ...Object.fromEntries(
+      Object.entries(params.preprompts ?? {}).filter(
+        ([, v]) => typeof v === "string" && v.trim() !== "",
+      ),
+    ),
+  };
   const delivery = deliveryForOption(params.option);
   const styleForScript = (params.meditationStyle ?? "").trim();
   const sleepType = isSleepMeditationType(
@@ -137,19 +175,20 @@ export function buildSilenceWordsScriptPrompt(params: {
           longestPauseSeconds: params.longestSingleSilenceSeconds,
           stripPauses: delivery === "casual",
           omitSectionSilenceTarget: true,
+          ...(params.styleGuideMarkdown?.trim()
+            ? { guideMarkdownOverride: params.styleGuideMarkdown }
+            : {}),
         })
       : null;
 
+  // Was: seven inline lines (scriptwriter role … safety), then PERSONALIZATION, GENDER,
+  // TTS line, TIME_BASED_PAUSE_PROMPT_RULES — now Pre-prompts (see top of file).
   const systemParts = [
-    "You are an expert meditation scriptwriter for consciously.live.",
-    "You write speakable, production-ready guided meditation scripts.",
-    "Avoid self-referential product mentions. Do NOT mention Consciously/the app/this platform unless the user explicitly asks. If you must refer to it, use exactly: 'consciously.live' (lowercase) and nothing else.",
-    "If the user is joking or playful, it is OK to include whimsical / funny subject matter (e.g. a monkey eating ice cream on a volcano) BUT the meditation itself should remain genuinely calming, coherent, and high-quality—never 'silly writing' or comedy bits. Use playful imagery as a vehicle for grounding, breath, and emotional regulation.",
-    "Never generate hate/harassment, sexual content involving minors, non-consensual sexual content, graphic sexual content, instructions for wrongdoing, or glorification of self-harm. If the user asks for something socially unacceptable, refuse briefly and offer a safe alternative topic.",
-    PERSONALIZATION,
-    GENDER,
+    pre.systemPrefix,
+    pre.personalization,
+    pre.gender,
     "You phrase lines for natural TTS: avoid isolated one-word sentences; use multi-word phrases where possible.",
-    TIME_BASED_PAUSE_PROMPT_RULES,
+    pre.pauseRules,
     pauseRulesForPrompt(params.profiles, delivery),
     "Never invent spoken second-counts or count-along breath recipes unless the creator explicitly asked; still choose pause bands thoughtfully for natural flow. When they do ask for counted timing, sync pauses to real seconds.",
   ];
@@ -194,6 +233,7 @@ export function buildSilenceWordsScriptPrompt(params: {
       option: params.option,
       speechMinLabel,
       scriptMinLabel,
+      openSitsText: pre.openSitsOptionDescription,
     }),
     "Match the emotional tone, intentions, and imagery from the conversation — and keep concrete personal facts (see PERSONALIZATION rules), not only vague impressions.",
     "Use second person or gentle imperatives; warm, inclusive, non-clinical language.",

@@ -120,7 +120,7 @@ export class ConsciouslyApiMeditateNestedStack extends cdk.NestedStack {
           OPENAI_SECRET_ARN: openAiApiKeySecret.secretArn,
           FISH_AUDIO_SECRET_ARN: fishApiKeySecret.secretArn,
           SPEECHIFY_SECRET_ARN: speechifyApiKeySecret.secretArn,
-          SPEECHIFY_TTS_MODEL: "simba-3.2",
+          SPEECHIFY_TTS_MODEL: "simba-3.5",
           RUNPODS_SECRET_ARN: runpodsApiKeySecret.secretArn,
           RUNPODS_URL_SECRET_ARN: runpodsUrlSecret.secretArn,
           MEDIA_BUCKET_NAME: mediaBucket.bucketName,

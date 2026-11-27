@@ -1,0 +1,23 @@
+{
+  "video_id": "0bL2P7Fjzz4",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "7a5ba28bc4d1e6ba",
+  "labels": [
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ]
+  ]
+}

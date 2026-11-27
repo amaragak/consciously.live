@@ -225,6 +225,23 @@ export type LengthLog = {
   }>;
   /** Sections the targeted fix changed (empty when it did not run). */
   sectionFix?: string[];
+  /** Create open-sits fit check (consciously-open-sits-default-v2). */
+  createOpenSitsVerification?: {
+    chosenLengthMinutes: number;
+    chosenLengthSeconds: number;
+    targetWords: number;
+    actualWords: number;
+    speechSeconds: number;
+    silenceSeconds: number;
+    finalDurationSeconds: number | null;
+    speechShareOfFinal: number | null;
+    fitHitTolerance: boolean;
+    lengthTolerancePct: number;
+    scriptFitOutsideTolerance: boolean;
+    postAudioScaled: boolean;
+    /** Admin › Pre-prompts version per entry id used for this script (0 = repo default). */
+    prepromptVersions?: Record<string, number>;
+  };
 };
 
 export type SpeakerCalibrationStatus =

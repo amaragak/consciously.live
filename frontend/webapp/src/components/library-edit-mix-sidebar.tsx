@@ -52,6 +52,7 @@ import {
   type MixerPresetMix,
 } from "@/lib/mixer-preset-storage";
 import {
+  backgroundAudioPlaybackKey,
   backgroundAudioStreamingKey,
   getMedimadeMediaBaseUrl,
   type BackgroundAudioItem,
@@ -85,8 +86,9 @@ function axisFaderThumbCenterStyle(pct: number): CSSProperties {
 }
 
 function mediaFileUrl(base: string, key: string): string {
+  const playKey = backgroundAudioPlaybackKey(key);
   const b = base.replace(/\/$/, "");
-  const path = key.split("/").map(encodeURIComponent).join("/");
+  const path = playKey.split("/").map(encodeURIComponent).join("/");
   return `${b}/${path}`;
 }
 
@@ -426,7 +428,7 @@ export function LibraryEditMixSidebar({
 
   function soundscapePreviewUrl(key: string): string | null {
     if (!mediaBase || !key.trim()) return null;
-    return mediaFileUrl(mediaBase, backgroundAudioStreamingKey(key));
+    return mediaFileUrl(mediaBase, backgroundAudioPlaybackKey(key));
   }
 
   function chooseSoundscape(key: string) {

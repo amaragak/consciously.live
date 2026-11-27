@@ -60,7 +60,7 @@ function optionDescription(params: {
   if (option === "guided_casual") {
     return `This is closer to a spoken reflection than a formal meditation. Go straight into what the listener asked for, with no settling-in opening and no long wind-down. Spend most of the time speaking: stay with their situation, offer ways of looking at it, and ask questions worth thinking about. General material is fine where their input runs out. You speak for about ${speechMinLabel} of the ${scriptMinLabel} minutes. Keep most pauses brief, with a long pause every two to three minutes after a question or prompt.`;
   }
-  return `This is a mostly silent sit. Set up the practice, then leave long stretches of silence, coming back with a line or two to re-anchor the listener or move on. Before each long silence, say what to stay with and that you'll be quiet for a while. Never go silent on a cue that needs a follow-up. You speak for about ${speechMinLabel} of the ${scriptMinLabel} minutes. Most phases end in a long pause.`;
+  return `This is a mostly silent sit. Set up the practice, then leave long stretches of silence, coming back with a line or two to re-anchor the listener or move on. Before every longer silence (about 8+ seconds) and every extendable pause, leave them with something to stay with so the quiet feels intentional — never like the voice randomly stopped. Prefer a natural practice invitation that implies the silence; do not announce every gap with lines like "I'll be quiet for a while" or "I'll give you some space." Never go silent on a cue that needs a follow-up. You speak for about ${speechMinLabel} of the ${scriptMinLabel} minutes. Most phases end in a long pause.`;
 }
 
 /** Delivery id used for pauseRulesForPrompt / style guide strip. */

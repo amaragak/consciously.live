@@ -54,12 +54,20 @@ export function clampSpeechifyRate(n: unknown, fallback = 0): number {
   return Math.max(-50, Math.min(50, Math.round(n)));
 }
 
+/**
+ * Meditation Speechify API SSML rate (%). 0 = provider default; tempo is
+ * applied post-TTS (backend FIXED_SPEECHIFY_ATEMPO = 1 when effective rate is 0).
+ */
+export const FIXED_SPEECHIFY_RATE = 0;
+/** Effective slowing for budgets / display (matches backend atempo). */
+export const FIXED_SPEECHIFY_EFFECTIVE_RATE_PCT = 0;
+
 /** S3 stem for a Speechify rate, e.g. `r-20`, `r0`, `r5`. */
 export function speechifyRateToSampleStem(rate: number): string {
   return `r${clampSpeechifyRate(rate)}`;
 }
 
-/** Admin rate + Create Sound pacing offset (−5…+5). */
+/** Admin rate + Create Sound pacing offset (−5…+5). Used for preview sample keys. */
 export function effectiveSpeechifyRate(
   adminRate: number | null | undefined,
   pacingOffset: number,
@@ -70,6 +78,11 @@ export function effectiveSpeechifyRate(
       ? Math.round(pacingOffset)
       : 0;
   return clampSpeechifyRate(base + off);
+}
+
+/** Meditation generate rate: fixed base ± Create pacing. Does not use admin. */
+export function meditationSpeechifyRate(pacingOffset = 0): number {
+  return effectiveSpeechifyRate(FIXED_SPEECHIFY_RATE, pacingOffset);
 }
 
 /**

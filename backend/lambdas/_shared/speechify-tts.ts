@@ -19,7 +19,7 @@ export function speechifyVoiceId(): string {
 }
 
 export function speechifyTtsModel(): string {
-  return (process.env.SPEECHIFY_TTS_MODEL || "simba-3.2").trim() || "simba-3.2";
+  return (process.env.SPEECHIFY_TTS_MODEL || "simba-3.5").trim() || "simba-3.5";
 }
 
 let cachedApiKey: string | undefined;
@@ -155,12 +155,13 @@ export function scriptToSpeechifySsml(
   return `<speak>${inner}</speak>`;
 }
 
-/** Admin percent like -7 → SSML `rate="-7%"`. Unset means Speechify default (no wrap). */
+/** Admin percent like -7 → SSML `rate="-7%"`. 0 / unset = Speechify default (no wrap). */
 export function speechifyRateToSsml(
   rate: number | null | undefined,
 ): string | undefined {
   if (rate == null || !Number.isFinite(rate)) return undefined;
   const n = Math.round(rate);
+  if (n === 0) return undefined;
   return n > 0 ? `+${n}%` : `${n}%`;
 }
 
@@ -297,7 +298,7 @@ export type SpeechifyTtsParams = {
 async function speechifyTtsStream(
   params: SpeechifyTtsParams,
   opts: {
-    outputFormat: "aac_24000" | "pcm_24000";
+    outputFormat: "aac_24000" | "pcm_24000" | "pcm_44100";
     accept: "audio/aac" | "audio/pcm";
   },
 ): Promise<Buffer> {
@@ -389,14 +390,15 @@ export async function speechifyTtsMp3(
 }
 
 /**
- * Speechify stream → raw 16-bit LE mono PCM @ 24 kHz (`pcm_24000`).
+ * Speechify stream → raw 16-bit LE mono PCM @ 44.1 kHz (`pcm_44100`).
  * Used for per-segment FX + overlap-add before AAC encode.
+ * (Name keeps `24k` for call-site stability; rate is VOICE_FX_PCM_SR.)
  */
 export async function speechifyTtsPcm24k(
   params: SpeechifyTtsParams,
 ): Promise<Buffer> {
   return speechifyTtsStream(params, {
-    outputFormat: "pcm_24000",
+    outputFormat: "pcm_44100",
     accept: "audio/pcm",
   });
 }

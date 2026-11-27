@@ -1,0 +1,42 @@
+{
+  "video_id": "xpObQpi0wPI",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "welcome",
+      "permission_or_acceptance"
+    ],
+    "closing_moves": [
+      "other"
+    ],
+    "techniques": [
+      "repeated_affirmations",
+      "reflection_questions"
+    ],
+    "body_sequence_direction": "none",
+    "imagery_themes": [
+      "future_success",
+      "water",
+      "nature",
+      "light"
+    ],
+    "person_main": "mixed",
+    "listener_i_statements": true,
+    "tense_main": "mixed",
+    "question_rate": "low",
+    "repetition_level": "high",
+    "listener_repeats": true,
+    "directiveness": 4,
+    "energy": 3,
+    "certainty": 5,
+    "warmth": 3,
+    "formality": 2
+  },
+  "words": 3268,
+  "questions_per_1k_words": 0.92,
+  "usage": {
+    "in": 7491,
+    "out": 203
+  }
+}

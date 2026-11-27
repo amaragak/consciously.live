@@ -1,0 +1,37 @@
+{
+  "video_id": "uaffjaC7s4I",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "settling_breaths",
+      "intention_or_purpose"
+    ],
+    "closing_moves": [],
+    "techniques": [
+      "imagery_journey",
+      "future_self_scene"
+    ],
+    "body_sequence_direction": "none",
+    "imagery_themes": [
+      "future_success"
+    ],
+    "person_main": "you",
+    "listener_i_statements": false,
+    "tense_main": "mixed",
+    "question_rate": "low",
+    "repetition_level": "low",
+    "listener_repeats": false,
+    "directiveness": 4,
+    "energy": 4,
+    "certainty": 4,
+    "warmth": 3,
+    "formality": 2
+  },
+  "words": 175,
+  "questions_per_1k_words": 0.0,
+  "usage": {
+    "in": 2073,
+    "out": 188
+  }
+}

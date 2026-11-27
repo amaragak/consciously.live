@@ -1,4 +1,10 @@
-const MEDITATIONS_PREFIX = "meditations/";
+/** Voice catalog prefixes that still use a `.mp3`-shaped Dynamo identity. */
+const PLAYBACK_PREFIXES = ["meditations/", "programs/"] as const;
+
+function hasPlaybackPrefix(pathOrKey: string): boolean {
+  const lower = pathOrKey.toLowerCase().replace(/^\//, "");
+  return PLAYBACK_PREFIXES.some((p) => lower.startsWith(p));
+}
 
 function stemExt(key: string): { stem: string; ext: string } | null {
   const k = key.trim();
@@ -9,60 +15,48 @@ function stemExt(key: string): { stem: string; ext: string } | null {
 }
 
 /**
- * Library + job polling: prefer AAC-in-MP4 (.m4a) for Safari-safe streaming.
+ * Library + job polling: AAC-in-MP4 (.m4a) only for Safari-safe streaming.
  * Catalog rows may still store `.mp3` / `.wav` — rewrite the playback key.
+ * Never serve leftover `.mp3` (historically AAC bytes + audio/mpeg).
  */
 export function meditationPlaybackS3Key(key: string): string {
   const k = key.trim();
-  const lower = k.toLowerCase();
-  if (!lower.startsWith(MEDITATIONS_PREFIX)) return k;
+  if (!hasPlaybackPrefix(k)) return k;
   const parts = stemExt(k);
   if (!parts) return k;
   if (parts.ext === "m4a") return k;
   return `${parts.stem}.m4a`;
 }
 
-/** Legacy MP3 sibling when `.m4a` is missing (pre-backfill / older gens). */
+/**
+ * @deprecated AAC-only delivery — do not use for playback. Kept for older
+ * call sites that still name a catalog `.mp3` identity.
+ */
 export function meditationPlaybackFallbackS3Key(key: string): string {
-  const k = key.trim();
-  const lower = k.toLowerCase();
-  if (!lower.startsWith(MEDITATIONS_PREFIX)) return k;
-  const parts = stemExt(k);
-  if (!parts) return k;
-  if (parts.ext === "mp3") return k;
-  return `${parts.stem}.mp3`;
+  return meditationPlaybackS3Key(key);
 }
 
-/** Rewrite `…/meditations/*.(wav|mp3|opus)` URL to `.m4a` for the same stem. */
+/** Rewrite voice URLs under meditations/ or programs/ to `.m4a`. */
 export function meditationPlaybackAudioUrl(audioUrl: string): string {
   const u = audioUrl.trim();
   if (!u) return u;
   try {
     const parsed = new URL(u);
     const path = parsed.pathname;
-    const lower = path.toLowerCase();
-    if (!lower.startsWith("/meditations/")) return u;
+    if (!hasPlaybackPrefix(path)) return u;
     if (!/\.(wav|mp3|opus|m4a)$/i.test(path)) return u;
     parsed.pathname = path.replace(/\.(wav|mp3|opus|m4a)$/i, ".m4a");
     return parsed.toString();
   } catch {
+    if (!hasPlaybackPrefix(u)) return u;
     return u.replace(/\.(wav|mp3|opus|m4a)$/i, ".m4a");
   }
 }
 
-/** Legacy MP3 URL when `.m4a` 404s. */
+/**
+ * @deprecated AAC-only — same as {@link meditationPlaybackAudioUrl}.
+ * Do not reintroduce MP3 fallback URLs.
+ */
 export function meditationPlaybackFallbackAudioUrl(audioUrl: string): string {
-  const u = audioUrl.trim();
-  if (!u) return u;
-  try {
-    const parsed = new URL(u);
-    const path = parsed.pathname;
-    const lower = path.toLowerCase();
-    if (!lower.startsWith("/meditations/")) return u;
-    if (!/\.(wav|mp3|opus|m4a)$/i.test(path)) return u;
-    parsed.pathname = path.replace(/\.(wav|mp3|opus|m4a)$/i, ".mp3");
-    return parsed.toString();
-  } catch {
-    return u.replace(/\.(wav|mp3|opus|m4a)$/i, ".mp3");
-  }
+  return meditationPlaybackAudioUrl(audioUrl);
 }

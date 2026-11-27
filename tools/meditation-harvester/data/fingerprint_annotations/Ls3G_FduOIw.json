@@ -1,0 +1,45 @@
+{
+  "video_id": "Ls3G_FduOIw",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "welcome",
+      "overview",
+      "settling_breaths",
+      "body_arrival"
+    ],
+    "closing_moves": [
+      "gratitude",
+      "carry_into_day",
+      "affirmation_or_intention"
+    ],
+    "techniques": [
+      "body_part_sequence",
+      "imagery_journey",
+      "reflection_questions",
+      "loving_kindness_phrases"
+    ],
+    "body_sequence_direction": "feet_to_head",
+    "imagery_themes": [
+      "nature"
+    ],
+    "person_main": "you",
+    "listener_i_statements": false,
+    "tense_main": "present",
+    "question_rate": "low",
+    "repetition_level": "low",
+    "listener_repeats": false,
+    "directiveness": 2,
+    "energy": 2,
+    "certainty": 2,
+    "warmth": 4,
+    "formality": 2
+  },
+  "words": 1086,
+  "questions_per_1k_words": 0.92,
+  "usage": {
+    "in": 3760,
+    "out": 253
+  }
+}

@@ -1,0 +1,241 @@
+{
+  "style": "visualization",
+  "model": "claude-haiku-5-5",
+  "digest": "5bd1f3f005fb837c",
+  "families": [
+    {
+      "name": "Deep breathing cue",
+      "meaning": "Directs the listener to take a slow, deliberate breath, often specifying the route through the nose or mouth, to settle in.",
+      "examples": [
+        "take a deep breath",
+        "deep breath in through"
+      ],
+      "members": [
+        "take a deep breath",
+        "deep breath in through",
+        "you take a deep breath",
+        "slow deep breath",
+        "long slow deep"
+      ]
+    },
+    {
+      "name": "Breath exhale route",
+      "meaning": "Guides the listener to let breath out along a specific path, such as through the nose or mouth.",
+      "examples": [
+        "out through your nose",
+        "breathe out through the mouth"
+      ],
+      "members": [
+        "through your nose",
+        "through your mouth",
+        "out through your",
+        "through the nose",
+        "out through the mouth",
+        "you breathe out",
+        "out through the nose"
+      ]
+    },
+    {
+      "name": "Settle and get comfortable",
+      "meaning": "Prompts the listener to prepare the body and pause before the practice begins.",
+      "examples": [
+        "make yourself comfortable",
+        "take a moment"
+      ],
+      "members": [
+        "make yourself comfortable",
+        "find a comfortable",
+        "take a moment",
+        "relax as you"
+      ]
+    },
+    {
+      "name": "Eyes open and close",
+      "meaning": "Instructs the listener to shift their eyes shut or open to mark the start or end of inward focus.",
+      "examples": [
+        "close your eyes",
+        "open your eyes"
+      ],
+      "members": [
+        "close your eyes",
+        "open your eyes"
+      ]
+    },
+    {
+      "name": "Readiness check",
+      "meaning": "Tells the listener they have reached the point where the next stage can begin.",
+      "examples": [
+        "you are ready",
+        "time for you"
+      ],
+      "members": [
+        "you are ready",
+        "time for you"
+      ]
+    },
+    {
+      "name": "Permission and intention",
+      "meaning": "Frames the instruction as the guide's wish or the listener's choice, softening the directive.",
+      "examples": [
+        "I'd like you",
+        "I want you"
+      ],
+      "members": [
+        "i'd like you",
+        "i want you"
+      ]
+    },
+    {
+      "name": "Imagined seeing and feeling",
+      "meaning": "Asks the listener to picture or sense something, anchoring the visualization in perception.",
+      "examples": [
+        "you can see",
+        "you can feel"
+      ],
+      "members": [
+        "you can see",
+        "you can feel",
+        "you feel your",
+        "begin to feel",
+        "begin to see"
+      ]
+    },
+    {
+      "name": "Downward journey into body",
+      "meaning": "Moves the listener's attention deeper, down through the body or inward toward a center.",
+      "examples": [
+        "way down through",
+        "deeper and deeper"
+      ],
+      "members": [
+        "down through your",
+        "deeper and deeper",
+        "way down through",
+        "down to your",
+        "down into your",
+        "way to your"
+      ]
+    },
+    {
+      "name": "Body awareness focus",
+      "meaning": "Directs the listener's attention to noticing or inhabiting the body or its inner space.",
+      "examples": [
+        "feel your body",
+        "inside your body"
+      ],
+      "members": [
+        "feel your body",
+        "inside your body",
+        "attention to your",
+        "aware of your"
+      ]
+    },
+    {
+      "name": "Heart and center points",
+      "meaning": "Names a specific anchor point in the body, such as the heart, crown, or center, for attention to rest on.",
+      "examples": [
+        "your heart center",
+        "top of your head"
+      ],
+      "members": [
+        "your heart center",
+        "center of your",
+        "top of your head",
+        "crown of your head",
+        "your face your"
+      ]
+    },
+    {
+      "name": "Return attention",
+      "meaning": "Brings the listener's wandering attention back to the breath or the body.",
+      "examples": [
+        "bring your awareness back",
+        "back to your"
+      ],
+      "members": [
+        "bring your awareness",
+        "back to your",
+        "turn your attention",
+        "bring your awareness back"
+      ]
+    },
+    {
+      "name": "Letting go and release",
+      "meaning": "Invites the listener to release tension, thoughts, or control.",
+      "examples": [
+        "you let go",
+        "go of any"
+      ],
+      "members": [
+        "go of any",
+        "you let go"
+      ]
+    },
+    {
+      "name": "Calm and peace state",
+      "meaning": "Describes or invites a feeling of peace, relaxation, safety or love as the desired state.",
+      "examples": [
+        "peace and tranquility",
+        "safe and secure"
+      ],
+      "members": [
+        "peace and tranquility",
+        "become more and more relaxed",
+        "feeling of love",
+        "safe and secure",
+        "sense of peace",
+        "state of being"
+      ]
+    },
+    {
+      "name": "Reassurance of self",
+      "meaning": "Affirms that a part of the listener's self is present, capable, or knows the way.",
+      "examples": [
+        "part of you",
+        "know that you"
+      ],
+      "members": [
+        "part of you",
+        "know that you",
+        "know that your",
+        "part of your"
+      ]
+    },
+    {
+      "name": "Repeat whenever",
+      "meaning": "Tells the listener the practice can recur at any time or whenever needed.",
+      "examples": [
+        "any time you",
+        "every time you"
+      ],
+      "members": [
+        "any time you",
+        "every time you",
+        "no matter how"
+      ]
+    },
+    {
+      "name": "Noticing change",
+      "meaning": "Points out that the listener is shifting into a new condition, often as a natural result.",
+      "examples": [
+        "you become more",
+        "you find yourself"
+      ],
+      "members": [
+        "you find yourself",
+        "you become more",
+        "you will find"
+      ]
+    },
+    {
+      "name": "Continuing breath",
+      "meaning": "Encourages the listener to keep breathing steadily through the session.",
+      "examples": [
+        "continue to breathe"
+      ],
+      "members": [
+        "continue to breathe"
+      ]
+    }
+  ]
+}

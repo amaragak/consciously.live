@@ -20,6 +20,12 @@ import {
 } from "./script-time-based-generate";
 import { buildSilenceWordsScriptPrompt } from "./script-silence-words-prompt";
 import {
+  PREPROMPT_ID,
+  styleGuideEntryIdForType,
+} from "./preprompts/preprompt-registry";
+import { loadLivePrepromptTexts } from "./preprompts/preprompt-store";
+import { normalizeMeditationType } from "./meditation-types";
+import {
   fitSilenceFitScript,
   type SilenceFitResult,
 } from "./script-silence-fit-fit";
@@ -88,6 +94,11 @@ export type SilenceWordsHaikuGenerateResult = {
   minLongPauses: number;
   /** Wall-clock script processing (Sonnet → Haiku done). */
   timing: SilenceWordsHaikuStreamTiming;
+  /**
+   * Admin › Pre-prompts version used per entry id (0 = embedded repo default).
+   * Only entries that were part of this prompt.
+   */
+  prepromptVersions: Record<string, number>;
 };
 
 async function anthropicTextCall(params: {
@@ -228,6 +239,31 @@ export async function generateSilenceWordsHaikuScript(params: {
     longestSingleSilenceSeconds: cell.longestSingleSilenceSeconds,
   });
 
+  // Live Pre-prompts (latest version of each entry; repo default if Dynamo fails).
+  // Was: sync build with inline PERSONALIZATION / GENDER / pause rules / style guide.
+  const guideStyleForLive = (
+    params.styleGuideStyle?.trim() ||
+    (params.meditationStyle ?? "").trim() ||
+    ""
+  ).trim();
+  const guideEntryId =
+    !params.journalMode && guideStyleForLive
+      ? styleGuideEntryIdForType(normalizeMeditationType(guideStyleForLive))
+      : null;
+  const liveIds = [
+    PREPROMPT_ID.systemPrefix,
+    PREPROMPT_ID.personalization,
+    PREPROMPT_ID.gender,
+    PREPROMPT_ID.pauseRules,
+    ...(params.option === "open_sits"
+      ? [PREPROMPT_ID.openSitsOptionDescription]
+      : []),
+    ...(guideEntryId ? [guideEntryId] : []),
+  ];
+  const live = await loadLivePrepromptTexts(liveIds);
+  const prepromptVersions: Record<string, number> = {};
+  for (const id of liveIds) prepromptVersions[id] = live[id]?.version ?? 0;
+
   const prompt = buildSilenceWordsScriptPrompt({
     transcript: params.transcript,
     meditationStyle: params.meditationStyle,
@@ -242,6 +278,15 @@ export async function generateSilenceWordsHaikuScript(params: {
     minLongPauses,
     longestSingleSilenceSeconds: cell.longestSingleSilenceSeconds,
     journalMode: params.journalMode,
+    preprompts: {
+      systemPrefix: live[PREPROMPT_ID.systemPrefix]?.text,
+      personalization: live[PREPROMPT_ID.personalization]?.text,
+      gender: live[PREPROMPT_ID.gender]?.text,
+      pauseRules: live[PREPROMPT_ID.pauseRules]?.text,
+      openSitsOptionDescription:
+        live[PREPROMPT_ID.openSitsOptionDescription]?.text,
+    },
+    styleGuideMarkdown: guideEntryId ? live[guideEntryId]?.text : null,
   });
 
   // Admin "Stream phases to TTS" / create-dev override: when on, Haiku each
@@ -257,14 +302,12 @@ export async function generateSilenceWordsHaikuScript(params: {
   let haiku: SilenceHaikuWordFixResult;
   let timing: SilenceWordsHaikuStreamTiming;
 
+  // Create may stream phases with skipHaiku (one Sonnet, no fix-up).
   const useProgressiveStream =
-    streamingPartial &&
-    !params.skipHaiku &&
-    !params.scriptAsWrittenOverride?.trim();
+    streamingPartial && !params.scriptAsWrittenOverride?.trim();
 
   if (useProgressiveStream) {
-    // Stream Sonnet; Haiku each closed phase immediately (overlaps remaining
-    // Sonnet). Total ms = wall clock start → last Haiku done.
+    // Stream Sonnet; optionally Haiku each closed phase (skipped when skipHaiku).
     const streamed = await streamSilenceWordsSonnetWithProgressiveHaiku({
       apiKey: params.apiKey,
       model: params.model,
@@ -277,6 +320,7 @@ export async function generateSilenceWordsHaikuScript(params: {
       scriptTriggerPct: sw.scriptTriggerPct,
       phaseTriggerPct: sw.phaseTriggerPct,
       askSonnetPct,
+      skipHaiku: params.skipHaiku === true,
       source: params.source,
       onPhaseReady: params.onPhaseReady,
     });
@@ -512,5 +556,6 @@ export async function generateSilenceWordsHaikuScript(params: {
     wordBudget,
     minLongPauses,
     timing,
+    prepromptVersions,
   };
 }

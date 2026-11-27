@@ -1,0 +1,39 @@
+{
+  "video_id": "uLFN3cJ9Nyw",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "471285fcdef84df8",
+  "labels": [
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "instruction",
+      "opening"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "instruction",
+      "main"
+    ],
+    [
+      "breath",
+      "main"
+    ],
+    [
+      "self-practice handover",
+      "main"
+    ],
+    [
+      "close",
+      "closing"
+    ]
+  ]
+}

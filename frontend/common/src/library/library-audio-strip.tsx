@@ -23,16 +23,23 @@ import {
   bedElementVolume,
   BED_OUTRO_FADE_SECONDS,
   BED_OUTRO_HOLD_SECONDS,
-  BED_VOICE_INTRO_SECONDS,
   soundscapeListenVolume,
 } from "../audio/bed-volume";
+import {
+  meditationLeadInSeconds,
+  meditationOutroPadSeconds,
+  meditationSessionDurationSeconds,
+} from "../audio/meditation-session-duration";
 import type { BackgroundAudioItem, LibraryMeditationFields } from "./types";
 import { PlayerStripView } from "./player-strip-view";
 import {
   DualStemPlayer,
   getLibraryVoicePlayer,
 } from "../audio/dual-stem-player";
-import { voiceStemPlaybackUrl } from "../audio/voice-stem-keys";
+import {
+  voiceStemPlaybackCandidates,
+  voiceStemPlaybackUrl,
+} from "../audio/voice-stem-keys";
 import { clampVoiceFxDial } from "../audio/voice-fx-dial";
 
 export type LibraryActiveTrack = {
@@ -61,7 +68,7 @@ export type LibraryActiveTrack = {
   wetUrl?: string;
   voiceFxDial?: number;
   durationSeconds?: number;
-  /** Bed-only seconds before voice; omit = default BED_VOICE_INTRO_SECONDS. */
+  /** Bed-only seconds before voice; omit = DEFAULT_MEDITATION_LEAD_IN_SECONDS. */
   leadInSeconds?: number;
   /** When false, skip post-voice bed fade. Default true. */
   fadeOut?: boolean;
@@ -81,14 +88,19 @@ export type LibraryBedVolumeApi = {
  * CDN URL for a media key. Pass `cacheBust` (catalog `updatedAt` / bake time)
  * whenever the object can be replaced in place — AAC beds use long-lived
  * CloudFront cache (`immutable`); without `?v=` clients keep hearing the old file.
+ *
+ * Bed keys are always remapped to the AAC sibling (`.m4a`). Catalog identity
+ * stays `.mp3`-shaped, but the leftover MP3 objects are older/lower bitrate —
+ * never fetch them for playback.
  */
 export function mediaFileUrl(
   base: string,
   key: string,
   cacheBust?: string | null,
 ): string {
+  const playKey = backgroundAudioPlaybackKey(key);
   const b = base.replace(/\/$/, "");
-  const path = key.split("/").map(encodeURIComponent).join("/");
+  const path = playKey.split("/").map(encodeURIComponent).join("/");
   const url = `${b}/${path}`;
   const v = cacheBust?.trim();
   if (!v) return url;
@@ -354,9 +366,11 @@ export function LibraryAudioStrip({
   const seekingRef = useRef(false);
   const [playing, setPlaying] = useState(() => Boolean(track?.ambientOnly));
   const [current, setCurrent] = useState(0);
-  const [duration, setDuration] = useState(() => track?.durationSeconds ?? 0);
+  /** Voice-stem seconds — prefer measured media over catalog target. */
+  const [duration, setDuration] = useState(0);
   const durationRef = useRef(duration);
   durationRef.current = duration;
+  const measuredDurationRef = useRef(false);
   /** Seconds into the post-voice hold+fade when paused there. */
   const outroParkedOffsetRef = useRef<number | null>(null);
   const lastToggleNonceRef = useRef(playbackToggleNonce);
@@ -364,6 +378,7 @@ export function LibraryAudioStrip({
   autoplayRef.current = autoplay;
   const lastReportedTimeRef = useRef<number>(-Infinity);
   const voiceIntroTimerRef = useRef<number | null>(null);
+  const leadInStartedMsRef = useRef(0);
   /** 1 → 0 during post-voice bed outro fade (music + other live beds). */
   const bedOutroGainRef = useRef(1);
   const bedOutroRef = useRef<{
@@ -502,9 +517,10 @@ export function LibraryAudioStrip({
   /** Post-voice bed tail: 10s hold + 10s fade. Zero when there is nothing to fade. */
   function outroPadSeconds(): number {
     if (!track || ambientMix || ambientSoundscape) return 0;
-    if (track.fadeOut === false) return 0;
-    if (!trackHasLiveBeds()) return 0;
-    return BED_OUTRO_HOLD_SECONDS + BED_OUTRO_FADE_SECONDS;
+    return meditationOutroPadSeconds({
+      fadeOut: track.fadeOut,
+      hasLiveBeds: trackHasLiveBeds(),
+    });
   }
 
   function fadeGainAtOutroOffset(intoOutro: number): number {
@@ -578,7 +594,8 @@ export function LibraryAudioStrip({
     applyOutroAudible(offset, voiceLen, seekSoundscape);
     setPlaying(true);
     onPlayingChange?.(track.s3Key, true);
-    const timeline = voiceLen + offset;
+    const lead = timelineLeadIn();
+    const timeline = lead + voiceLen + offset;
     setCurrent(timeline);
     reportTime(timeline);
 
@@ -587,8 +604,8 @@ export function LibraryAudioStrip({
       if (!bedOutroRef.current.active) return;
       const into = (now - bedOutroRef.current.originMs) / 1000;
       if (into >= pad - 0.02) {
-        setCurrent(voiceLen + pad);
-        reportTime(voiceLen + pad);
+        setCurrent(lead + voiceLen + pad);
+        reportTime(lead + voiceLen + pad);
         bedOutroGainRef.current = 0;
         applyLiveBedVolumes();
         bedOutroRef.current.active = false;
@@ -601,7 +618,7 @@ export function LibraryAudioStrip({
       }
       bedOutroGainRef.current = fadeGainAtOutroOffset(into);
       applyLiveBedVolumes();
-      const t = voiceLen + into;
+      const t = lead + voiceLen + into;
       setCurrent(t);
       reportTime(t);
       bedOutroRef.current.raf = window.requestAnimationFrame(tick);
@@ -611,17 +628,41 @@ export function LibraryAudioStrip({
 
   function seekTransport(v: number) {
     if (!track || ambientMix) return;
+    const lead = timelineLeadIn();
     const voiceLen = voiceLenSeconds();
     const pad = outroPadSeconds();
-    const end = voiceLen + pad;
-    const t = Math.min(end > 0 ? end : Math.max(0, v), Math.max(0, v));
+    const end = lead + voiceLen + pad;
+    const timeline = Math.min(end > 0 ? end : Math.max(0, v), Math.max(0, v));
     const keepPlaying =
       playing ||
       bedOutroRef.current.active ||
       voiceIntroTimerRef.current != null;
 
-    if (pad > 0 && voiceLen > 0 && t >= voiceLen - 0.03) {
-      const into = Math.min(pad, Math.max(0, t - voiceLen));
+    // Scrubber includes lead-in pre-roll; media clock is voice-only.
+    if (lead > 0 && timeline < lead - 0.05) {
+      setCurrent(timeline);
+      reportTime(timeline);
+      if (!keepPlaying) return;
+      clearVoiceIntro();
+      leadInStartedMsRef.current = Date.now() - timeline * 1000;
+      if (useDual) dualRef.current?.pause();
+      else audioRef.current?.pause();
+      voiceIntroTimerRef.current = window.setTimeout(() => {
+        voiceIntroTimerRef.current = null;
+        syncSoundscapeToVoice(0);
+        if (useDual) {
+          void dualRef.current?.play().catch(() => failVoicePlayback());
+        } else {
+          const el = audioRef.current;
+          if (el) void playHtmlVoice(el).catch(() => failVoicePlayback());
+        }
+      }, Math.max(0, (lead - timeline) * 1000));
+      return;
+    }
+
+    const voiceT = Math.max(0, timeline - lead);
+    if (pad > 0 && voiceLen > 0 && voiceT >= voiceLen - 0.03) {
+      const into = Math.min(pad, Math.max(0, voiceT - voiceLen));
       if (keepPlaying) {
         beginBedOutro(into);
         return;
@@ -630,8 +671,8 @@ export function LibraryAudioStrip({
       outroParkedOffsetRef.current = into;
       parkVoiceAtEnd();
       applyOutroAudible(into, voiceLen, true);
-      setCurrent(voiceLen + into);
-      reportTime(voiceLen + into);
+      setCurrent(lead + voiceLen + into);
+      reportTime(lead + voiceLen + into);
       return;
     }
 
@@ -644,17 +685,17 @@ export function LibraryAudioStrip({
       const dual = dualRef.current;
       if (!dual) return;
       if (!keepPlaying) dual.pause();
-      dual.seek(t);
-      syncSoundscapeToVoice(t);
-      setCurrent(t);
-      reportTime(t);
+      dual.seek(voiceT);
+      syncSoundscapeToVoice(voiceT);
+      setCurrent(lead + voiceT);
+      reportTime(lead + voiceT);
       if (!keepPlaying) return;
       clearVoiceIntro();
-      if (shouldDelayVoice(t)) {
+      if (shouldDelayVoice(voiceT)) {
         dual.pause();
         startOrResumePlayback();
       } else if (!dual.isPlaying) {
-        void dual.play().catch(() => {});
+        void dual.play().catch(() => failVoicePlayback());
       }
       return;
     }
@@ -662,33 +703,152 @@ export function LibraryAudioStrip({
     const el = audioRef.current;
     if (!el) return;
     const voiceEnd =
-      Number.isFinite(el.duration) && el.duration > 0 ? el.duration : t;
+      Number.isFinite(el.duration) && el.duration > 0 ? el.duration : voiceT;
     try {
-      el.currentTime = Math.min(t, voiceEnd);
+      el.currentTime = Math.min(voiceT, voiceEnd);
     } catch {
       /* ignore seek before metadata */
     }
-    syncSoundscapeToVoice(t);
-    setCurrent(t);
-    reportTime(t);
+    syncSoundscapeToVoice(voiceT);
+    setCurrent(lead + voiceT);
+    reportTime(lead + voiceT);
     if (!keepPlaying) return;
     clearVoiceIntro();
-    if (shouldDelayVoice(t)) {
+    if (shouldDelayVoice(voiceT)) {
       el.pause();
       startOrResumePlayback();
     } else if (el.paused) {
-      void el.play().catch(() => {});
+      void playHtmlVoice(el).catch(() => failVoicePlayback());
     }
   }
 
   function voiceIntroSeconds(): number {
-    const n = track?.leadInSeconds;
-    if (typeof n === "number" && Number.isFinite(n) && n >= 0) return n;
-    return BED_VOICE_INTRO_SECONDS;
+    if (!track || ambientMix || ambientSoundscape) return 0;
+    return meditationLeadInSeconds({
+      leadInSeconds: track.leadInSeconds,
+      hasLiveBeds: trackHasLiveBeds(),
+    });
+  }
+
+  /** Pre-roll on the scrubber when live beds delay the voice. */
+  function timelineLeadIn(): number {
+    return voiceIntroSeconds();
   }
 
   function shouldDelayVoice(atSeconds: number): boolean {
     return trackHasLiveBeds() && voiceIntroSeconds() > 0 && atSeconds < 0.08;
+  }
+
+  function absMediaUrl(src: string): string {
+    try {
+      return new URL(src, window.location.href).href;
+    } catch {
+      return src;
+    }
+  }
+
+  /** Probe real voice duration from CDN (catalog may store the request target). */
+  function probeVoiceDurationSeconds(url: string): Promise<number> {
+    const candidates = voiceStemPlaybackCandidates(url).filter(
+      (src) => src && !/\.mp3(?=\?|$)/i.test(src),
+    );
+    const list = candidates.length > 0 ? candidates : url ? [url] : [];
+    if (list.length === 0) return Promise.resolve(0);
+    return new Promise((resolve) => {
+      let i = 0;
+      const tryNext = () => {
+        const src = list[i++];
+        if (!src) {
+          resolve(0);
+          return;
+        }
+        const el = new Audio();
+        el.preload = "metadata";
+        const done = (sec: number) => {
+          el.removeAttribute("src");
+          el.load();
+          resolve(sec);
+        };
+        el.onloadedmetadata = () => {
+          const d = el.duration;
+          if (Number.isFinite(d) && d > 0) done(d);
+          else tryNext();
+        };
+        el.onerror = () => tryNext();
+        el.src = src;
+      };
+      tryNext();
+    });
+  }
+
+  function applyMeasuredVoiceDuration(sec: number) {
+    if (!(sec > 0) || !Number.isFinite(sec)) return;
+    measuredDurationRef.current = true;
+    setDuration(sec);
+  }
+
+  function waitForCanPlay(el: HTMLAudioElement, timeoutMs = 12000): Promise<void> {
+    if (el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        cleanup();
+        reject(new Error("voice buffer timeout"));
+      }, timeoutMs);
+      const onReady = () => {
+        cleanup();
+        resolve();
+      };
+      const onErr = () => {
+        cleanup();
+        reject(new Error("voice source error"));
+      };
+      const cleanup = () => {
+        window.clearTimeout(timer);
+        el.removeEventListener("canplay", onReady);
+        el.removeEventListener("error", onErr);
+      };
+      el.addEventListener("canplay", onReady);
+      el.addEventListener("error", onErr);
+    });
+  }
+
+  /** Play baked `<audio>` voice — AAC only (never leftover catalog `.mp3`). */
+  async function playHtmlVoice(el: HTMLAudioElement): Promise<void> {
+    applySpeechElementVolume(el);
+    const candidates = voiceStemPlaybackCandidates(voiceUrl).filter(
+      (src) => src && !/\.mp3(?=\?|$)/i.test(src),
+    );
+    const tried = new Set<string>();
+    let lastErr: unknown;
+    for (const src of candidates.length > 0 ? candidates : [voiceUrl]) {
+      if (!src || tried.has(src) || /\.mp3(?=\?|$)/i.test(src)) continue;
+      tried.add(src);
+      const abs = absMediaUrl(src);
+      if (el.currentSrc !== abs && el.src !== abs) {
+        el.src = src;
+        try {
+          await waitForCanPlay(el);
+        } catch (e) {
+          lastErr = e;
+          continue;
+        }
+      }
+      try {
+        await el.play();
+        return;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error("voice play failed");
+  }
+
+  function failVoicePlayback() {
+    if (!track) return;
+    setPlaying(false);
+    onPlayingChange?.(track.s3Key, false);
   }
 
   function startOrResumePlayback() {
@@ -716,21 +876,17 @@ export function LibraryAudioStrip({
       onPlayingChange?.(track.s3Key, true);
       if (shouldDelayVoice(dual.currentTime)) {
         rewindSoundscapeForLeadIn();
+        leadInStartedMsRef.current = Date.now();
+        setCurrent(0);
         voiceIntroTimerRef.current = window.setTimeout(() => {
           voiceIntroTimerRef.current = null;
           syncSoundscapeToVoice(0);
-          void dual.play().catch(() => {
-            setPlaying(false);
-            onPlayingChange?.(track.s3Key, false);
-          });
+          void dual.play().catch(() => failVoicePlayback());
         }, voiceIntroSeconds() * 1000);
         return;
       }
       syncSoundscapeToVoice(dual.currentTime);
-      void dual.play().catch(() => {
-        setPlaying(false);
-        onPlayingChange?.(track.s3Key, false);
-      });
+      void dual.play().catch(() => failVoicePlayback());
       return;
     }
     const el = audioRef.current;
@@ -741,10 +897,7 @@ export function LibraryAudioStrip({
       setPlaying(true);
       onPlayingChange?.(track.s3Key, true);
       // Start immediately — lead-buffer wait made Focus soundscapes feel stalled.
-      void el.play().catch(() => {
-        setPlaying(false);
-        onPlayingChange?.(track.s3Key, false);
-      });
+      void el.play().catch(() => failVoicePlayback());
       return;
     }
     applySpeechElementVolume(el);
@@ -753,23 +906,18 @@ export function LibraryAudioStrip({
       rewindSoundscapeForLeadIn();
       setPlaying(true);
       onPlayingChange?.(track.s3Key, true);
+      leadInStartedMsRef.current = Date.now();
+      setCurrent(0);
       voiceIntroTimerRef.current = window.setTimeout(() => {
         voiceIntroTimerRef.current = null;
-        applySpeechElementVolume(el);
         // The composition has played through the lead-in; keep it there.
         syncSoundscapeToVoice(0);
-        void el.play().catch(() => {
-          setPlaying(false);
-          onPlayingChange?.(track.s3Key, false);
-        });
+        void playHtmlVoice(el).catch(() => failVoicePlayback());
       }, voiceIntroSeconds() * 1000);
       return;
     }
     syncSoundscapeToVoice(el.currentTime);
-    void el.play().catch(() => {
-      setPlaying(false);
-      onPlayingChange?.(track.s3Key, false);
-    });
+    void playHtmlVoice(el).catch(() => failVoicePlayback());
   }
 
   function pausePlayback() {
@@ -887,6 +1035,18 @@ export function LibraryAudioStrip({
     seekingRef.current = false;
     lastReportedTimeRef.current = -Infinity;
     const shouldPlay = autoplayRef.current;
+    measuredDurationRef.current = false;
+    // Provisional catalog length until media metadata arrives.
+    if (
+      typeof track.durationSeconds === "number" &&
+      track.durationSeconds > 0 &&
+      !ambientMix
+    ) {
+      setDuration(track.durationSeconds);
+    } else {
+      setDuration(0);
+    }
+
     if (ambientMix) {
       setCurrent(0);
       setDuration(0);
@@ -899,14 +1059,20 @@ export function LibraryAudioStrip({
         clearVoiceIntro();
       };
     }
+
+    let cancelled = false;
+    if (!ambientSoundscape && track.url) {
+      void probeVoiceDurationSeconds(track.url).then((d) => {
+        if (!cancelled && d > 0) applyMeasuredVoiceDuration(d);
+      });
+    }
+
     if (useDual && track.dryUrl) {
-      let cancelled = false;
       const dual = dualRef.current;
       dual.onEnded = () => {
         if (cancelled) return;
         beginBedOutro(0, { seekSoundscape: false });
       };
-      if (track.durationSeconds) setDuration(track.durationSeconds);
       if (dual.isPlaying) {
         if (!shouldPlay) {
           dual.pause();
@@ -927,7 +1093,7 @@ export function LibraryAudioStrip({
           onPlayingChange?.(track.s3Key, true);
         }
         void dual.whenDuration().then((d) => {
-          if (!cancelled && d > 0) setDuration(d);
+          if (!cancelled && d > 0) applyMeasuredVoiceDuration(d);
         });
         return () => {
           cancelled = true;
@@ -945,7 +1111,7 @@ export function LibraryAudioStrip({
             onPlayingChange?.(track.s3Key, false);
           }
           void dual.whenDuration().then((d) => {
-            if (!cancelled && d > 0) setDuration(d);
+            if (!cancelled && d > 0) applyMeasuredVoiceDuration(d);
           });
         })
         .catch(() => {
@@ -961,7 +1127,11 @@ export function LibraryAudioStrip({
     }
     dualRef.current?.stop();
     const el = audioRef.current;
-    if (!el) return;
+    if (!el) {
+      return () => {
+        cancelled = true;
+      };
+    }
     if (ambientSoundscape) {
       applyAmbientSoundscapeVolume();
       if (shouldPlay) startOrResumePlayback();
@@ -971,6 +1141,7 @@ export function LibraryAudioStrip({
         onPlayingChange?.(track.s3Key, false);
       }
       return () => {
+        cancelled = true;
         clearVoiceIntro();
       };
     }
@@ -983,6 +1154,7 @@ export function LibraryAudioStrip({
       onPlayingChange?.(track.s3Key, false);
     }
     return () => {
+      cancelled = true;
       clearVoiceIntro();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- restart when the stem changes; autoplay via ref (HMR-safe)
@@ -1100,17 +1272,19 @@ export function LibraryAudioStrip({
       if (
         seekingRef.current ||
         bedOutroRef.current.active ||
-        outroParkedOffsetRef.current != null
+        outroParkedOffsetRef.current != null ||
+        voiceIntroTimerRef.current != null
       ) {
         return;
       }
-      const t = el.currentTime;
+      const lead = timelineLeadIn();
+      const t = lead + el.currentTime;
       setCurrent(t);
       reportTime(t);
     };
     const syncDuration = () => {
       const d = el.duration;
-      if (Number.isFinite(d) && d > 0) setDuration(d);
+      if (Number.isFinite(d) && d > 0) applyMeasuredVoiceDuration(d);
     };
     const onPlay = () => {
       setPlaying(true);
@@ -1163,9 +1337,10 @@ export function LibraryAudioStrip({
         dual &&
         !seekingRef.current &&
         !bedOutroRef.current.active &&
-        outroParkedOffsetRef.current == null
+        outroParkedOffsetRef.current == null &&
+        voiceIntroTimerRef.current == null
       ) {
-        const t = dual.currentTime;
+        const t = timelineLeadIn() + dual.currentTime;
         setCurrent(t);
         reportTime(t);
       }
@@ -1175,21 +1350,44 @@ export function LibraryAudioStrip({
     return () => window.cancelAnimationFrame(raf);
   }, [useDual, track, ambientMix, reportTime]);
 
+  // Lead-in pre-roll on the scrubber (voice clock stays at 0 until speech starts).
+  useEffect(() => {
+    if (!track || ambientMix) return;
+    const id = window.setInterval(() => {
+      if (voiceIntroTimerRef.current == null || seekingRef.current) return;
+      const lead = timelineLeadIn();
+      if (lead <= 0) return;
+      const into = Math.min(
+        lead,
+        (Date.now() - leadInStartedMsRef.current) / 1000,
+      );
+      setCurrent(into);
+      reportTime(into);
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [track, ambientMix, reportTime]);
+
   useLayoutEffect(() => {
     if (!track) onHeightChange?.(0);
   }, [track, onHeightChange]);
 
   if (!track) return null;
 
-  const outroPad =
-    !ambientMix &&
-    !ambientSoundscape &&
-    track.fadeOut !== false &&
-    trackHasLiveBeds() &&
-    duration > 0
-      ? BED_OUTRO_HOLD_SECONDS + BED_OUTRO_FADE_SECONDS
-      : 0;
-  const timelineDuration = duration + outroPad;
+  const leadInPad = timelineLeadIn();
+  // Prefer measured media duration; catalog is provisional only.
+  const voiceDur = duration > 0 ? duration : 0;
+  // Same formula as library cards: voice + bed lead-in + bed outro.
+  const timelineDuration =
+    meditationSessionDurationSeconds({
+      voiceSeconds: voiceDur > 0 ? voiceDur : null,
+      liveMix: track.liveMix === true && !ambientMix && !ambientSoundscape,
+      leadInSeconds: track.leadInSeconds,
+      fadeOut: track.fadeOut,
+      backgroundNatureKey: track.natureKey,
+      backgroundMusicKey: track.musicKey,
+      backgroundDrumsKey: track.drumsKey,
+      backgroundNoiseKey: track.noiseKey,
+    }) ?? (leadInPad > 0 ? leadInPad : 0);
   /** Looping ambient mixes have no timeline; meditations and soundscapes scrub. */
   const canSeekTransport = !ambientMix;
 
@@ -1235,10 +1433,19 @@ export function LibraryAudioStrip({
               className="hidden"
               onError={(e) => {
                 const el = e.currentTarget;
-                const mp3 = voiceUrl.replace(/\.m4a(\?|$)/i, ".mp3$1");
-                if (mp3 && mp3 !== el.src && !el.dataset.aacFallback) {
-                  el.dataset.aacFallback = "1";
-                  el.src = mp3;
+                // AAC-only — never fall back to catalog `.mp3` (mislabelled AAC garbage).
+                const next = voiceStemPlaybackCandidates(voiceUrl).find(
+                  (c) =>
+                    c &&
+                    !/\.mp3(?=\?|$)/i.test(c) &&
+                    c !== el.currentSrc &&
+                    c !== el.src,
+                );
+                if (!next || el.dataset.aacTriedNext) return;
+                el.dataset.aacTriedNext = "1";
+                el.src = next;
+                if (playing || voiceIntroTimerRef.current != null) {
+                  void el.play().catch(() => failVoicePlayback());
                 }
               }}
             />

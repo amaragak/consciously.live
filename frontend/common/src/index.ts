@@ -53,10 +53,19 @@ export {
   BED_OUTRO_FADE_SECONDS,
   BED_OUTRO_HOLD_SECONDS,
   BED_VOICE_INTRO_SECONDS,
+  DEFAULT_MEDITATION_LEAD_IN_SECONDS,
   SPEECH_ELEMENT_VOLUME,
   bedElementVolume,
   soundscapeListenVolume,
 } from "./audio/bed-volume";
+
+export {
+  meditationHasLiveBeds,
+  meditationLeadInSeconds,
+  meditationOutroPadSeconds,
+  meditationSessionDurationSeconds,
+  type MeditationSessionDurationInput,
+} from "./audio/meditation-session-duration";
 
 export { CoverArtThumb } from "./library/cover-art-thumb";
 export { TypewriterReveal } from "./library/typewriter-reveal";

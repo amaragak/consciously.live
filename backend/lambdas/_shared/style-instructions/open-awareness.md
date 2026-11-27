@@ -1,50 +1,84 @@
 > Guidance for Open awareness meditations, not fixed rules. Use judgement for each moment; the user's request overrides any of this.
 
-## Mechanism
-This style moves attention off "what I'm focusing on" and onto "what is already aware." The listener starts with something concrete (sensation, breath, sound), then gradually lets go of any target. They rest as the open field in which everything appears. The writing does this by naming one simple thing, inviting the listener to notice it, then pointing at what is noticing. Gaps do the rest. Treat everything below as a default; the user's request comes first.
+# Open awareness: writer's brief
 
-## Phases
-Divide by change of focus or technique. Default arc:
-1. **Settle and anchor.** Posture, weight, one anchor such as the breath or contact. Short, roughly 10–15%.
-2. **Widen.** Add sounds, sensations, thoughts and moods, with no preferred object. "Whatever arises is welcome." About 20–25%.
-3. **Pointer to awareness.** Shift from objects to the space or knowing they appear in. Choose one route and stay with it: space or sky, the mirror, "what is aware of this?", or allowing everything. About 25%.
-4. **Deepen or experiment (optional).** A short inquiry or an exercise, such as bringing up a mild thought and seeing it arise in awareness. Include only if it fits the request.
-5. **Rest.** Very few words and long silences, the longest stretch of the session. About 25–30%.
-6. **Return.** Brief re-entry into the body, sounds and eyes. About 5%.
+## 1. Mechanism
+This style moves the listener from *attending to objects* to *resting as the space that knows them*. The sequence is:
+1. Give a simple anchor so the mind has somewhere to land.
+2. Loosen the anchor into "whatever arises."
+3. Point back at what is aware.
+4. Leave long silence so the listener can do it.
 
-Longer sessions mostly lengthen the widening, rest and silence rather than adding new techniques. Keep one route through the middle. Carry across one thread (for example the sky image or the "arising and passing" wording) and one fallback ("if you drift, notice it and begin again"). End each section on an open line that the next one can pick up, for example "…and notice what is here to notice it."
+Words only point. The less you add, the better it works. Never turn awareness into another object to grip or achieve. Favour "notice," "let," and "rest" over "focus," "try," and "achieve." Treat thoughts, sensations and sounds as equal guests that arrive and leave.
 
-## How to say things
-- A cue names one thing, invites softly, and leaves the outcome open. Example: "Notice the sounds in the room. No need to name them. Let each one arise and pass."
-- Move from concrete to subtle. Never ask for the abstract before the concrete has been felt.
-- Soften with "see if", "you might", "allow", "perhaps". Make clear there is nothing to achieve and no wrong experience.
-- Repeat core phrases ("arising, changing, passing away") with small variations, so the listener can stop tracking the words.
-- Use plain present-tense "you" sentences, mostly short. Use a few longer reflective sentences only when stating a pointer.
-- Use gentle questions ("Where does that thought go?") with silence after them. Do not answer them.
-- Handle wandering as part of the practice: notice it, view the thought as an appearance, and begin again without judgement.
-- Weave the user's context in as material that arises. A worry or goal becomes the thing to observe ("Let that worry appear, and notice what is aware of it"). Do not use it as a topic to solve or a story to develop.
+## 2. Phases
+Divide by change of focus:
+- **Settle:** posture, body weight, a few breaths. Short.
+- **Anchor:** one concrete object (breath, sitting sensations, sound). Teach the return from distraction here, lightly and without judgment.
+- **Widen:** open to sound, body sensation, mood, thought. Use noting ("a sound… a thought… a feeling").
+- **Point to awareness:** "what is aware of all this?"; space, sky and mirror images; or gentle inquiry. This is the core.
+- **Rest:** very sparse words and long silence.
+- **Return:** a few lines, then close.
 
-## Pauses
-Write [[PAUSE Ns]]. A pause gives the listener time to do what the last line asked. A short phrase after a cue usually gets 2–4s. A pointer or a question gets 8–20s. Rest phases can hold 30–60s or more. Silence lengthens as the session deepens, so keep early pauses brief and make the final rest the longest. Short sessions keep all pauses modest. Do not pause mid-sentence, and avoid stacking silences between every short clause in the opening.
+Sizing: the middle (widen and point) takes about half the session. Settle and anchor take roughly a quarter, and rest and return the rest. A longer session lets each phase run longer, with more silence, and may add one inquiry or experiment. A short session may fold the anchor into the widening.
 
-## Opening and closing
-Open with a few lines on posture and the weight of the body, then straight into the anchor. Keep any framing under three sentences. Close by widening to sounds and the room, a gentle movement, and eyes opening while keeping a sense of openness. Offer one line to carry into the day, adapted to the user's context. Do not use a long wrap-up or a sales-style outro.
+Carry across phases:
+- One recurring metaphor (sky, space or mirror).
+- One refrain (for example "come back, begin again").
+- One thread: from object, to field, to knower.
 
-## Common mistakes
-- Lecturing or philosophising at length. Give a pointer, then be quiet.
-- Telling the listener what they will feel or achieve ("you are now free").
-- Switching techniques every minute. Stay with one route and let it deepen.
-- Filling every gap with words late in the session.
-- Using guided imagery that tells a story. Use only simple images such as sky or mirror.
-- Making the instruction itself a task ("try to be aware"). Prefer "allow" and "notice".
+Hand over by closing a phase with its own ending line and opening the next by echoing the previous image.
 
-## Worked example
-Request: "10 minutes, I'm anxious before a presentation, open awareness."
-- Settle (weight, breath, one exhale).
-- Widen (sounds, sensations, including the tight chest).
-- Pointer (the anxiety is something appearing in a larger awareness).
-- Rest (long silence, one repeated phrase).
-- Return (carry a steadier sense into the talk).
+## 3. How things are said
+- **Cue anatomy:** name a sense or object, invite it softly, and leave the result open. Example: "Notice any sounds in the room… no need to name them." Don't say what the listener will feel.
+- Sequence from concrete (body, breath) to subtle (thought, the sense of "I"). Introduce one new thing per phase.
+- **Repetition:** use a medium amount. Repeat the anchor and return lines, and vary the wording of the others so it doesn't become a mantra.
+- **Softening:** "you might," "if it helps," "see if you can." The style is permissive, so avoid commands. Instead invite: "Let the next thought come and go."
+- Use short present-tense sentences in second person. Keep the language plain and sensory. Use inquiry questions sparingly, one at a time, and let them hang unanswered: "Where does that thought go?"
+- **User material:** treat a worry, goal or mood as just another arising thing to notice. Do not use it to build a story. Example: "If the worry about tomorrow appears, let it be a visitor in the open sky." If the user asks for a specific focus, make that the anchor or the object being noticed, then widen from it.
 
-Excerpt from the pointer phase:
-"Notice the tightness in your chest. [[PAUSE 4s]] Just a sensation, arising here. [[PAUSE 3s]] And notice that something is aware of it. [[PAUSE 6s]] The tightness comes and changes. The awareness around it stays open. [[PAUSE 15s]]"
+## 4. Pauses
+A pause gives the listener time to do what the line asked. Brief cues get about 2–4s, noting or sound cues 5–10s, and awareness pointers 10–30s or longer. Silence grows as the session deepens, and the longest pause usually sits late or at the end. Don't pause mid-sentence or between a question and its clause. Write them as [[PAUSE Ns]].
+
+## 5. Opening and closing
+- **Opening:** minimal, with no long preamble and a short silence before the first words. Give a posture cue, eyes closed or soft, a body-contact anchor, then a few breaths.
+- **Closing:** gentle. Widen to the room, bring in small movement, and say that this awareness stays available. Offer one line on carrying it into the day. End without a heavy sign-off, and allow a final silence.
+- Adapt both to the request's length and tone. A short session needs fewer settling lines.
+
+## What listeners expect
+- **Opening:** most sessions begin with posture, then body arrival, often with settling breaths. Eyes closed or soft gaze and a permission line ("let it all be as it is") are also common. Closings have no fixed order.
+- **Delivery:** permissive, soothing and present-tense, in second person, with few or occasional questions. Lines are repeated, but the listener is rarely asked to repeat them.
+- **Phrasing that fits:**
+  - Watching thoughts and feelings arise and pass ("thoughts come and go").
+  - Noticing sensations in body and mind ("you may notice").
+  - Resting in the space of awareness itself.
+- **Keep rare:** generic relaxation and release language, body-part locating, and descending or deepening imagery.
+- **Avoid:** well-wishes for safety, health or happiness and naming the practice (loving-kindness); say-their-name and feel-their-presence lines (loving-kindness); hand and arm placement (movement); abundance or "everything I need" affirmations (affirmation loops).
+
+## 6. Common mistakes
+- Turning awareness into a goal ("achieve stillness"). Frame it as already present.
+- Over-narrating. Silence is the technique, so leave room for it.
+- Piling on imagery. One metaphor is enough.
+- Pushing thoughts away. Let them be noticed instead.
+- Switching technique every few lines.
+- Dense philosophy or jargon. Keep lines experiential.
+- Putting a story or fix around the user's issue.
+
+## 7. Worked example
+**Request:** "10 minutes, I'm anxious before a job interview. Open awareness please."
+
+**Phases:**
+1. Settle (about 1.5 min): posture and breath.
+2. Anchor (about 2 min): feeling the breath, with a return line for the mind wandering.
+3. Widen (about 3 min): sounds, then body, then the anxious energy treated as a sensation.
+4. Point to awareness (about 2.5 min): the sky and weather image, "what notices all this?"
+5. Rest and return (about 1 min).
+
+The sky image and the "come back" line carry across all five.
+
+**Excerpt from phase 3:**
+Let your attention open to the sounds around you. [[PAUSE 6s]]
+Some near, some far, arriving on their own. [[PAUSE 8s]]
+If a flutter of nerves shows up, you might feel where it lives in the body. [[PAUSE 6s]]
+Just sensation, coming and changing. [[PAUSE 10s]]
+Sounds, sensations, thoughts, all passing through the same open sky. [[PAUSE 15s]]

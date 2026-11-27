@@ -1,0 +1,133 @@
+{
+  "video_id": "hh3curOlc9I",
+  "pause_min_s": 4.0,
+  "short_min_s": 1.0,
+  "runtime_s": 527.0,
+  "lead_in_s": 0.85,
+  "tail_s": 0.0,
+  "segments": [
+    {
+      "type": "passage",
+      "start": 0.85,
+      "length": 2.34,
+      "words": 5,
+      "position": 0.0016,
+      "role": "other",
+      "phase": "opening",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 3.19,
+      "length": 5.12
+    },
+    {
+      "type": "passage",
+      "start": 8.31,
+      "length": 1.22,
+      "words": 6,
+      "position": 0.0158,
+      "role": "other",
+      "phase": "opening",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 9.53,
+      "length": 6.69
+    },
+    {
+      "type": "passage",
+      "start": 16.22,
+      "length": 10.07,
+      "words": 17,
+      "position": 0.0308,
+      "role": "instruction",
+      "phase": "main",
+      "short_pauses": {
+        "count": 2,
+        "lengths_s": [
+          1.6,
+          3.5
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 26.29,
+      "length": 40.11
+    },
+    {
+      "type": "passage",
+      "start": 66.4,
+      "length": 0.92,
+      "words": 3,
+      "position": 0.126,
+      "role": "breath",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 67.32,
+      "length": 12.65
+    },
+    {
+      "type": "passage",
+      "start": 79.97,
+      "length": 2.56,
+      "words": 9,
+      "position": 0.1517,
+      "role": "instruction",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 82.53,
+      "length": 43.78
+    },
+    {
+      "type": "passage",
+      "start": 126.31,
+      "length": 4.56,
+      "words": 11,
+      "position": 0.2397,
+      "role": "self-practice handover",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          2.0
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 130.87,
+      "length": 396.13
+    }
+  ],
+  "counts": {
+    "passages": 6,
+    "pauses": 6,
+    "words": 51
+  },
+  "timing_check": {
+    "covered_s": 527.0,
+    "delta_s": 0.0,
+    "vs_youtube_s": 0.0
+  }
+}

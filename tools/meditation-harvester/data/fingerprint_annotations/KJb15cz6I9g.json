@@ -1,0 +1,40 @@
+{
+  "video_id": "KJb15cz6I9g",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "settling_breaths",
+      "posture"
+    ],
+    "closing_moves": [
+      "deepen_once_more"
+    ],
+    "techniques": [
+      "noting_or_labelling",
+      "reflection_questions",
+      "imagery_journey"
+    ],
+    "body_sequence_direction": "none",
+    "imagery_themes": [
+      "water"
+    ],
+    "person_main": "you",
+    "listener_i_statements": false,
+    "tense_main": "present",
+    "question_rate": "medium",
+    "repetition_level": "low",
+    "listener_repeats": true,
+    "directiveness": 2,
+    "energy": 2,
+    "certainty": 3,
+    "warmth": 4,
+    "formality": 3
+  },
+  "words": 764,
+  "questions_per_1k_words": 17.02,
+  "usage": {
+    "in": 3114,
+    "out": 198
+  }
+}

@@ -7,8 +7,8 @@
 /** FX stem wetGain multiplier vs admin wet mix (Echo at Wet = this × mix). */
 export const VOICE_FX_STEM_WET_MULT = 1.5;
 
-/** Echo recommended — admin wet mix lands here when the stem is 1.5×. */
-export const VOICE_FX_DIAL_DEFAULT = Math.round(100 / VOICE_FX_STEM_WET_MULT);
+/** Default Echo dial — full wet (100). */
+export const VOICE_FX_DIAL_DEFAULT = 100;
 
 export function clampVoiceFxDial(
   n: unknown,

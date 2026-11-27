@@ -8,6 +8,7 @@ import type { DeliveryId } from "./delivery-profiles";
 import { normalizeMeditationType } from "./meditation-types";
 import { rewritePauseMarkersToShortForm } from "./script-pause-short";
 import { STYLE_GUIDE_BY_TYPE } from "./style-instructions-data";
+import { loadLiveStyleGuide } from "./preprompts/preprompt-store";
 
 const PAUSES_SECTION_RE = /^##\s*(?:\d+\.\s*)?Pauses\s*$/im;
 
@@ -42,6 +43,23 @@ export function styleGuideMarkdownFor(
   if (!norm) return null;
   const guide = STYLE_GUIDE_BY_TYPE[norm];
   return guide?.trim() ? guide : null;
+}
+
+/**
+ * Live (Dynamo latest) guide for a style, falling back to the embedded default.
+ * Used by Create; sync callers keep using styleGuideMarkdownFor.
+ */
+export async function styleGuideMarkdownForLive(
+  meditationStyle: string | null | undefined,
+): Promise<{
+  markdown: string;
+  /** 0 = embedded repo default. */
+  version: number;
+  entryId: string;
+} | null> {
+  const live = await loadLiveStyleGuide(meditationStyle);
+  if (!live) return null;
+  return { markdown: live.text, version: live.version, entryId: live.entryId };
 }
 
 export function styleGuidePacingPreamble(params: {
@@ -94,8 +112,15 @@ export function styleGuidePromptBlock(params: {
   /** Casual: strip ## Pauses. */
   stripPauses?: boolean;
   omitSectionSilenceTarget?: boolean;
+  /**
+   * Live guide text from Admin › Pre-prompts (loaded async by the caller).
+   * Omitted = embedded STYLE_GUIDE_BY_TYPE.
+   */
+  guideMarkdownOverride?: string | null;
 }): string | null {
-  const raw = styleGuideMarkdownFor(params.meditationStyle);
+  const raw =
+    params.guideMarkdownOverride?.trim() ||
+    styleGuideMarkdownFor(params.meditationStyle);
   if (!raw) return null;
   let guide = rewriteGuidePauseMarkers(raw);
   if (params.stripPauses ?? params.delivery === "casual") {

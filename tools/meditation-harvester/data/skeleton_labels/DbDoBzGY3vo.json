@@ -1,0 +1,15 @@
+{
+  "video_id": "DbDoBzGY3vo",
+  "model": "claude-haiku-5-5",
+  "fingerprint": "5b53a9adb116fa7a",
+  "labels": [
+    [
+      "other",
+      "opening"
+    ],
+    [
+      "breath",
+      "main"
+    ]
+  ]
+}

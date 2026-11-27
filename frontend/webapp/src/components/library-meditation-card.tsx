@@ -22,7 +22,11 @@ import {
 } from "@/lib/meditation-type-pill";
 import { type PendingLibraryGeneration } from "@/lib/pending-library-generations";
 import { stripPauseMarkers } from "@/lib/meditation-analytics";
-import { CoverArtThumb, TypewriterReveal } from "@consciously/common";
+import {
+  CoverArtThumb,
+  TypewriterReveal,
+  meditationSessionDurationSeconds,
+} from "@consciously/common";
 import { BookOpen, SquarePen } from "lucide-react";
 import { isLocalDevHost } from "@/lib/dev-ui-settings";
 import { CardActionsMenuSurface } from "@/components/card-actions-menu-surface";
@@ -723,7 +727,18 @@ export function LibraryMeditationCard({
 
   const open = scriptExpanded;
   const styleLine = libraryMeditationCategoryLabel(m);
-  const lengthLine = formatDuration(m.durationSeconds);
+  const lengthLine = formatDuration(
+    meditationSessionDurationSeconds({
+      voiceSeconds: m.durationSeconds,
+      liveMix: m.liveMix,
+      leadInSeconds: m.leadInSeconds,
+      fadeOut: m.fadeOut,
+      backgroundNatureKey: m.backgroundNatureKey,
+      backgroundMusicKey: m.backgroundMusicKey,
+      backgroundDrumsKey: m.backgroundDrumsKey,
+      backgroundNoiseKey: m.backgroundNoiseKey,
+    }),
+  );
 
   const stars = showRating ? (
     <div className="flex items-center gap-0.5">
@@ -808,38 +823,24 @@ export function LibraryMeditationCard({
     canDevRefresh ||
     canSpeechifyEmotion;
 
-  const playControl = isPlaying ? (
-    <div className="flex items-center gap-2">
-      <span className="tabular-nums text-xs font-semibold text-muted sm:inline">
-        {formatAudioClock(playingTimeSeconds)}
-      </span>
-      <button
-        type="button"
-        onClick={() => onTogglePlay?.()}
-        className="flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent sm:h-11 sm:w-11"
-        aria-label="Pause"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          width="22"
-          height="22"
-          fill="currentColor"
-          aria-hidden
-        >
-          <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
-        </svg>
-      </button>
-    </div>
-  ) : (
+  const playButtonClass = alwaysShowRowChrome
+    ? "flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent opacity-100 pointer-events-auto transition-opacity sm:h-11 sm:w-11"
+    : "flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent opacity-100 pointer-events-auto transition-opacity sm:h-11 sm:w-11 sm:opacity-0 sm:pointer-events-none sm:group-hover:opacity-100 sm:group-hover:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-focus-within:pointer-events-auto";
+
+  const playButton = (
     <button
       type="button"
-      onClick={() => (isSelected ? onTogglePlay?.() : onPlay?.())}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (isPlaying || isSelected) onTogglePlay?.();
+        else onPlay?.();
+      }}
       className={
-        alwaysShowRowChrome
-          ? "flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent opacity-100 pointer-events-auto transition-opacity sm:h-11 sm:w-11"
-          : "flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent opacity-100 pointer-events-auto transition-opacity sm:h-11 sm:w-11 sm:opacity-0 sm:pointer-events-none sm:group-hover:opacity-100 sm:group-hover:pointer-events-auto"
+        isPlaying
+          ? "flex h-[38px] w-[38px] shrink-0 cursor-pointer items-center justify-center rounded-full accent-fill-gradient text-on-accent sm:h-11 sm:w-11"
+          : playButtonClass
       }
-      aria-label="Play"
+      aria-label={isPlaying ? "Pause" : "Play"}
     >
       <svg
         viewBox="0 0 24 24"
@@ -848,10 +849,49 @@ export function LibraryMeditationCard({
         fill="currentColor"
         aria-hidden
       >
-        <path d="M8 5v14l11-7L8 5z" />
+        {isPlaying ? (
+          <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+        ) : (
+          <path d="M8 5v14l11-7L8 5z" />
+        )}
       </svg>
     </button>
   );
+
+  /** Play/pause centered on cover (list + grid). Clock sits under the button while playing. */
+  function coverWithPlay(opts: {
+    edgePx?: number;
+    size?: "card";
+    className?: string;
+  }) {
+    const edge =
+      opts.edgePx != null && opts.edgePx > 0
+        ? Math.round(opts.edgePx)
+        : opts.size === "card"
+          ? 113
+          : LIST_COVER_EDGE_DESKTOP_PX;
+    return (
+      <span
+        className={`relative block shrink-0 self-start ${opts.className ?? ""}`}
+        style={{ width: edge, height: edge }}
+      >
+        <CoverArtThumb
+          src={m.coverImageUrl}
+          alt=""
+          edgePx={edge}
+          className="!mb-0"
+        />
+        <span className="pointer-events-auto absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 -translate-y-1/2">
+          {isPlaying ? (
+            <span className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 rounded-full bg-black/45 px-1.5 py-0.5 tabular-nums text-[10px] font-semibold text-white">
+              {formatAudioClock(playingTimeSeconds)}
+            </span>
+          ) : null}
+          {playButton}
+        </span>
+      </span>
+    );
+  }
 
   // Responsive row: ≥48px on the mobile sheet, compact on the desktop flyout.
   const menuItemClass =
@@ -1492,12 +1532,7 @@ export function LibraryMeditationCard({
         ) : null}
         {mobileCardBody}
         <div className="hidden min-w-0 flex-1 flex-col sm:flex">
-          <CoverArtThumb
-            src={m.coverImageUrl}
-            alt=""
-            size="card"
-            className="mb-3"
-          />
+          {coverWithPlay({ size: "card", className: "mb-3" })}
           <div className="flex items-start justify-between gap-3 pr-8">
             <p className="text-xs font-medium uppercase tracking-wide text-accent-link">
               {styleLine}
@@ -1516,10 +1551,11 @@ export function LibraryMeditationCard({
           <div className="mt-1 text-sm text-muted">{m.description ?? "—"}</div>
           {metaRow}
           {scriptBlock ? <div className="mt-4">{scriptBlock}</div> : null}
-          <div className="mt-auto flex translate-y-2 items-center justify-end gap-3">
-            {playControl}
-            {reflectButton}
-          </div>
+          {reflectButton ? (
+            <div className="mt-auto flex translate-y-2 items-center justify-end gap-3">
+              {reflectButton}
+            </div>
+          ) : null}
         </div>
       </li>
       <LibraryHowMadeModal
@@ -1558,26 +1594,26 @@ export function LibraryMeditationCard({
         <div className="absolute right-2 top-2 z-20 hidden sm:hidden">{cardMenu}</div>
       ) : null}
       {mobileCardBody}
-      {/* Desktop: play at card center; menu flush to card-edge inset; Reflect under. */}
+      {/* Desktop: play centered on cover; menu + Reflect on the right. */}
       <div className="pointer-events-none absolute inset-0 z-10 hidden sm:block">
         {cardMenu ? (
           <div className="pointer-events-auto absolute right-1.5 top-1.5 z-20">
             {cardMenu}
           </div>
         ) : null}
-        <div className="pointer-events-auto absolute right-3 top-1/2 flex -translate-y-1/2 flex-col items-end gap-2">
-          {playControl}
-          {reflectButton}
-        </div>
+        {reflectButton ? (
+          <div className="pointer-events-auto absolute right-3 top-1/2 flex -translate-y-1/2 flex-col items-end gap-2">
+            {reflectButton}
+          </div>
+        ) : null}
       </div>
-      <div className="relative hidden min-w-0 pr-[8.5rem] sm:block">
+      <div
+        className={`relative hidden min-w-0 sm:block ${
+          reflectButton ? "pr-[8.5rem]" : ""
+        }`}
+      >
         <div className="flex min-w-0 items-start gap-3.5">
-          <CoverArtThumb
-            src={m.coverImageUrl}
-            alt=""
-            edgePx={LIST_COVER_EDGE_DESKTOP_PX}
-            className="self-start"
-          />
+          {coverWithPlay({ edgePx: LIST_COVER_EDGE_DESKTOP_PX })}
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-center gap-2 gap-y-1">
               <div className="flex min-w-0 items-start gap-3">

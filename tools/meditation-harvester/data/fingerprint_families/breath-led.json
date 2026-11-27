@@ -1,0 +1,200 @@
+{
+  "style": "breath-led",
+  "model": "claude-haiku-5-5",
+  "digest": "55d13a80e39a4d81",
+  "families": [
+    {
+      "name": "Breath as anchor",
+      "meaning": "Points the listener back to the breath as the object of attention, returning them when the mind wanders.",
+      "examples": [
+        "back to the breath",
+        "feel the breath"
+      ],
+      "members": [
+        "back to the breath",
+        "feel the breath"
+      ]
+    },
+    {
+      "name": "Breathing instructions",
+      "meaning": "Narrates the mechanics of inhaling and exhaling so the listener can follow the rhythm step by step.",
+      "examples": [
+        "breathe in, breathe out",
+        "you breathe out"
+      ],
+      "members": [
+        "breathe in breathe out",
+        "breathing in and out",
+        "you breathe out",
+        "each in breath"
+      ]
+    },
+    {
+      "name": "Inhale-exhale cue",
+      "meaning": "Pairs each in-breath and out-breath with an intention or self-talk line, guiding the listener through a set phrase.",
+      "examples": [
+        "breathing in I know",
+        "breathing out I release"
+      ],
+      "members": [
+        "breathing in i",
+        "breathing in i know",
+        "breathing out i release",
+        "breathing in i calm my body",
+        "i calm my body"
+      ]
+    },
+    {
+      "name": "Breath first person",
+      "meaning": "Puts the breath in the first person so the listener speaks or feels it as their own.",
+      "examples": [
+        "my in breath",
+        "my out breath"
+      ],
+      "members": [
+        "my in breath",
+        "my out breath",
+        "my mind breathing"
+      ]
+    },
+    {
+      "name": "Breath rhythm and motion",
+      "meaning": "Describes the natural movement of breath, such as its rising, falling, and coming and going.",
+      "examples": [
+        "rise and fall",
+        "come and go"
+      ],
+      "members": [
+        "rise and fall",
+        "come and go",
+        "breath as you"
+      ]
+    },
+    {
+      "name": "Nose or mouth route",
+      "meaning": "Specifies the path the breath takes in and out of the body.",
+      "examples": [
+        "through the nose",
+        "through the mouth"
+      ],
+      "members": [
+        "through the nose",
+        "through your nose",
+        "through the mouth"
+      ]
+    },
+    {
+      "name": "Settle and prepare",
+      "meaning": "Invites the listener to get physically ready and settle into the practice before going further.",
+      "examples": [
+        "make yourself comfortable",
+        "you are ready"
+      ],
+      "members": [
+        "make yourself comfortable",
+        "you are ready",
+        "take a few",
+        "take a deep breath"
+      ]
+    },
+    {
+      "name": "Eyes open or closed",
+      "meaning": "Tells the listener when to close or open their eyes to mark the start and end of the session.",
+      "examples": [
+        "close your eyes",
+        "open your eyes"
+      ],
+      "members": [
+        "close your eyes",
+        "open your eyes"
+      ]
+    },
+    {
+      "name": "Attention awareness",
+      "meaning": "Directs the listener to notice and become aware of their attention, body, or sensations.",
+      "examples": [
+        "become aware of your body",
+        "you may notice"
+      ],
+      "members": [
+        "aware of your",
+        "become aware of your",
+        "aware of your body",
+        "awareness to your",
+        "sensations in your body",
+        "you may notice"
+      ]
+    },
+    {
+      "name": "Returning attention",
+      "meaning": "Brings the listener's wandering attention back to the present moment or the practice.",
+      "examples": [
+        "bring your attention back",
+        "back to the present moment"
+      ],
+      "members": [
+        "bring your attention",
+        "your attention back",
+        "back to your",
+        "back to the present moment"
+      ]
+    },
+    {
+      "name": "Permission to be",
+      "meaning": "Reassures the listener that nothing needs to be done, fixed, or perfect.",
+      "examples": [
+        "there's no need",
+        "nothing to fix"
+      ],
+      "members": [
+        "there's no need"
+      ]
+    },
+    {
+      "name": "Body and mind unity",
+      "meaning": "Names body and mind together to frame the session as a whole-person practice.",
+      "examples": [
+        "body and mind",
+        "your nervous system"
+      ],
+      "members": [
+        "body and mind",
+        "your nervous system"
+      ]
+    },
+    {
+      "name": "Brief and repeat",
+      "meaning": "Frames the practice as short or repeated, asking the listener to repeat a process several times.",
+      "examples": [
+        "take a few breaths",
+        "over and over"
+      ],
+      "members": [
+        "over and over",
+        "soon as you"
+      ]
+    },
+    {
+      "name": "Grounding countdown",
+      "meaning": "Counts down to bring the listener into the present through the senses.",
+      "examples": [
+        "five four three two one"
+      ],
+      "members": [
+        "five four three two one"
+      ]
+    },
+    {
+      "name": "Trial invitation",
+      "meaning": "Softly invites the listener to test a suggestion and notice what happens.",
+      "examples": [
+        "see if you can",
+        "you can feel"
+      ],
+      "members": [
+        "see if you",
+        "you can feel"
+      ]
+    }
+  ]
+}

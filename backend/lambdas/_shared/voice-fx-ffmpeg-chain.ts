@@ -20,8 +20,8 @@ import {
 
 const execFileAsync = promisify(execFile);
 const AAC_BITRATE = "160k";
-/** Speechify PCM + per-segment FX sample rate. */
-export const VOICE_FX_PCM_SR = 24_000;
+/** Fish / Speechify PCM + per-segment FX sample rate (matches AAC delivery). */
+export const VOICE_FX_PCM_SR = 44_100;
 
 function binEnv(): NodeJS.ProcessEnv {
   return { ...process.env, PATH: `/opt/bin:${process.env.PATH || ""}` };
@@ -32,7 +32,7 @@ function ffmpegBin(): string {
   return "ffmpeg";
 }
 
-/** Time-stretch raw s16le mono @ 24 kHz with ffmpeg `atempo` (pitch kept). `factor` > 1 is faster. */
+/** Time-stretch raw s16le mono @ VOICE_FX_PCM_SR with ffmpeg `atempo` (pitch kept). `factor` > 1 is faster. */
 export async function atempoPcm24kS16le(pcm: Buffer, factor: number): Promise<Buffer> {
   if (!(factor > 0) || Math.abs(factor - 1) < 0.001 || pcm.byteLength === 0) return pcm;
   const tempo = Math.min(2, Math.max(0.5, factor));
@@ -264,13 +264,13 @@ export async function generateSoxIrWav(
 }
 
 /**
- * Raw s16le mono @ 24 kHz → delay→afir → parallel send mix → s16le @ 24 kHz.
+ * Raw s16le mono @ VOICE_FX_PCM_SR → delay→afir → parallel send mix → same rate.
  * out = 1.0*dry + wetGain*peakMatched(proc). Used for per-segment FX OLA.
  */
 export async function applyVoiceFxPcmSegment24k(params: {
   dryPcm: Buffer;
   settings: VoiceFxSettings;
-  /** Prebuilt IR wav (any rate; resampled to 24 kHz). */
+  /** Prebuilt IR wav (any rate; resampled to VOICE_FX_PCM_SR). */
   irWav?: Buffer;
 }): Promise<{ wetPcm: Buffer; ms: number }> {
   const dryPcm = params.dryPcm;
@@ -432,11 +432,11 @@ export function floatBusToS16le(bus: Float32Array, sampleCount: number): Buffer 
   return out;
 }
 
-/** 24 kHz s16le mono → AAC-in-MP4 @ 44.1 kHz for delivery. */
+/** s16le mono @ VOICE_FX_PCM_SR → AAC-in-MP4 @ 44.1 kHz for delivery. */
 export async function pcm24kS16leToAac44100(pcm: Buffer): Promise<Buffer> {
   const id = randomUUID();
-  const inPath = `/tmp/pcm24-in-${id}.s16le`;
-  const outPath = `/tmp/pcm24-out-${id}${AAC_EXTENSION}`;
+  const inPath = `/tmp/pcm-in-${id}.s16le`;
+  const outPath = `/tmp/pcm-out-${id}${AAC_EXTENSION}`;
   fs.writeFileSync(inPath, pcm);
   try {
     await run(
@@ -462,7 +462,7 @@ export async function pcm24kS16leToAac44100(pcm: Buffer): Promise<Buffer> {
         AAC_BITRATE,
         outPath,
       ],
-      "ffmpeg pcm24k→aac44100",
+      "ffmpeg pcm→aac44100",
     );
     return fs.readFileSync(outPath);
   } finally {

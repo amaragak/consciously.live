@@ -12,15 +12,27 @@ export function backgroundAudioStreamingKey(key: string): string {
 
 /**
  * Bed playback key: AAC-in-MP4 only. Catalog keys stay `.mp3`-shaped.
+ * Leftover `.mp3` / `.wav` / `.opus` siblings are older or wrong-format —
+ * never return those for fetch.
  */
 export function backgroundAudioPlaybackKey(key: string): string {
   const catalog = backgroundAudioStreamingKey(key);
   if (!catalog) return catalog;
-  const lower = catalog.toLowerCase();
-  if (!lower.startsWith("background-audio/") || !lower.endsWith(".mp3")) {
-    return catalog;
+  const pathOnly = catalog.split(/[?#]/)[0] ?? catalog;
+  const lower = pathOnly.toLowerCase();
+  const bedIdx = lower.indexOf("background-audio/");
+  if (bedIdx < 0) return catalog;
+  const bedPath = pathOnly.slice(bedIdx);
+  const bedLower = bedPath.toLowerCase();
+  if (bedLower.endsWith(".m4a")) return bedPath;
+  if (
+    bedLower.endsWith(".mp3") ||
+    bedLower.endsWith(".wav") ||
+    bedLower.endsWith(".opus")
+  ) {
+    return `${bedPath.slice(0, bedPath.lastIndexOf("."))}.m4a`;
   }
-  return `${catalog.slice(0, -4)}.m4a`;
+  return catalog;
 }
 
 /**

@@ -1,0 +1,252 @@
+{
+  "style": "affirmation-loop",
+  "model": "claude-haiku-5-5",
+  "digest": "be9bfcc5d39d5f23",
+  "families": [
+    {
+      "name": "Self-worth affirmations",
+      "meaning": "Declares the listener's inherent worth, enough-ness or love, so they feel acceptable as they are.",
+      "examples": [
+        "I am enough",
+        "You are worthy"
+      ],
+      "members": [
+        "i am enough i",
+        "you are worthy",
+        "i am worthy i",
+        "i am blessed i",
+        "i love you",
+        "enough just as i",
+        "you are loved"
+      ]
+    },
+    {
+      "name": "Safety and security assurances",
+      "meaning": "Tells the listener they are safe, protected and held, to calm the nervous system.",
+      "examples": [
+        "I am safe",
+        "You are not alone"
+      ],
+      "members": [
+        "i am safe",
+        "you are safe",
+        "i am safe i",
+        "safe and secure",
+        "you are not alone",
+        "you are held",
+        "i am protected",
+        "i am supported"
+      ]
+    },
+    {
+      "name": "Gratitude and thanks",
+      "meaning": "Has the listener express appreciation for their life, blessings or the moment.",
+      "examples": [
+        "I am grateful",
+        "I am blessed"
+      ],
+      "members": [
+        "i am grateful",
+        "you thank you",
+        "me i am grateful"
+      ]
+    },
+    {
+      "name": "Openness and receiving",
+      "meaning": "Prepares the listener to be open to receive good things, abundance and guidance.",
+      "examples": [
+        "I am open",
+        "Open to receive"
+      ],
+      "members": [
+        "i am open",
+        "open to receive",
+        "i am open i",
+        "i receive i",
+        "yourself to receive",
+        "easy for me"
+      ]
+    },
+    {
+      "name": "Readiness and willingness",
+      "meaning": "Signals that the listener is prepared and willing to begin change or action.",
+      "examples": [
+        "I am ready",
+        "I am willing"
+      ],
+      "members": [
+        "i am ready",
+        "i am willing",
+        "i am ready i",
+        "you are ready you"
+      ]
+    },
+    {
+      "name": "Personal power and strength",
+      "meaning": "Asserts the listener's power, strength, capability and standing upright.",
+      "examples": [
+        "I am powerful",
+        "I stand tall"
+      ],
+      "members": [
+        "i am powerful i",
+        "i am strong",
+        "i am capable",
+        "i stand tall",
+        "believe in myself"
+      ]
+    },
+    {
+      "name": "Abundance and needs met",
+      "meaning": "Reassures the listener that they already have what they need and abundance is present.",
+      "examples": [
+        "Everything I need",
+        "I am abundant"
+      ],
+      "members": [
+        "everything i need",
+        "i am abundant",
+        "my highest good",
+        "need is already",
+        "my life i"
+      ]
+    },
+    {
+      "name": "Releasing and letting go",
+      "meaning": "Invites the listener to let go of tension, control, need to know or chasing.",
+      "examples": [
+        "I let go",
+        "I release the need to control"
+      ],
+      "members": [
+        "i let go",
+        "go of any",
+        "i release the need",
+        "time to release",
+        "i release the need to control",
+        "need to chase",
+        "need to control",
+        "need to know"
+      ]
+    },
+    {
+      "name": "No effort required",
+      "meaning": "Tells the listener they don't have to do, fix or change anything right now.",
+      "examples": [
+        "You don't need to fix anything",
+        "Nothing to change"
+      ],
+      "members": [
+        "you don't need",
+        "you are already",
+        "rest of your day"
+      ]
+    },
+    {
+      "name": "Trust and alignment",
+      "meaning": "Expresses trust in oneself, life or the process, and alignment with guidance.",
+      "examples": [
+        "I trust the process",
+        "I am aligned"
+      ],
+      "members": [
+        "i trust my",
+        "i trust life",
+        "i trust myself i",
+        "i trust the process",
+        "life i trust",
+        "myself i trust",
+        "i am aligned",
+        "i am guided"
+      ]
+    },
+    {
+      "name": "Connection and love",
+      "meaning": "Affirms the listener's connection to others, the world or a sense of love.",
+      "examples": [
+        "I am connected",
+        "I love you"
+      ],
+      "members": [
+        "i am connected"
+      ]
+    },
+    {
+      "name": "Peace and calm",
+      "meaning": "Brings the listener into a state of inner peace and stillness.",
+      "examples": [
+        "I am at peace"
+      ],
+      "members": [
+        "i am at peace",
+        "i am always"
+      ]
+    },
+    {
+      "name": "Present-moment grounding",
+      "meaning": "Anchors the listener in the current moment, the here and now.",
+      "examples": [
+        "Right here, right now",
+        "Right now I"
+      ],
+      "members": [
+        "right here right",
+        "right now i",
+        "right now you"
+      ]
+    },
+    {
+      "name": "Breath and body guidance",
+      "meaning": "Instructs the listener to breathe, feel the body and settle physically.",
+      "examples": [
+        "Take a deep breath",
+        "Inhale and exhale"
+      ],
+      "members": [
+        "inhale and exhale",
+        "through your nose",
+        "take a deep breath",
+        "through your body",
+        "every cell of your",
+        "every cell of your being",
+        "every cell of your body",
+        "comfortable seated position"
+      ]
+    },
+    {
+      "name": "Eyes and session cues",
+      "meaning": "Directs the listener's physical actions to open or close the eyes and start or end the session.",
+      "examples": [
+        "Close your eyes",
+        "Open your eyes"
+      ],
+      "members": [
+        "close your eyes",
+        "open your eyes",
+        "take a moment",
+        "closing your eyes",
+        "ready gently open your eyes",
+        "your heart close your eyes",
+        "your awareness to your",
+        "bring your awareness",
+        "back to your breath"
+      ]
+    },
+    {
+      "name": "Creation and self-belief",
+      "meaning": "Frames the listener as creating their reality and believing in their own dreams.",
+      "examples": [
+        "You are creating a new life",
+        "Believe in myself"
+      ],
+      "members": [
+        "you are creating",
+        "creating a new",
+        "i am creating",
+        "my dreams i",
+        "i desire i",
+        "you are creating a new"
+      ]
+    }
+  ]
+}

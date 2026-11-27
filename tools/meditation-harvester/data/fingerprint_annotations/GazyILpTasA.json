@@ -1,0 +1,47 @@
+{
+  "video_id": "GazyILpTasA",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "posture",
+      "body_arrival",
+      "eyes_closed_or_soft_gaze",
+      "settling_breaths",
+      "other"
+    ],
+    "closing_moves": [
+      "deepen_once_more",
+      "carry_into_day",
+      "movement",
+      "return_attention",
+      "other"
+    ],
+    "techniques": [
+      "breath_counting_or_ratio",
+      "body_part_sequence",
+      "noting_or_labelling",
+      "repeated_affirmations",
+      "other"
+    ],
+    "body_sequence_direction": "head_to_feet",
+    "imagery_themes": [],
+    "person_main": "mixed",
+    "listener_i_statements": true,
+    "tense_main": "mixed",
+    "question_rate": "low",
+    "repetition_level": "high",
+    "listener_repeats": true,
+    "directiveness": 2,
+    "energy": 1,
+    "certainty": 4,
+    "warmth": 3,
+    "formality": 4
+  },
+  "words": 1493,
+  "questions_per_1k_words": 0.0,
+  "usage": {
+    "in": 4752,
+    "out": 270
+  }
+}

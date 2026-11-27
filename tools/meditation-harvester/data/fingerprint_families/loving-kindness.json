@@ -1,0 +1,270 @@
+{
+  "style": "loving-kindness",
+  "model": "claude-haiku-5-5",
+  "digest": "a732bc6ea0640159",
+  "families": [
+    {
+      "name": "Wishes for safety",
+      "meaning": "Offers well-wishes that the person or beings be safe, protected from harm.",
+      "examples": [
+        "may you be safe",
+        "beings be safe"
+      ],
+      "members": [
+        "i be safe",
+        "you be safe",
+        "safe may you",
+        "you be safe may you",
+        "i be safe be happy",
+        "safe may i",
+        "beings be safe",
+        "i be safe may i",
+        "beings be safe be happy",
+        "kindness to them may you be safe",
+        "struggle may i live",
+        "struggle may i live with ease"
+      ]
+    },
+    {
+      "name": "Wishes for happiness",
+      "meaning": "Offers well-wishes that the person be happy or peaceful.",
+      "examples": [
+        "may you be happy",
+        "may I be peaceful"
+      ],
+      "members": [
+        "safe be happy",
+        "happy may you",
+        "you be happy",
+        "you be happy may you",
+        "i be happy",
+        "you be safe be happy",
+        "happy may i",
+        "i be happy may i",
+        "peaceful may you",
+        "you be peaceful",
+        "you be peaceful may you",
+        "peaceful may i",
+        "i be peaceful",
+        "i be peaceful may i"
+      ]
+    },
+    {
+      "name": "Wishes for health and ease",
+      "meaning": "Offers well-wishes for good health, wellbeing, living with ease, and being well.",
+      "examples": [
+        "may you be healthy",
+        "may you live with ease"
+      ],
+      "members": [
+        "happy be healthy live",
+        "safe be happy be healthy live",
+        "you be healthy",
+        "i be safe be happy be healthy",
+        "phrases of loving kindness to them",
+        "you be well",
+        "you be safe be happy be healthy",
+        "i be healthy",
+        "i be well",
+        "healthy may you live",
+        "healthy may you live with ease",
+        "well may you",
+        "you be healthy may you live",
+        "ease may i",
+        "ease may i be safe",
+        "healthy may i live",
+        "healthy may i live with ease",
+        "i be healthy may i live",
+        "live with ease may i",
+        "live with ease may i be safe",
+        "beings be healthy",
+        "healthy live with ease and when you",
+        "live with ease and when you feel",
+        "live with ease you",
+        "ease may i be safe be happy"
+      ]
+    },
+    {
+      "name": "Filled with love",
+      "meaning": "Expresses the state of being filled with loving kindness, love and kindness.",
+      "examples": [
+        "filled with loving kindness",
+        "I be filled with love"
+      ],
+      "members": [
+        "filled with loving kindness",
+        "i be filled",
+        "love and kindness",
+        "i be filled with loving kindness",
+        "love may i",
+        "filled with love",
+        "sense of loving kindness",
+        "loving kindness and compassion"
+      ]
+    },
+    {
+      "name": "Naming the practice",
+      "meaning": "Refers to the practice itself, its phrases, or the loving-kindness meditation as a whole.",
+      "examples": [
+        "phrases of loving kindness",
+        "practice of loving kindness"
+      ],
+      "members": [
+        "phrases of loving kindness",
+        "loving kindness to them",
+        "offer the phrases",
+        "repeat these phrases",
+        "offer the phrases of loving kindness",
+        "practice of loving kindness",
+        "back to the phrases",
+        "loving kindness meditation",
+        "phrases of loving kindness to them even"
+      ]
+    },
+    {
+      "name": "Instructions to open eyes",
+      "meaning": "Cues the listener to open or close their eyes to begin or end the session.",
+      "examples": [
+        "open your eyes",
+        "close your eyes"
+      ],
+      "members": [
+        "open your eyes",
+        "close your eyes",
+        "feel ready you can open your eyes"
+      ]
+    },
+    {
+      "name": "Bring the person to mind",
+      "meaning": "Guides the listener to call up a specific person in their mind.",
+      "examples": [
+        "call to mind",
+        "imagine this person"
+      ],
+      "members": [
+        "comes to mind",
+        "call to mind",
+        "imagine this person",
+        "you can bring",
+        "bring them here you",
+        "bring to mind",
+        "maybe you've never met them"
+      ]
+    },
+    {
+      "name": "Say their name and feel",
+      "meaning": "Instructs the listener to say the person's name and sense their presence.",
+      "examples": [
+        "say their name",
+        "feel their presence"
+      ],
+      "members": [
+        "say their name",
+        "feeling for their presence",
+        "feeling for their presence and offer",
+        "get an image",
+        "get an image of them",
+        "image of them",
+        "say their name to yourself get",
+        "their name to yourself get a feeling",
+        "their presence and offer",
+        "their presence and offer the phrases",
+        "yourself get a feeling",
+        "yourself get a feeling for their presence",
+        "get an image of them or say",
+        "image of them or say their name"
+      ]
+    },
+    {
+      "name": "Settling into the body",
+      "meaning": "Guides the listener to settle into and notice their body.",
+      "examples": [
+        "settle into your body",
+        "part of your body"
+      ],
+      "members": [
+        "part of your body",
+        "settle into your body",
+        "part of you"
+      ]
+    },
+    {
+      "name": "Repeating the phrases",
+      "meaning": "Instructs the listener to repeat or go back over the phrases.",
+      "examples": [
+        "repeat these phrases",
+        "over and over again"
+      ],
+      "members": [
+        "over and over again"
+      ]
+    },
+    {
+      "name": "Readiness to finish",
+      "meaning": "Signals that the listener may feel ready and can end the session.",
+      "examples": [
+        "when you feel ready",
+        "you are ready"
+      ],
+      "members": [
+        "you are ready",
+        "you feel ready you",
+        "ease and when you feel ready you"
+      ]
+    },
+    {
+      "name": "Connection and care",
+      "meaning": "Evokes a sense of connection to others and caring about them.",
+      "examples": [
+        "sense of connection",
+        "you care about"
+      ],
+      "members": [
+        "you care about",
+        "sense of connection",
+        "people all creatures",
+        "people all creatures all those in existence"
+      ]
+    },
+    {
+      "name": "Noticing inner states",
+      "meaning": "Asks the listener to notice how they feel or what arises in the mind.",
+      "examples": [
+        "how you feel",
+        "your mind's eye"
+      ],
+      "members": [
+        "see if you",
+        "i'd like you",
+        "your mind's eye",
+        "how you feel",
+        "day to day life"
+      ]
+    },
+    {
+      "name": "Loving-kindness toward those in need",
+      "meaning": "Directs loving kindness toward people who are struggling or whom the listener may not know.",
+      "examples": [
+        "loving kindness to them",
+        "maybe you've never met them"
+      ],
+      "members": [
+        "loving kindness to them even",
+        "pick you up when you've fallen down"
+      ]
+    },
+    {
+      "name": "Getting in touch",
+      "meaning": "Encourages the listener to connect with the practice or with the person.",
+      "examples": [
+        "get in touch",
+        "behind one phrase"
+      ],
+      "members": [
+        "behind one phrase",
+        "behind one phrase at a time",
+        "get in touch"
+      ]
+    }
+  ]
+}

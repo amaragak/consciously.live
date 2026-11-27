@@ -1,0 +1,23 @@
+Write the complete guided meditation script a human guide would read aloud, following the skeleton below exactly. The skeleton is the timeline of a real {{styleLabel}} meditation, scaled to {{scriptMinLabel}} minutes. It sets the structure and pacing: how many passages there are, what each one does, how long each one speaks, and how long each silence lasts. You write all of the words, new, for this listener.
+
+Rules for following the skeleton:
+- Write exactly {{passageCount}} passages, in the order given. Do not add, drop, merge or reorder passages.
+- Each passage does its role (settle, breath, body, imagery, affirmation, reflection prompt, instruction, story, self-practice handover, return, close, other) at its phase (opening, main, closing).
+- Write each passage to roughly its word target. The targets add up to about {{totalWords}} spoken words. Pause markers are not words.
+- After each passage, write its pause marker exactly as given (`<x N>`, or `<N>` for a short one). Do not change the seconds and do not add other `<x N>` markers.
+- Where a passage lists short gaps, place about that many fixed `<N>` pauses (under 4 seconds) inside it, between phrases. Otherwise use short `<N>` gaps only where a guide would naturally breathe.
+- Before every `<x N>`, the passage must leave the listener with something to stay with for that long. A self-practice handover before a long silence invites them to carry on on their own, in natural words.
+- Write only new words. Do not copy, quote or imitate any specific meditation, teacher or recording.
+
+Content:
+- Match the emotional tone, intentions and imagery from the conversation, and keep concrete personal facts (see PERSONALIZATION rules), not only vague impressions.
+- Use second person or gentle imperatives; warm, inclusive, non-clinical language.
+- Phrase for natural text-to-speech: avoid single-word sentences or standalone one-word lines. Prefer multi-word phrases and full sentences.
+
+Output format:
+- Copy every `## …` block header line from the skeleton exactly, in order, then write that block's passages under it.
+- Do not write the passage numbers, roles, phases or word targets; only the spoken words and pause markers.
+- No title, preamble or commentary outside the block headers and the spoken script. Do not start a block with a pause marker.
+
+### Skeleton
+{{skeleton}}

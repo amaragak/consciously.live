@@ -84,6 +84,7 @@ function redistributeLongPauses(params: {
   neededLongSeconds: number;
   shortest: number;
   longest: number;
+  weight?: (suggestedSeconds: number) => number;
 }): {
   tokens: TimePauseToken[];
   scales: number[];
@@ -104,12 +105,21 @@ function redistributeLongPauses(params: {
     return { tokens, scales: [], total: 0, longestAfter: 0 };
   }
   const sumSug = suggested.reduce((a, b) => a + b, 0) || idxs.length;
-  const assigned = suggested.map(
-    (s) =>
-      Math.min(
-        params.longest,
-        Math.max(params.shortest, (s / sumSug) * params.neededLongSeconds),
+  // Without a weight: proportional to suggested seconds. With one: each pause
+  // keeps its suggestion and the difference is shared by weight.
+  const weights = params.weight ? suggested.map(params.weight) : null;
+  const sumW = weights ? weights.reduce((a, b) => a + b, 0) || 1 : 1;
+  const delta = params.neededLongSeconds - sumSug;
+  const assigned = suggested.map((s, i) =>
+    Math.min(
+      params.longest,
+      Math.max(
+        params.shortest,
+        weights
+          ? s + (weights[i]! / sumW) * delta
+          : (s / sumSug) * params.neededLongSeconds,
       ),
+    ),
   );
   let total = assigned.reduce((a, b) => a + b, 0);
   let remaining = params.neededLongSeconds - total;
@@ -196,6 +206,8 @@ export function fitSilenceFitScript(params: {
   longestSingleSilenceSeconds: number;
   shortPauseAdjustLimit: number;
   extraClosingMusicSeconds: number;
+  /** Share of the long-pause change per pause (default: proportional to its seconds). */
+  longPauseWeight?: (suggestedSeconds: number) => number;
 }): SilenceFitResult {
   const scriptWithHeadersBefore = params.scriptWithHeaders;
   const tokens0 = stripLeadingPauseTokens(
@@ -250,6 +262,7 @@ export function fitSilenceFitScript(params: {
         neededLongSeconds: neededLong,
         shortest,
         longest,
+        weight: params.longPauseWeight,
       });
       tokens = red.tokens;
       longScales = red.scales;

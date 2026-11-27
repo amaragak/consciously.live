@@ -1,6 +1,10 @@
 /**
  * Dynamo storage for Claude preprompts (VoiceAdmin pk/sk).
  * Written only by deploy seed; admin API is read-only.
+ *
+ * NOTE: Admin › Pre-prompts now uses SCRIPT_PREPROMPT (versioned; see
+ * preprompts/preprompt-store.ts). This legacy CLAUDE_PREPROMPT seed is no longer
+ * called from deploy-back and is kept only for reference / manual runs.
  */
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";

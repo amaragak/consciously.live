@@ -1,0 +1,353 @@
+{
+  "video_id": "hh3curOlc9I",
+  "stats": {
+    "duration_s": 527,
+    "word_count": 51,
+    "speech_s": 15,
+    "silence_pct": 97,
+    "wpm_while_speaking": 209,
+    "words_per_minute_of_runtime": 5.8,
+    "pause_count": 9,
+    "pause_median_s": 6.7,
+    "pause_max_s": 397,
+    "pause_buckets": {
+      "1-2s": 2,
+      "2-5s": 1,
+      "5-10s": 2,
+      "10-30s": 1,
+      "30-60s": 2,
+      "60s+": 1
+    },
+    "first_words_at_s": 0.8,
+    "last_words_at_s": 130.9,
+    "pacing_by_tenth": [
+      {
+        "silence_pct": 82,
+        "words": 28,
+        "pauses": 5,
+        "pause_median_s": 5.1,
+        "pause_max_s": 40.1
+      },
+      {
+        "silence_pct": 93,
+        "words": 12,
+        "pauses": 2,
+        "pause_median_s": 28.2,
+        "pause_max_s": 43.8
+      },
+      {
+        "silence_pct": 95,
+        "words": 11,
+        "pauses": 2,
+        "pause_median_s": 199.3,
+        "pause_max_s": 396.6
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      }
+    ]
+  },
+  "words": [
+    [
+      0.85,
+      1.35,
+      " This"
+    ],
+    [
+      1.35,
+      1.49,
+      " is"
+    ],
+    [
+      1.49,
+      1.73,
+      " a"
+    ],
+    [
+      1.73,
+      2.17,
+      " tool"
+    ],
+    [
+      2.17,
+      3.19,
+      " that"
+    ],
+    [
+      8.31,
+      8.75,
+      " will"
+    ],
+    [
+      8.75,
+      8.91,
+      " put"
+    ],
+    [
+      8.91,
+      9.07,
+      " you"
+    ],
+    [
+      9.07,
+      9.15,
+      " in"
+    ],
+    [
+      9.15,
+      9.23,
+      " the"
+    ],
+    [
+      9.23,
+      9.53,
+      " vortex."
+    ],
+    [
+      16.22,
+      16.22,
+      " So,"
+    ],
+    [
+      17.78,
+      18.32,
+      " just"
+    ],
+    [
+      18.32,
+      18.76,
+      " focusing"
+    ],
+    [
+      18.76,
+      19.2,
+      " upon"
+    ],
+    [
+      19.2,
+      19.6,
+      " the"
+    ],
+    [
+      19.6,
+      20.2,
+      " music"
+    ],
+    [
+      20.2,
+      20.5,
+      " that"
+    ],
+    [
+      20.5,
+      20.64,
+      " is"
+    ],
+    [
+      20.64,
+      21.08,
+      " played."
+    ],
+    [
+      24.55,
+      24.67,
+      " Put"
+    ],
+    [
+      24.67,
+      24.85,
+      " you"
+    ],
+    [
+      24.85,
+      24.93,
+      " in"
+    ],
+    [
+      24.93,
+      25.09,
+      " a"
+    ],
+    [
+      25.09,
+      25.23,
+      " place"
+    ],
+    [
+      25.23,
+      25.43,
+      " of"
+    ],
+    [
+      25.43,
+      25.69,
+      " less"
+    ],
+    [
+      25.69,
+      26.29,
+      " resistance,"
+    ],
+    [
+      66.4,
+      66.56,
+      " wrong"
+    ],
+    [
+      66.56,
+      66.86,
+      " breaths"
+    ],
+    [
+      66.86,
+      67.32,
+      " in."
+    ],
+    [
+      79.97,
+      79.97,
+      " It"
+    ],
+    [
+      79.97,
+      80.29,
+      " requires"
+    ],
+    [
+      80.29,
+      80.79,
+      " so"
+    ],
+    [
+      80.79,
+      80.97,
+      " much"
+    ],
+    [
+      80.97,
+      81.13,
+      " of"
+    ],
+    [
+      81.13,
+      81.25,
+      " your"
+    ],
+    [
+      81.25,
+      81.63,
+      " attention"
+    ],
+    [
+      81.63,
+      82.01,
+      " at"
+    ],
+    [
+      82.01,
+      82.53,
+      " first."
+    ],
+    [
+      126.31,
+      126.43,
+      " We"
+    ],
+    [
+      126.43,
+      126.51,
+      " are"
+    ],
+    [
+      126.51,
+      126.79,
+      " speaking"
+    ],
+    [
+      126.79,
+      127.21,
+      " to"
+    ],
+    [
+      127.21,
+      127.45,
+      " you,"
+    ],
+    [
+      129.45,
+      129.61,
+      " that"
+    ],
+    [
+      129.61,
+      129.77,
+      " the"
+    ],
+    [
+      129.77,
+      129.95,
+      " source"
+    ],
+    [
+      129.95,
+      130.33,
+      " within"
+    ],
+    [
+      130.33,
+      130.59,
+      " you"
+    ],
+    [
+      130.59,
+      130.87,
+      " knows."
+    ]
+  ]
+}

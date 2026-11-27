@@ -1,0 +1,1175 @@
+{
+  "video_id": "D9tLtmBlodg",
+  "pause_min_s": 4.0,
+  "short_min_s": 1.0,
+  "runtime_s": 2647.0,
+  "lead_in_s": 0.0,
+  "tail_s": 0.0,
+  "segments": [
+    {
+      "type": "passage",
+      "start": 0.0,
+      "length": 6.37,
+      "words": 11,
+      "position": 0.0,
+      "role": "settle",
+      "phase": "opening",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 6.37,
+      "length": 4.22
+    },
+    {
+      "type": "passage",
+      "start": 10.59,
+      "length": 10.41,
+      "words": 18,
+      "position": 0.004,
+      "role": "breath",
+      "phase": "opening",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          1.1
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 21.0,
+      "length": 17.76
+    },
+    {
+      "type": "passage",
+      "start": 38.76,
+      "length": 0.62,
+      "words": 2,
+      "position": 0.0146,
+      "role": "settle",
+      "phase": "opening",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 39.38,
+      "length": 49.5
+    },
+    {
+      "type": "passage",
+      "start": 88.88,
+      "length": 14.28,
+      "words": 10,
+      "position": 0.0336,
+      "role": "body",
+      "phase": "opening",
+      "short_pauses": {
+        "count": 2,
+        "lengths_s": [
+          3.7,
+          3.7
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 103.16,
+      "length": 11.42
+    },
+    {
+      "type": "passage",
+      "start": 114.58,
+      "length": 15.37,
+      "words": 16,
+      "position": 0.0433,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 2,
+        "lengths_s": [
+          2.7,
+          1.9
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 129.95,
+      "length": 48.9
+    },
+    {
+      "type": "passage",
+      "start": 178.85,
+      "length": 3.04,
+      "words": 6,
+      "position": 0.0676,
+      "role": "body",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 181.89,
+      "length": 53.15
+    },
+    {
+      "type": "passage",
+      "start": 235.04,
+      "length": 9.9,
+      "words": 15,
+      "position": 0.0888,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 2,
+        "lengths_s": [
+          1.2,
+          1.0
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 244.94,
+      "length": 10.56
+    },
+    {
+      "type": "passage",
+      "start": 255.5,
+      "length": 10.52,
+      "words": 17,
+      "position": 0.0965,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 2,
+        "lengths_s": [
+          1.4,
+          2.0
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 266.02,
+      "length": 4.03
+    },
+    {
+      "type": "passage",
+      "start": 270.05,
+      "length": 2.14,
+      "words": 4,
+      "position": 0.102,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 272.19,
+      "length": 12.57
+    },
+    {
+      "type": "passage",
+      "start": 284.76,
+      "length": 1.44,
+      "words": 2,
+      "position": 0.1076,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 286.2,
+      "length": 12.0
+    },
+    {
+      "type": "passage",
+      "start": 298.2,
+      "length": 0.54,
+      "words": 1,
+      "position": 0.1127,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 298.74,
+      "length": 10.76
+    },
+    {
+      "type": "passage",
+      "start": 309.5,
+      "length": 4.04,
+      "words": 5,
+      "position": 0.1169,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          1.7
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 313.54,
+      "length": 56.42
+    },
+    {
+      "type": "passage",
+      "start": 369.96,
+      "length": 5.84,
+      "words": 9,
+      "position": 0.1398,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          2.3
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 375.8,
+      "length": 73.12
+    },
+    {
+      "type": "passage",
+      "start": 448.92,
+      "length": 1.52,
+      "words": 4,
+      "position": 0.1696,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 450.44,
+      "length": 164.1
+    },
+    {
+      "type": "passage",
+      "start": 614.54,
+      "length": 4.61,
+      "words": 9,
+      "position": 0.2322,
+      "role": "reflection prompt",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          1.2
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 619.15,
+      "length": 29.73
+    },
+    {
+      "type": "passage",
+      "start": 648.88,
+      "length": 20.1,
+      "words": 23,
+      "position": 0.2451,
+      "role": "reflection prompt",
+      "phase": "main",
+      "short_pauses": {
+        "count": 4,
+        "lengths_s": [
+          3.2,
+          1.3,
+          3.0,
+          2.1
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 668.98,
+      "length": 19.01
+    },
+    {
+      "type": "passage",
+      "start": 687.99,
+      "length": 14.26,
+      "words": 25,
+      "position": 0.2599,
+      "role": "reflection prompt",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          2.5
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 702.25,
+      "length": 4.13
+    },
+    {
+      "type": "passage",
+      "start": 706.38,
+      "length": 7.34,
+      "words": 15,
+      "position": 0.2669,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          1.3
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 713.72,
+      "length": 19.04
+    },
+    {
+      "type": "passage",
+      "start": 732.76,
+      "length": 3.66,
+      "words": 6,
+      "position": 0.2768,
+      "role": "affirmation",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          1.1
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 736.42,
+      "length": 227.82
+    },
+    {
+      "type": "passage",
+      "start": 964.24,
+      "length": 10.18,
+      "words": 11,
+      "position": 0.3643,
+      "role": "affirmation",
+      "phase": "main",
+      "short_pauses": {
+        "count": 2,
+        "lengths_s": [
+          1.8,
+          3.4
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 974.42,
+      "length": 5.16
+    },
+    {
+      "type": "passage",
+      "start": 979.58,
+      "length": 11.81,
+      "words": 16,
+      "position": 0.3701,
+      "role": "story",
+      "phase": "main",
+      "short_pauses": {
+        "count": 2,
+        "lengths_s": [
+          2.3,
+          1.2
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 991.39,
+      "length": 10.99
+    },
+    {
+      "type": "passage",
+      "start": 1002.38,
+      "length": 18.77,
+      "words": 26,
+      "position": 0.3787,
+      "role": "story",
+      "phase": "main",
+      "short_pauses": {
+        "count": 4,
+        "lengths_s": [
+          1.1,
+          3.3,
+          3.4,
+          1.3
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1021.15,
+      "length": 5.78
+    },
+    {
+      "type": "passage",
+      "start": 1026.93,
+      "length": 21.93,
+      "words": 36,
+      "position": 0.388,
+      "role": "story",
+      "phase": "main",
+      "short_pauses": {
+        "count": 2,
+        "lengths_s": [
+          1.4,
+          1.0
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1048.86,
+      "length": 4.49
+    },
+    {
+      "type": "passage",
+      "start": 1053.35,
+      "length": 19.54,
+      "words": 31,
+      "position": 0.3979,
+      "role": "instruction",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          1.0
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1072.89,
+      "length": 19.04
+    },
+    {
+      "type": "passage",
+      "start": 1091.93,
+      "length": 5.78,
+      "words": 11,
+      "position": 0.4125,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1097.71,
+      "length": 170.7
+    },
+    {
+      "type": "passage",
+      "start": 1268.41,
+      "length": 6.51,
+      "words": 5,
+      "position": 0.4792,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          3.8
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1274.92,
+      "length": 5.86
+    },
+    {
+      "type": "passage",
+      "start": 1280.78,
+      "length": 9.42,
+      "words": 23,
+      "position": 0.4839,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1290.2,
+      "length": 8.95
+    },
+    {
+      "type": "passage",
+      "start": 1299.15,
+      "length": 16.06,
+      "words": 21,
+      "position": 0.4908,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 2,
+        "lengths_s": [
+          2.6,
+          3.6
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1315.21,
+      "length": 8.48
+    },
+    {
+      "type": "passage",
+      "start": 1323.69,
+      "length": 9.67,
+      "words": 20,
+      "position": 0.5001,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          1.6
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1333.36,
+      "length": 39.92
+    },
+    {
+      "type": "passage",
+      "start": 1373.28,
+      "length": 0.62,
+      "words": 3,
+      "position": 0.5188,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1373.9,
+      "length": 16.42
+    },
+    {
+      "type": "passage",
+      "start": 1390.32,
+      "length": 7.4,
+      "words": 1,
+      "position": 0.5252,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1397.72,
+      "length": 174.17
+    },
+    {
+      "type": "passage",
+      "start": 1571.89,
+      "length": 2.54,
+      "words": 4,
+      "position": 0.5938,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1574.43,
+      "length": 4.93
+    },
+    {
+      "type": "passage",
+      "start": 1579.36,
+      "length": 22.63,
+      "words": 37,
+      "position": 0.5967,
+      "role": "instruction",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          3.3
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1601.99,
+      "length": 5.23
+    },
+    {
+      "type": "passage",
+      "start": 1607.22,
+      "length": 23.56,
+      "words": 28,
+      "position": 0.6072,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 4,
+        "lengths_s": [
+          1.5,
+          3.1,
+          2.6,
+          2.4
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1630.78,
+      "length": 4.55
+    },
+    {
+      "type": "passage",
+      "start": 1635.33,
+      "length": 6.55,
+      "words": 6,
+      "position": 0.6178,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          2.6
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1641.88,
+      "length": 7.93
+    },
+    {
+      "type": "passage",
+      "start": 1649.81,
+      "length": 2.1,
+      "words": 5,
+      "position": 0.6233,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1651.91,
+      "length": 7.14
+    },
+    {
+      "type": "passage",
+      "start": 1659.05,
+      "length": 1.64,
+      "words": 4,
+      "position": 0.6268,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1660.69,
+      "length": 4.83
+    },
+    {
+      "type": "passage",
+      "start": 1665.52,
+      "length": 0.9,
+      "words": 2,
+      "position": 0.6292,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1666.42,
+      "length": 4.32
+    },
+    {
+      "type": "passage",
+      "start": 1670.74,
+      "length": 4.58,
+      "words": 6,
+      "position": 0.6312,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1675.32,
+      "length": 19.76
+    },
+    {
+      "type": "passage",
+      "start": 1695.08,
+      "length": 8.65,
+      "words": 12,
+      "position": 0.6404,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 2,
+        "lengths_s": [
+          1.6,
+          1.3
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1703.73,
+      "length": 6.65
+    },
+    {
+      "type": "passage",
+      "start": 1710.38,
+      "length": 10.55,
+      "words": 15,
+      "position": 0.6462,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          3.1
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1720.93,
+      "length": 9.92
+    },
+    {
+      "type": "passage",
+      "start": 1730.85,
+      "length": 11.77,
+      "words": 11,
+      "position": 0.6539,
+      "role": "affirmation",
+      "phase": "main",
+      "short_pauses": {
+        "count": 3,
+        "lengths_s": [
+          1.1,
+          2.2,
+          1.8
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1742.62,
+      "length": 9.95
+    },
+    {
+      "type": "passage",
+      "start": 1752.57,
+      "length": 7.57,
+      "words": 9,
+      "position": 0.6621,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          1.8
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 1760.14,
+      "length": 257.33
+    },
+    {
+      "type": "passage",
+      "start": 2017.47,
+      "length": 14.65,
+      "words": 10,
+      "position": 0.7622,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 2,
+        "lengths_s": [
+          2.0,
+          3.8
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2032.12,
+      "length": 12.96
+    },
+    {
+      "type": "passage",
+      "start": 2045.08,
+      "length": 1.32,
+      "words": 3,
+      "position": 0.7726,
+      "role": "body",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2046.4,
+      "length": 5.05
+    },
+    {
+      "type": "passage",
+      "start": 2051.45,
+      "length": 3.25,
+      "words": 4,
+      "position": 0.775,
+      "role": "body",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2054.7,
+      "length": 14.14
+    },
+    {
+      "type": "passage",
+      "start": 2068.84,
+      "length": 0.92,
+      "words": 2,
+      "position": 0.7816,
+      "role": "body",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2069.76,
+      "length": 63.27
+    },
+    {
+      "type": "passage",
+      "start": 2133.03,
+      "length": 0.6,
+      "words": 1,
+      "position": 0.8058,
+      "role": "body",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2133.63,
+      "length": 28.16
+    },
+    {
+      "type": "passage",
+      "start": 2161.79,
+      "length": 7.19,
+      "words": 4,
+      "position": 0.8167,
+      "role": "affirmation",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          3.9
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2168.98,
+      "length": 151.05
+    },
+    {
+      "type": "passage",
+      "start": 2320.03,
+      "length": 4.81,
+      "words": 8,
+      "position": 0.8765,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          1.2
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2324.84,
+      "length": 37.87
+    },
+    {
+      "type": "passage",
+      "start": 2362.71,
+      "length": 3.18,
+      "words": 7,
+      "position": 0.8926,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2365.89,
+      "length": 5.52
+    },
+    {
+      "type": "passage",
+      "start": 2371.41,
+      "length": 1.82,
+      "words": 6,
+      "position": 0.8959,
+      "role": "imagery",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2373.23,
+      "length": 68.99
+    },
+    {
+      "type": "passage",
+      "start": 2442.22,
+      "length": 1.22,
+      "words": 4,
+      "position": 0.9226,
+      "role": "body",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2443.44,
+      "length": 7.58
+    },
+    {
+      "type": "passage",
+      "start": 2451.02,
+      "length": 0.96,
+      "words": 3,
+      "position": 0.926,
+      "role": "body",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2451.98,
+      "length": 7.6
+    },
+    {
+      "type": "passage",
+      "start": 2459.58,
+      "length": 0.82,
+      "words": 3,
+      "position": 0.9292,
+      "role": "body",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2460.4,
+      "length": 9.46
+    },
+    {
+      "type": "passage",
+      "start": 2469.86,
+      "length": 51.32,
+      "words": 58,
+      "position": 0.9331,
+      "role": "instruction",
+      "phase": "main",
+      "short_pauses": {
+        "count": 7,
+        "lengths_s": [
+          2.5,
+          1.0,
+          1.5,
+          2.8,
+          2.9,
+          1.7,
+          2.2
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2521.18,
+      "length": 4.06
+    },
+    {
+      "type": "passage",
+      "start": 2525.24,
+      "length": 2.0,
+      "words": 3,
+      "position": 0.954,
+      "role": "affirmation",
+      "phase": "main",
+      "short_pauses": {
+        "count": 0,
+        "lengths_s": []
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2527.24,
+      "length": 4.07
+    },
+    {
+      "type": "passage",
+      "start": 2531.31,
+      "length": 8.73,
+      "words": 9,
+      "position": 0.9563,
+      "role": "affirmation",
+      "phase": "closing",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          3.0
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2540.04,
+      "length": 4.83
+    },
+    {
+      "type": "passage",
+      "start": 2544.87,
+      "length": 16.37,
+      "words": 20,
+      "position": 0.9614,
+      "role": "close",
+      "phase": "closing",
+      "short_pauses": {
+        "count": 1,
+        "lengths_s": [
+          3.9
+        ]
+      }
+    },
+    {
+      "type": "pause",
+      "start": 2561.24,
+      "length": 85.76
+    }
+  ],
+  "counts": {
+    "passages": 59,
+    "pauses": 59,
+    "words": 686
+  },
+  "timing_check": {
+    "covered_s": 2647.0,
+    "delta_s": 0.0,
+    "vs_youtube_s": 0.0
+  }
+}

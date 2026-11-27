@@ -1,0 +1,214 @@
+{
+  "style": "sleep",
+  "model": "claude-haiku-5-5",
+  "digest": "ed14644984fa6c9d",
+  "families": [
+    {
+      "name": "Body scan and sensation focus",
+      "meaning": "Directs attention to specific body parts and felt sensations to anchor the listener in the body.",
+      "examples": [
+        "feel your body",
+        "soles of your feet"
+      ],
+      "members": [
+        "your right leg",
+        "foot and your",
+        "soles of your feet",
+        "your entire body",
+        "feel your body",
+        "feeling your body",
+        "left foot and your",
+        "leg all the way",
+        "through your body",
+        "your body and mind",
+        "your body and your",
+        "beneath your feet",
+        "how the body",
+        "much as you"
+      ]
+    },
+    {
+      "name": "Breath awareness and pacing",
+      "meaning": "Guides the listener's breathing and noticing of the breath to slow and settle it.",
+      "examples": [
+        "rise and fall",
+        "breathe out"
+      ],
+      "members": [
+        "rise and fall",
+        "breath in through",
+        "allow the breath",
+        "allow the breath to return",
+        "breath to return",
+        "breath to return to its natural",
+        "breathing in through",
+        "breathing in through the nose",
+        "continue to breathe",
+        "out through the mouth",
+        "return to its natural",
+        "you breathe out",
+        "breath in through the nose",
+        "rising and falling",
+        "through the nostrils",
+        "count of four",
+        "up and down"
+      ]
+    },
+    {
+      "name": "Instruction to close eyes",
+      "meaning": "Tells the listener to shut their eyes to reduce outside input.",
+      "examples": [
+        "close your eyes"
+      ],
+      "members": [
+        "close your eyes",
+        "you can close your eyes"
+      ]
+    },
+    {
+      "name": "Permission and nothing required",
+      "meaning": "Reassures the listener that they need not try, fix or perform anything.",
+      "examples": [
+        "no matter how",
+        "in your own time"
+      ],
+      "members": [
+        "no matter how",
+        "your own time",
+        "your own way",
+        "exactly as you",
+        "right for you",
+        "long as you",
+        "go of any",
+        "you allow your"
+      ]
+    },
+    {
+      "name": "Letting go and release",
+      "meaning": "Invites the listener to release tension, thoughts or effort as they relax.",
+      "examples": [
+        "let go",
+        "wash over you"
+      ],
+      "members": [
+        "you let go",
+        "you to let go",
+        "wash over you",
+        "begin to relax",
+        "rest and relax",
+        "help you relax"
+      ]
+    },
+    {
+      "name": "Imagery of descending or deepening",
+      "meaning": "Uses directional movement through the body or space to deepen relaxation.",
+      "examples": [
+        "down through your",
+        "heavier and heavier"
+      ],
+      "members": [
+        "down through your",
+        "way down to your",
+        "you feel yourself",
+        "heavier and heavier",
+        "down into your",
+        "down in your",
+        "you look down",
+        "higher and higher",
+        "you feel your"
+      ]
+    },
+    {
+      "name": "Direct address and suggestion",
+      "meaning": "Speaks directly to the listener, framing what they will or may experience.",
+      "examples": [
+        "I want you",
+        "you may find"
+      ],
+      "members": [
+        "i want you",
+        "i'd like you",
+        "i'm going to ask you",
+        "you may find",
+        "you may even",
+        "you can even",
+        "you may feel",
+        "you begin to see",
+        "you find yourself",
+        "you can see",
+        "we can see",
+        "you can notice",
+        "know that you",
+        "find it difficult",
+        "during this meditation",
+        "you a little"
+      ]
+    },
+    {
+      "name": "Settling and readiness cues",
+      "meaning": "Signals that the listener is settling in, getting ready, or can take a pause.",
+      "examples": [
+        "take a moment",
+        "you are ready"
+      ],
+      "members": [
+        "take a moment",
+        "take a few",
+        "few more moments",
+        "you are ready",
+        "time for you",
+        "right now you",
+        "you are going",
+        "ready to receive",
+        "you are working",
+        "you may begin",
+        "off the light",
+        "open the door",
+        "you will not be disturbed",
+        "you won't be disturbed",
+        "you become more"
+      ]
+    },
+    {
+      "name": "Relaxation state and focus",
+      "meaning": "Names the relaxed state the listener is moving into and points attention toward the body and self.",
+      "examples": [
+        "begin to relax",
+        "your body and mind"
+      ],
+      "members": [
+        "state of being",
+        "body and spirit",
+        "attention to your",
+        "turn your attention",
+        "love for yourself",
+        "most comfortable position",
+        "returning to your",
+        "relax as you",
+        "whatever it is you",
+        "each time you",
+        "again and again",
+        "over and over again",
+        "you wake up",
+        "part of you",
+        "part of your",
+        "through the nose",
+        "center of your",
+        "over and over",
+        "aware of your",
+        "top of your head",
+        "back to your",
+        "length of your",
+        "make sure you're",
+        "way to your",
+        "front of you",
+        "you could ever",
+        "again you see",
+        "back and as you",
+        "end of each",
+        "make sure you",
+        "snow capped mountains"
+      ]
+    }
+  ]
+}

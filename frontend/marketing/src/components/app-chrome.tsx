@@ -135,7 +135,8 @@ export function AppChrome({ children, initialHasSessionHint: _hint }: Props) {
 
   const hideChrome = isPublicAuthPath(pathname);
   const homeV2 = isHomeV2Enabled();
-  const isHome = pathname === "/";
+  /* `/newhome` (alternate story homepage) mounts its own header like `/`. */
+  const isHome = pathname === "/" || pathname === "/newhome";
   const isListen =
     pathname === "/listen" || pathname.startsWith("/listen/");
   const isRead =

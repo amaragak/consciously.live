@@ -6,7 +6,7 @@ import {
   type MutableRefObject,
 } from "react";
 import { Audio } from "expo-av";
-import { backgroundAudioStreamingKey } from "../lib/medimade-api";
+import { backgroundAudioPlaybackKey } from "../lib/medimade-api";
 import {
   speakerPreviewLoudFxSampleKey,
   speakerPreviewLoudSampleKey,
@@ -17,8 +17,9 @@ const SPEAKER_SAMPLE_GAP_MS = 3000;
 export type SoloTrack = "speaker" | "nature" | "music" | "noise";
 
 function mediaFileUrl(base: string, key: string): string {
+  const playKey = backgroundAudioPlaybackKey(key);
   const b = base.replace(/\/$/, "");
-  const path = key.split("/").map(encodeURIComponent).join("/");
+  const path = playKey.split("/").map(encodeURIComponent).join("/");
   return `${b}/${path}`;
 }
 
@@ -335,7 +336,7 @@ export function useCreateAudioPreview(p: CreateAudioPreviewParams) {
         return;
       }
 
-      const uri = mediaFileUrl(base, backgroundAudioStreamingKey(key));
+      const uri = mediaFileUrl(base, backgroundAudioPlaybackKey(key));
       const vol = Math.min(0.5, Math.max(0, (gain / 100) * 0.5));
       const keyChanged = lastBgKeysRef.current[track] !== key;
       lastBgKeysRef.current[track] = key;

@@ -1,0 +1,10 @@
+# Local-only (large / secrets). Never commit.
+.venv/
+.env
+.env.*
+data/audio/
+__pycache__/
+*.py[cod]
+.DS_Store
+*.bak
+*.bak2

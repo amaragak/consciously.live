@@ -7,7 +7,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Mutable
 import {
   BED_OUTRO_FADE_SECONDS,
   BED_OUTRO_HOLD_SECONDS,
-  BED_VOICE_INTRO_SECONDS,
+  DEFAULT_MEDITATION_LEAD_IN_SECONDS,
   PlayerStripView,
   SPEECH_ELEMENT_VOLUME,
   backgroundAudioPlaybackKey,
@@ -36,6 +36,25 @@ const NOW_PLAYING_ARTIST = "Consciously";
 const CHANNELS: BedVolumeChannel[] = ["nature", "music", "drums", "noise"];
 
 type Phase = "idle" | "leadIn" | "voice" | "outro";
+
+/** AAC-only playback URLs — never pick leftover catalog `.mp3`. */
+async function firstReachablePlaybackUrl(candidates: string[]): Promise<string> {
+  const list = candidates.filter(
+    (url) => url && !/\.mp3(?=\?|$)/i.test(url),
+  );
+  if (list.length === 0) return "";
+  for (const url of list) {
+    if (/^file:/i.test(url) || url.startsWith("capacitor:")) return url;
+    try {
+      const res = await fetch(url, { method: "HEAD", mode: "cors" });
+      if (res.status === 404) continue;
+      return url;
+    } catch {
+      return url;
+    }
+  }
+  return list[0]!;
+}
 
 type Props = {
   track: LibraryActiveTrack;
@@ -109,14 +128,17 @@ export default function NativeLibraryAudioStrip({
     !ambientMix && !ambientSoundscape && hasBeds && track.fadeOut !== false
       ? BED_OUTRO_HOLD_SECONDS + BED_OUTRO_FADE_SECONDS
       : 0;
-  const leadInSeconds =
-    typeof track.leadInSeconds === "number" && Number.isFinite(track.leadInSeconds) && track.leadInSeconds >= 0
+  const leadInSeconds = !hasBeds
+    ? 0
+    : typeof track.leadInSeconds === "number" &&
+        Number.isFinite(track.leadInSeconds) &&
+        track.leadInSeconds >= 0
       ? track.leadInSeconds
-      : BED_VOICE_INTRO_SECONDS;
+      : DEFAULT_MEDITATION_LEAD_IN_SECONDS;
 
   const [playing, setPlaying] = useState(false);
   const [current, setCurrent] = useState(0);
-  const [duration, setDuration] = useState(() => track.durationSeconds ?? 0);
+  const [duration, setDuration] = useState(0);
   const durationRef = useRef(duration);
   durationRef.current = duration;
   const sessionRef = useRef<NativeMixSession | null>(null);
@@ -201,16 +223,28 @@ export default function NativeLibraryAudioStrip({
     outroTimerRef.current = window.setTimeout(finish, outroPadSeconds * 1000);
   }
 
+  function withPlayTimeout<T>(p: Promise<T>, ms = 8000): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const t = window.setTimeout(() => reject(new Error("play timed out")), ms);
+      p.then(
+        (v) => {
+          window.clearTimeout(t);
+          resolve(v);
+        },
+        (e) => {
+          window.clearTimeout(t);
+          reject(e);
+        },
+      );
+    });
+  }
+
   async function startVoiceAfterLeadIn(session: NativeMixSession) {
     if (phaseRef.current !== "leadIn") return;
     phaseRef.current = "voice";
     try {
-      await session.play({ restartSoundscape: true });
-      // Plugin play() can resolve while the primary never buffered (bad AAC).
-      const playingNow = await session.isPlaying().catch(() => false);
-      if (!playingNow) {
-        throw new Error("primary did not enter playing state after lead-in");
-      }
+      // Plugin can hang (missing source resolves nothing) — don't leave beds orphaned.
+      await withPlayTimeout(session.play({ restartSoundscape: true }));
       const t = await session.currentTime().catch(() => 0);
       reportTime(leadInSeconds + t);
     } catch (e) {
@@ -232,7 +266,7 @@ export default function NativeLibraryAudioStrip({
     try {
       if (ambientMix || ambientSoundscape) {
         phaseRef.current = "voice";
-        await session.play();
+        await withPlayTimeout(session.play());
         return;
       }
       const at = await session.currentTime();
@@ -248,11 +282,7 @@ export default function NativeLibraryAudioStrip({
         return;
       }
       phaseRef.current = "voice";
-      await session.play();
-      const playingNow = await session.isPlaying().catch(() => false);
-      if (!playingNow) {
-        throw new Error("primary did not enter playing state");
-      }
+      await withPlayTimeout(session.play());
     } catch (e) {
       nativeAudioLog("error", `play failed: ${e instanceof Error ? e.message : String(e)}`);
       await session.pause().catch(() => {});
@@ -383,11 +413,25 @@ export default function NativeLibraryAudioStrip({
           primaryUrl = local;
           nativeAudioLog("session", "using downloaded copy");
         } else {
-          primaryUrl = mediaPlaybackCandidates(track.url)[0] ?? track.url;
+          primaryUrl = await firstReachablePlaybackUrl(
+            mediaPlaybackCandidates(track.url),
+          );
         }
       } else {
-        // Online: AAC first, MP3 sibling last (mediaPlaybackCandidates).
-        primaryUrl = mediaPlaybackCandidates(track.url)[0] ?? track.url;
+        // Online: AAC-only candidates.
+        primaryUrl = await firstReachablePlaybackUrl(
+          mediaPlaybackCandidates(track.url),
+        );
+      }
+
+      if (
+        !ambientMix &&
+        typeof track.durationSeconds === "number" &&
+        track.durationSeconds > 0
+      ) {
+        setDuration(track.durationSeconds);
+      } else if (!ambientMix) {
+        setDuration(0);
       }
 
       const spec: NativeMixSpec = {

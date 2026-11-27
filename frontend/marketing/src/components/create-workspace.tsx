@@ -189,8 +189,9 @@ import {
 } from "@/lib/pending-library-generations";
 
 function mediaFileUrl(base: string, key: string): string {
+  const playKey = backgroundAudioPlaybackKey(key);
   const b = base.replace(/\/$/, "");
-  const path = key.split("/").map(encodeURIComponent).join("/");
+  const path = playKey.split("/").map(encodeURIComponent).join("/");
   return `${b}/${path}`;
 }
 
@@ -1207,10 +1208,11 @@ export function CreateWorkspace({
   const [meditationTargetMinutes, setMeditationTargetMinutes] =
     useState<MeditationTargetMinutes>(5);
   /**
-   * Experienced pacing: cued open-practice sits (~1–2 min) so Length still matches.
-   * Default off — standard guided density.
+   * Create is open sits only (consciously-open-sits-default-v2).
+   * Was: Guided / Open sits switch; default off = guided density.
    */
-  const [longerBreaks, setLongerBreaks] = useState(false);
+  const [longerBreaks, setLongerBreaks] = useState(true);
+  void setLongerBreaks;
   /** Dev-only Claude A/B for coach chat + script generation (prod default Sonnet). */
   const [claudeModelChoice, setClaudeModelChoice] = useState<string>(
     CLAUDE_SONNET_45_MODEL_ID,
@@ -3864,7 +3866,8 @@ export function CreateWorkspace({
         meditationStyle: styleForJob,
         journalMode: journalMode === true,
         meditationTargetMinutes,
-        ...(longerBreaks ? { longerBreaks: true } : {}),
+        longerBreaks: true,
+        deliveryStyle: "open_sits",
         transcript,
         scriptText: scriptTextForJob,
         reference_id: speakerModelId,
@@ -5665,49 +5668,13 @@ export function CreateWorkspace({
               />
               <span className="text-xs tabular-nums text-muted">{voiceFxDial}</span>
             </div>
+            {/* Pacing switch removed — Create is open sits only
+                (consciously-open-sits-default-v2).
             <div className="flex flex-col gap-1.5 py-3">
-              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
-                Pacing
-              </span>
-              <div
-                className="flex items-center gap-2"
-                role="group"
-                aria-label="Meditation pacing"
-              >
-                <span
-                  className={`text-sm font-semibold ${
-                    longerBreaks ? "text-muted" : "text-foreground"
-                  }`}
-                >
-                  Guided
-                </span>
-                <Switch.Root
-                  checked={longerBreaks}
-                  onCheckedChange={(v) => setLongerBreaks(Boolean(v))}
-                  disabled={soundControlsDisabled}
-                  aria-label={
-                    longerBreaks
-                      ? "Switch to guided pacing"
-                      : "Switch to open sits pacing"
-                  }
-                  className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full border border-border bg-muted/40 transition-colors data-[state=checked]:border-accent data-[state=checked]:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Switch.Thumb className="block h-4 w-4 translate-x-[2px] rounded-full bg-surface shadow-sm transition-transform will-change-transform data-[state=checked]:translate-x-[16px]" />
-                </Switch.Root>
-                <span
-                  className={`text-sm font-semibold ${
-                    longerBreaks ? "text-foreground" : "text-muted"
-                  }`}
-                >
-                  Open sits
-                </span>
-              </div>
-              <p className="text-xs leading-snug text-muted">
-                {longerBreaks
-                  ? "Same length, with cued “take your time” sits of about a minute or two."
-                  : "Continuous guidance with short natural pauses between lines."}
-              </p>
+              <span>Pacing</span>
+              … Guided / Open sits Switch …
             </div>
+            */}
             <div className="border-t border-border" role="separator" aria-hidden />
             <div className="mb-1 flex flex-wrap items-center justify-between gap-3 py-3">
               <span className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">

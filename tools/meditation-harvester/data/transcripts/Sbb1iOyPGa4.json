@@ -1,0 +1,108 @@
+{
+  "video_id": "Sbb1iOyPGa4",
+  "stats": {
+    "duration_s": 916,
+    "word_count": 2,
+    "speech_s": 1,
+    "silence_pct": 100,
+    "wpm_while_speaking": 214,
+    "words_per_minute_of_runtime": 0.1,
+    "pause_count": 2,
+    "pause_median_s": 457.8,
+    "pause_max_s": 906,
+    "pause_buckets": {
+      "1-2s": 0,
+      "2-5s": 0,
+      "5-10s": 1,
+      "10-30s": 0,
+      "30-60s": 0,
+      "60s+": 1
+    },
+    "first_words_at_s": 9.4,
+    "last_words_at_s": 10.0,
+    "pacing_by_tenth": [
+      {
+        "silence_pct": 99,
+        "words": 2,
+        "pauses": 2,
+        "pause_median_s": 457.8,
+        "pause_max_s": 906.2
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      },
+      {
+        "silence_pct": 100,
+        "words": 0,
+        "pauses": 0,
+        "pause_median_s": 0,
+        "pause_max_s": 0
+      }
+    ]
+  },
+  "words": [
+    [
+      9.42,
+      9.7,
+      " Sit"
+    ],
+    [
+      9.7,
+      9.98,
+      " off."
+    ]
+  ]
+}

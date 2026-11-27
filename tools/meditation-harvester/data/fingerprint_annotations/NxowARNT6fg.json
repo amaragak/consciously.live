@@ -1,0 +1,42 @@
+{
+  "video_id": "NxowARNT6fg",
+  "model": "claude-haiku-5-5",
+  "version": 2,
+  "annotation": {
+    "opening_moves": [
+      "welcome"
+    ],
+    "closing_moves": [
+      "gratitude"
+    ],
+    "techniques": [
+      "repeated_affirmations",
+      "body_part_sequence",
+      "loving_kindness_phrases",
+      "noting_or_labelling"
+    ],
+    "body_sequence_direction": "head_to_feet",
+    "imagery_themes": [
+      "nature",
+      "light",
+      "people"
+    ],
+    "person_main": "mixed",
+    "listener_i_statements": true,
+    "tense_main": "present",
+    "question_rate": "none",
+    "repetition_level": "high",
+    "listener_repeats": true,
+    "directiveness": 3,
+    "energy": 2,
+    "certainty": 5,
+    "warmth": 4,
+    "formality": 3
+  },
+  "words": 4046,
+  "questions_per_1k_words": 0.0,
+  "usage": {
+    "in": 8802,
+    "out": 216
+  }
+}

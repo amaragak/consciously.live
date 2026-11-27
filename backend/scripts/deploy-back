@@ -140,7 +140,9 @@ node "$BACKEND_ROOT/scripts/write-webapp-env-from-outputs.mjs" \
   "$EXT_ENV" \
   "$WEBAPP_ENV"
 
-# Push codebase Claude preprompts into Dynamo (admin Pre-prompts is read-only).
+# Sync script Pre-prompts (repo default files → versioned Dynamo entries).
+# Adds a version only when a repo file changed; manual admin edits stay live otherwise.
+# Was: seed-claude-preprompts.ts (CLAUDE_PREPROMPT catalog; Pre-prompts UI no longer reads it).
 if [[ "$target_stack" == "ConsciouslyBackend" ]]; then
   voice_admin_table="$(python3 -c '
 import json, sys
@@ -151,11 +153,24 @@ stack = o.get("ConsciouslyBackend") or (next(iter(o.values())) if o else {})
 print((stack or {}).get("VoiceAdminTableName") or "")
 ' "$OUTPUTS" 2>/dev/null || true)"
   if [[ -n "${voice_admin_table}" ]]; then
-    echo "Seeding Claude preprompts into ${voice_admin_table}…"
+    echo "Syncing script pre-prompts into ${voice_admin_table}…"
     VOICE_ADMIN_TABLE_NAME="$voice_admin_table" \
-      npx tsx "$BACKEND_ROOT/scripts/seed-claude-preprompts.ts" --table "$voice_admin_table"
+      npx tsx "$BACKEND_ROOT/scripts/sync-script-preprompts.ts" --table "$voice_admin_table"
   else
-    echo "Seeding Claude preprompts (resolve table from stack)…"
-    npx tsx "$BACKEND_ROOT/scripts/seed-claude-preprompts.ts" --stack ConsciouslyBackend
+    echo "Syncing script pre-prompts (resolve table from stack)…"
+    npx tsx "$BACKEND_ROOT/scripts/sync-script-preprompts.ts" --stack ConsciouslyBackend
+  fi
+
+  # Harvester bundle (style guides, pacing profiles, skeleton library) when present.
+  # New versions only for content that changed since the last harvester import.
+  harvester_bundle="$REPO_ROOT/tools/meditation-harvester/output/consciously-import.json"
+  if [[ -f "$harvester_bundle" ]]; then
+    echo "Importing harvester bundle…"
+    if [[ -n "${voice_admin_table}" ]]; then
+      VOICE_ADMIN_TABLE_NAME="$voice_admin_table" \
+        npx tsx "$BACKEND_ROOT/scripts/import-harvester-bundle.ts" --file "$harvester_bundle" --table "$voice_admin_table"
+    else
+      npx tsx "$BACKEND_ROOT/scripts/import-harvester-bundle.ts" --file "$harvester_bundle" --stack ConsciouslyBackend
+    fi
   fi
 fi
