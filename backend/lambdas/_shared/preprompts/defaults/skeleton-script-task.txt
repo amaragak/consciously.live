@@ -15,8 +15,10 @@ Content:
 - Phrase for natural text-to-speech: avoid single-word sentences or standalone one-word lines. Prefer multi-word phrases and full sentences.
 
 Output format:
-- Copy every `## …` block header line from the skeleton exactly, in order, then write that block's passages under it.
-- Do not write the passage numbers, roles, phases or word targets; only the spoken words and pause markers.
+- Copy every `## …` block header line from the skeleton **exactly** (including the `· ~N min · ~M words` part), each on its **own line**, then write that block's spoken passages on the following lines.
+- Never put spoken words on the same line as a `##` header. Never shorten headers to `## block 1 (opening)` — copy the full timed line.
+- The `##` lines are structural only and must never be spoken. Under each header write only words a guide would say aloud, plus pause markers (`<N>` / `<x N>`).
+- Do not write the passage numbers, roles, phases or word targets into the spoken lines.
 - No title, preamble or commentary outside the block headers and the spoken script. Do not start a block with a pause marker.
 
 ### Skeleton

@@ -63,6 +63,16 @@ export const TIME_PHASE_HEADER_RE =
 export const TIME_PHASE_WORDS_HEADER_RE =
   /^##\s+(.+?)\s*[·|•\-–—]\s*~?\s*(\d+(?:\.\d+)?)\s*min(?:ute)?s?\s*[·|•\-–—]\s*~?\s*(\d+)\s*words?\s*$/gim;
 
+/**
+ * Skeleton Create headers. Full form:
+ *   `## block 1 (opening) · ~2 min · ~40 words`
+ * Models often emit the short form on the same line as speech:
+ *   `## block 1 (opening) Settle into…`
+ * Match either, anywhere in the text (not only a whole line).
+ */
+export const TIME_SKELETON_BLOCK_HEADER_RE =
+  /##\s*block\s+(\d+)\s*\(([^)]+)\)(?:\s*[·|•\-–—]\s*~?\s*(\d+(?:\.\d+)?)\s*min(?:ute)?s?\s*[·|•\-–—]\s*~?\s*(\d+)\s*words?)?/gi;
+
 export type TimeBasedCallUsage = {
   label: string;
   /** Model used for pricing (prefer API response id when available). */
@@ -250,6 +260,10 @@ export function splitTimeBasedPhases(raw: string): TimeBasedPhaseBlock[] {
     TIME_PHASE_WORDS_HEADER_RE.source,
     TIME_PHASE_WORDS_HEADER_RE.flags,
   );
+  const skeletonRe = new RegExp(
+    TIME_SKELETON_BLOCK_HEADER_RE.source,
+    TIME_SKELETON_BLOCK_HEADER_RE.flags,
+  );
   const hits: Array<{
     index: number;
     end: number;
@@ -279,6 +293,19 @@ export function splitTimeBasedPhases(raw: string): TimeBasedPhaseBlock[] {
       minutes: parseFloat(m[2] ?? ""),
       sentences: 0,
       words: Math.round(parseFloat(m[3] ?? "")),
+      headerLine: m[0].trim(),
+    });
+  }
+  while ((m = skeletonRe.exec(text)) !== null) {
+    const n = (m[1] ?? "").trim();
+    const phase = (m[2] ?? "").trim();
+    hits.push({
+      index: m.index,
+      end: m.index + m[0].length,
+      name: phase ? `block ${n} (${phase})` : `block ${n}`,
+      minutes: parseFloat(m[3] ?? "") || 0,
+      sentences: 0,
+      words: Math.round(parseFloat(m[4] ?? "")) || 0,
       headerLine: m[0].trim(),
     });
   }
@@ -350,6 +377,9 @@ export function stripPhaseHeaders(script: string): string {
   if (!script) return "";
   let out = script.replace(TIME_PHASE_HEADER_RE, " ");
   out = out.replace(TIME_PHASE_WORDS_HEADER_RE, " ");
+  // Skeleton Create: drop `## block N (phase)` even when speech follows on the
+  // same line (models often skip the timed suffix and the newline).
+  out = out.replace(TIME_SKELETON_BLOCK_HEADER_RE, " ");
   // Legacy markers — commented path still available via stripPhaseMarkers.
   out = out.replace(TIME_PHASE_MARKER_RE, " ");
   return out
